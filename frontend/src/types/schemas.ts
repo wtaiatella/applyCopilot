@@ -10,7 +10,7 @@ export const BaseSchema = z.object({
 // User schemas
 export const UserSchema = BaseSchema.extend({
   email: z.string().email(),
-  full_name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
+  full_name: z.string().min(2, 'Name must be at least 2 characters'),
   password_hash: z.string().optional(),
 })
 
@@ -18,16 +18,16 @@ export const UserRegisterSchema = UserSchema.pick({
   email: true,
   full_name: true,
 }).extend({
-  password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
   confirm_password: z.string(),
 }).refine((data) => data.password === data.confirm_password, {
-  message: 'Senhas não conferem',
+  message: 'Passwords do not match',
   path: ['confirm_password'],
 })
 
 export const UserLoginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1, 'Senha é obrigatória'),
+  password: z.string().min(1, 'Password is required'),
 })
 
 // Profile schemas
@@ -52,9 +52,9 @@ export const ProfileSchema = BaseSchema.extend({
 
 // Education schemas
 export const EducationSchema = BaseSchema.extend({
-  institution: z.string().min(1, 'Instituição é obrigatória'),
-  degree: z.string().min(1, 'Grau é obrigatório'),
-  field_of_study: z.string().min(1, 'Área de estudo é obrigatória'),
+  institution: z.string().min(1, 'Institution is required'),
+  degree: z.string().min(1, 'Degree is required'),
+  field_of_study: z.string().min(1, 'Field of study is required'),
   start_date: z.string(),
   end_date: z.string().optional(),
   description: z.string().optional(),
@@ -65,12 +65,12 @@ export const EducationSchema = BaseSchema.extend({
 
 // Experience schemas
 export const ExperienceSchema = BaseSchema.extend({
-  company: z.string().min(1, 'Empresa é obrigatória'),
-  position: z.string().min(1, 'Posição é obrigatória'),
+  company: z.string().min(1, 'Company is required'),
+  position: z.string().min(1, 'Position is required'),
   start_date: z.string(),
   end_date: z.string().optional(),
   is_current: z.boolean().default(false),
-  company_description: z.string().min(1, 'Descrição da empresa é obrigatória'),
+  company_description: z.string().min(1, 'Company description is required'),
   alternative_descriptions: z.array(z.record(z.string(), z.any())).optional(),
   achievements: z.array(z.record(z.string(), z.any())).optional(),
   technologies: z.array(z.string()).optional(),
@@ -80,12 +80,12 @@ export const ExperienceSchema = BaseSchema.extend({
 
 // Project schemas
 export const ProjectSchema = BaseSchema.extend({
-  name: z.string().min(1, 'Nome do projeto é obrigatório'),
+  name: z.string().min(1, 'Project name is required'),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   url: z.string().url().optional().or(z.literal('')),
   github_url: z.string().url().optional().or(z.literal('')),
-  description: z.string().min(1, 'Descrição é obrigatória'),
+  description: z.string().min(1, 'Description is required'),
   alternative_descriptions: z.array(z.record(z.string(), z.any())).optional(),
   highlights: z.array(z.record(z.string(), z.any())).optional(),
   technologies: z.array(z.string()).optional(),
@@ -95,8 +95,8 @@ export const ProjectSchema = BaseSchema.extend({
 
 // Job schemas (for future phases)
 export const JobSchema = BaseSchema.extend({
-  title: z.string().min(1, 'Título é obrigatório'),
-  company: z.string().min(1, 'Empresa é obrigatória'),
+  title: z.string().min(1, 'Title is required'),
+  company: z.string().min(1, 'Company is required'),
   company_url: z.string().url().optional().or(z.literal('')),
   company_location: z.string().optional(),
   job_location: z.string().optional(),

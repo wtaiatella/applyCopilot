@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     if (!token) {
       return NextResponse.json({
         success: false,
-        message: 'Token não fornecido'
+        message: 'Token not provided'
       }, { status: 401 })
     }
 
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
       if (!user) {
         return NextResponse.json({
           success: false,
-          message: 'Usuário não encontrado'
+          message: 'User not found'
         }, { status: 404 })
       }
 
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     } catch (tokenError) {
       return NextResponse.json({
         success: false,
-        message: 'Token inválido ou expirado'
+        message: 'Invalid or expired token'
       }, { status: 401 })
     }
 
@@ -57,7 +57,7 @@ export async function GET(request: Request) {
     console.error('Me endpoint error:', error)
     return NextResponse.json({
       success: false,
-      message: 'Erro interno ao validar autenticação',
+      message: 'Internal error while validating authentication',
       error: error.message
     }, { status: 500 })
   }

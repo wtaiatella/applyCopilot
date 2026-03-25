@@ -34,53 +34,53 @@ export function Sidebar({ collapsed }: SidebarProps) {
     {
       key: '/profile',
       icon: <User size={18} />,
-      label: 'Meu Perfil',
+      label: 'My Profile',
       children: [
         {
           key: '/profile/edit',
-          label: 'Editar Perfil',
+          label: 'Edit Profile',
         },
         {
           key: '/profile/cv',
-          label: 'Currículo',
+          label: 'Resume / CV',
         },
         {
           key: '/profile/preferences',
-          label: 'Preferências',
+          label: 'Preferences',
         },
       ],
     },
     {
       key: '/jobs',
       icon: <Briefcase size={18} />,
-      label: 'Vagas',
+      label: 'Job Board',
       children: [
         {
           key: '/jobs/discovered',
           icon: <Search size={14} />,
-          label: 'Descobertas',
+          label: 'Discovered',
         },
         {
           key: '/jobs/applied',
           icon: <CheckCircle size={14} />,
-          label: 'Aplicadas',
+          label: 'Applied',
         },
         {
           key: '/jobs/favorites',
           icon: <Star size={14} />,
-          label: 'Favoritas',
+          label: 'Favorites',
         },
       ],
     },
     {
       key: '/cv-tailor',
       icon: <FileText size={18} />,
-      label: 'AI CV Tailor',
+      label: 'AI Resume Tailor',
     },
     {
       key: '/settings',
       icon: <Settings size={18} />,
-      label: 'Configurações',
+      label: 'Settings',
     },
   ]
 

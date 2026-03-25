@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     if (!validation.success) {
       return NextResponse.json({
         success: false,
-        message: 'Dados inválidos',
+        message: 'Invalid data',
         error: validation.error.format()
       }, { status: 400 })
     }
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({
         success: false,
-        message: 'Email ou senha inválidos'
+        message: 'Invalid email or password'
       }, { status: 401 })
     }
 
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     if (!isPasswordValid) {
       return NextResponse.json({
         success: false,
-        message: 'Email ou senha inválidos'
+        message: 'Invalid email or password'
       }, { status: 401 })
     }
 
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Login realizado com sucesso',
+      message: 'Login successful',
       data: {
         user: userData,
         token
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     console.error('Login error:', error)
     return NextResponse.json({
       success: false,
-      message: 'Erro interno ao realizar login',
+      message: 'Internal error while performing login',
       error: error.message
     }, { status: 500 })
   }

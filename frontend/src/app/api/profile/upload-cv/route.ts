@@ -12,21 +12,21 @@ export async function POST(request: Request) {
     const authHeader = request.headers.get('Authorization')
     const token = extractTokenFromHeader(authHeader)
     if (!token) {
-      return NextResponse.json({ success: false, message: 'Não autorizado' }, { status: 401 })
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
     }
     
     let decoded;
     try {
       decoded = verifyToken(token)
     } catch (e) {
-      return NextResponse.json({ success: false, message: 'Token inválido' }, { status: 401 })
+      return NextResponse.json({ success: false, message: 'Invalid token' }, { status: 401 })
     }
 
     // 2. Parse file from FormData
     const formData = await request.formData()
     const file = formData.get('file') as File
     if (!file) {
-      return NextResponse.json({ success: false, message: 'Arquivo não enviado' }, { status: 400 })
+      return NextResponse.json({ success: false, message: 'File not uploaded' }, { status: 400 })
     }
 
     const bytes = await file.arrayBuffer()
@@ -38,23 +38,23 @@ export async function POST(request: Request) {
         const data = await pdf(buffer)
         extractedText = data.text
       } catch (pdfError: any) {
-        throw new Error('Falha ao extrair texto do PDF: ' + pdfError.message)
+        throw new Error('Failed to extract text from PDF: ' + pdfError.message)
       }
     } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
       try {
         const result = await mammoth.extractRawText({ buffer })
         extractedText = result.value
       } catch (mammothError: any) {
-        throw new Error('Falha ao extrair texto do DOCX: ' + mammothError.message)
+        throw new Error('Failed to extract text from DOCX: ' + mammothError.message)
       }
     } else if (file.type === 'text/plain') {
       extractedText = buffer.toString('utf-8')
     } else {
-      return NextResponse.json({ success: false, message: 'Tipo de arquivo não suportado' }, { status: 400 })
+      return NextResponse.json({ success: false, message: 'Unsupported file type' }, { status: 400 })
     }
 
     if (!extractedText.trim()) {
-      return NextResponse.json({ success: false, message: 'Não foi possível extrair texto do arquivo' }, { status: 422 })
+      return NextResponse.json({ success: false, message: 'Could not extract text from file' }, { status: 422 })
     }
 
     // 3. AI Structuring (local Ollama)
@@ -68,14 +68,14 @@ export async function POST(request: Request) {
       await prisma.profile.update({
         where: { userId: decoded.userId },
         data: {
-          summary: "Ollama offline. Favor preencher o perfil.",
+          summary: "Ollama offline. Please fill in your profile.",
           cvParsedAt: new Date()
         }
       })
       
       return NextResponse.json({
         success: true,
-        message: 'Currículo extraído, mas estruturação de IA falhou (Ollama offline).',
+        message: 'CV extracted, but AI structuring failed (Ollama offline).',
         rawText: extractedText
       })
     }
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Currículo processado e salvo com sucesso!',
+      message: 'CV processed and saved successfully!',
       data: {
         file_path: decoded.userId,
         extracted_data: structuredData,
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
     console.error('CV Upload API Error:', error)
     return NextResponse.json({
       success: false,
-      message: 'Erro interno ao processar currículo',
+      message: 'Internal error while processing CV',
       error: error.message
     }, { status: 500 })
   }

@@ -70,7 +70,7 @@ class ApiClient {
 
   private handleError(error: AxiosError) {
     const apiError: ApiError = {
-      message: 'Erro desconhecido',
+      message: 'Unknown error',
     }
 
     if (error.response) {
@@ -82,7 +82,7 @@ class ApiClient {
       // Handle specific error codes
       switch (status) {
         case 401:
-          apiError.message = 'Não autorizado. Faça login novamente.'
+          apiError.message = 'Unauthorized. Please login again.'
           this.removeAuthToken()
           // Redirect to login page
           if (typeof window !== 'undefined') {
@@ -90,24 +90,24 @@ class ApiClient {
           }
           break
         case 403:
-          apiError.message = 'Acesso negado.'
+          apiError.message = 'Access denied.'
           break
         case 404:
-          apiError.message = 'Recurso não encontrado.'
+          apiError.message = 'Resource not found.'
           break
         case 422:
-          apiError.message = 'Dados inválidos.'
+          apiError.message = 'Invalid data.'
           break
         case 500:
-          apiError.message = 'Erro interno do servidor.'
+          apiError.message = 'Internal server error.'
           break
       }
     } else if (error.request) {
       // Network error
-      apiError.message = 'Erro de conexão. Verifique sua internet.'
+      apiError.message = 'Connection error. Please check your internet.'
     } else {
       // Other error
-      apiError.message = error.message || 'Erro desconhecido'
+      apiError.message = error.message || 'Unknown error'
     }
 
     // Show error message to user

@@ -11,8 +11,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ApplyCopilot - Sistema Inteligente de Busca de Empregos",
-  description: "Automatize e otimize sua busca por empregos com IA",
+  title: "ApplyCopilot - AI-Powered Job Search Copilot",
+  description: "Automate and optimize your job search with AI",
 };
 
 export default function RootLayout({
@@ -21,7 +21,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="en">
       <body className={`${inter.variable} font-sans antialiased`}>
         <AntdRegistry>
           <AppProviders>

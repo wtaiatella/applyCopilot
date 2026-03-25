@@ -12,15 +12,15 @@ export default function ProfilePage() {
         <Breadcrumb.Item>
           <Link href="/dashboard">Dashboard</Link>
         </Breadcrumb.Item>
-        <Breadcrumb.Item>Perfil</Breadcrumb.Item>
+        <Breadcrumb.Item>Profile</Breadcrumb.Item>
       </Breadcrumb>
 
-      <Title level={2}>Meu Perfil</Title>
+      <Title level={2}>My Profile</Title>
       
       <Card>
         <div className="text-center py-8">
-          <Title level={4}>Página de Perfil</Title>
-          <p>Conteúdo do perfil em desenvolvimento...</p>
+          <Title level={4}>Profile Page</Title>
+          <p>Profile content under development...</p>
         </div>
       </Card>
     </div>

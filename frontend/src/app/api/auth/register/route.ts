@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     if (!validation.success) {
       return NextResponse.json({
         success: false,
-        message: 'Dados inválidos',
+        message: 'Invalid data',
         error: validation.error.format()
       }, { status: 400 })
     }
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     if (existingUser) {
       return NextResponse.json({
         success: false,
-        message: 'Email já cadastrado'
+        message: 'Email already registered',
       }, { status: 400 })
     }
 
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Usuário registrado com sucesso',
+      message: 'User registered successfully',
       data: user
     }, { status: 201 })
 
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     console.error('Registration error:', error)
     return NextResponse.json({
       success: false,
-      message: 'Erro interno ao registrar usuário',
+      message: 'Internal error while registering user',
       error: error.message
     }, { status: 500 })
   }

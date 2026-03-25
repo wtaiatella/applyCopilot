@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           isLoading: false,
         })
       } else {
-        throw new Error('Login falhou')
+        throw new Error('Login failed')
       }
     } catch (error) {
       setAuthState(prev => ({ ...prev, isLoading: false }))
@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Auto-login after successful registration
         await login(userData.email, userData.password)
       } else {
-        throw new Error('Registro falhou')
+        throw new Error('Registration failed')
       }
     } catch (error) {
       setAuthState(prev => ({ ...prev, isLoading: false }))

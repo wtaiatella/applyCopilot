@@ -7,14 +7,14 @@ export async function PATCH(request: Request) {
     const authHeader = request.headers.get('Authorization')
     const token = extractTokenFromHeader(authHeader)
     if (!token) {
-      return NextResponse.json({ success: false, message: 'Não autorizado' }, { status: 401 })
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
     }
     
     let decoded;
     try {
       decoded = verifyToken(token)
     } catch (e) {
-      return NextResponse.json({ success: false, message: 'Token inválido' }, { status: 401 })
+      return NextResponse.json({ success: false, message: 'Invalid token' }, { status: 401 })
     }
 
     const body = await request.json()
@@ -43,7 +43,7 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Perfil atualizado com sucesso',
+      message: 'Profile updated successfully',
       data: updatedProfile
     })
 
@@ -51,7 +51,7 @@ export async function PATCH(request: Request) {
     console.error('Update profile error:', error)
     return NextResponse.json({
       success: false,
-      message: 'Erro ao atualizar perfil',
+      message: 'Error updating profile',
       error: error.message
     }, { status: 500 })
   }

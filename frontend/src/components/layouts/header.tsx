@@ -27,12 +27,12 @@ export function Header({ collapsed, onToggle }: HeaderProps) {
     {
       key: 'profile',
       icon: <UserOutlined />,
-      label: 'Meu Perfil',
+      label: 'My Profile',
     },
     {
       key: 'settings',
       icon: <SettingOutlined />,
-      label: 'Configurações',
+      label: 'Settings',
     },
     {
       type: 'divider',
@@ -40,7 +40,7 @@ export function Header({ collapsed, onToggle }: HeaderProps) {
     {
       key: 'logout',
       icon: <LogoutOutlined />,
-      label: 'Sair',
+      label: 'Log Out',
       onClick: logout,
     },
   ]

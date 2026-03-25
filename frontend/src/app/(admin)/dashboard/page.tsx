@@ -22,17 +22,17 @@ export default function DashboardPage() {
                         AI Agent Active · Last synced 4 min ago
                     </p>
                 </div>
-                
+
                 <div className="flex items-center gap-3">
-                    <Button 
-                        type="default" 
-                        ghost 
+                    <Button
+                        type="default"
+                        ghost
                         className="h-11 border-white/5 bg-white/5 text-white/60 hover:text-white hover:border-white/20 transition-all text-xs font-bold uppercase tracking-wider px-6 rounded-xl flex items-center gap-2"
                     >
                         <RefreshCw size={14} /> Sync Status
                     </Button>
-                    <Button 
-                        type="primary" 
+                    <Button
+                        type="primary"
                         className="h-11 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all text-xs font-black uppercase tracking-widest px-8 rounded-xl flex items-center gap-2"
                     >
                         <Rocket size={14} className="fill-white" /> Run Discovery
@@ -55,10 +55,10 @@ export default function DashboardPage() {
 
             {/* Bottom Section - Targeted Feed and Top Matches */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                 <TopMatchedJobs />
-                 <AIActivityFeed />
+                <TopMatchedJobs />
+                <AIActivityFeed />
             </div>
-            
+
             {/* Decorative BG element */}
             <div className="fixed -bottom-24 -right-24 w-96 h-96 bg-primary/5 rounded-full blur-[100px] pointer-events-none -z-10" />
         </div>

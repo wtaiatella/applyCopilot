@@ -1,0 +1,162 @@
+// ApplyCopilot v2 - Prisma Schema (MongoDB)
+// Único banco de dados para toda a aplicação
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------
+// USER — Autenticação e dados de acesso
+// -------------------------------------------------------
+model User {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relacionamentos
+  profile      Profile?
+  jobs         Job[]
+  applications Application[]
+}
+
+// -------------------------------------------------------
+// PROFILE — Dados completos do candidato (flexível JSON)
+// -------------------------------------------------------
+model Profile {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @unique @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Dados pessoais
+  phone            String?
+  country          String?
+  city             String?
+  linkedinUrl      String?
+  githubUrl        String?
+  portfolioUrl     String?
+  currentPosition  String?
+
+  // Resumo profissional (editável pelo usuário)
+  summary          String?
+
+  // Skills: ["TypeScript", "React", "Node.js", ...]
+  skills           String[]
+
+  // Experiências profissionais (array de objetos JSON)
+  // Estrutura: { company, position, startDate, endDate, description, achievements, technologies, personalComments }
+  experiences      Json[]
+
+  // Educação
+  // Estrutura: { institution, degree, field, startDate, endDate, description }
+  education        Json[]
+
+  // Projetos
+  // Estrutura: { name, description, url, githubUrl, technologies, highlights }
+  projects         Json[]
+
+  // Preferências de busca
+  contractTypes    String[]  // ["CLT", "PJ", "Freelance"]
+  workModality     String[]  // ["Remote", "Hybrid", "On-site"]
+  salaryMin        Float?
+  salaryMax        Float?
+  locationsOfInterest String[]
+
+  // Arquivo CV original
+  cvFileUrl        String?
+  cvParsedAt       DateTime?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// -------------------------------------------------------
+// JOB — Vagas descobertas via scraping
+// -------------------------------------------------------
+model Job {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String   @db.ObjectId
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Dados crus do scraping
+  sourceUrl       String   @unique
+  sourcePlatform  String   // "LinkedIn", "Wellfound", "Remote.co", etc.
+  rawMarkdown     String?  // HTML convertido para Markdown pelo scraper
+
+  // Dados parseados pelo Ollama (Markdown → JSON estruturado)
+  title           String?
+  company         String?
+  companyLocation String?
+  jobType         String?  // "Full-time", "Part-time", "Contract"
+  workModality    String?  // "Remote", "Hybrid", "On-site"
+  salaryRange     String?
+  description     String?
+  requirements    String[] // Lista de skills/requisitos extraídos
+  responsibilities String[]
+  benefits        String[]
+
+  // Scoring do pipeline de IA
+  tfScore         Float?   // Score do pré-filtro TensorFlow (0-100)
+  aiMatchScore    Float?   // Score final do LLM premium (0-100)
+  aiAnalysis      Json?    // { strengths, gaps, recommendations, justification }
+
+  // Status do processamento
+  status          JobStatus @default(DISCOVERED)
+  scrapedAt       DateTime  @default(now())
+  analyzedAt      DateTime?
+
+  applications    Application[]
+}
+
+// -------------------------------------------------------
+// APPLICATION — Controle de candidaturas
+// -------------------------------------------------------
+model Application {
+  id          String            @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String            @db.ObjectId
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId       String            @db.ObjectId
+  job         Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  status      ApplicationStatus @default(PENDING)
+
+  // CV personalizado gerado para esta vaga (snapshot JSON do Profile)
+  customCvSnapshot Json?
+  coverLetter      String?
+
+  appliedAt       DateTime?
+  lastStatusAt    DateTime  @default(now())
+  notes           String?   // Anotações do usuário sobre a candidatura
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, jobId])
+}
+
+// -------------------------------------------------------
+// ENUMS
+// -------------------------------------------------------
+enum JobStatus {
+  DISCOVERED   // Scraped, aguardando processamento
+  PARSING      // Sendo parseado pelo Ollama
+  PREFILTERED  // Passou pelo TensorFlow (tfScore disponível)
+  ANALYZED     // Análise LLM completa (aiMatchScore disponível)
+  REJECTED     // Descartado pelo pré-filtro ou usuário
+}
+
+enum ApplicationStatus {
+  PENDING      // Candidatura salva, não enviada
+  APPLIED      // Candidatura enviada
+  INTERVIEWING // Em processo de entrevistas
+  OFFER        // Oferta recebida
+  REJECTED     // Rejeitado
+  WITHDRAWN    // Desistiu da candidatura
+}

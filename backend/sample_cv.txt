@@ -1,0 +1,52 @@
+
+John Doe
+john.doe@email.com
++1 (555) 123-4567
+linkedin.com/in/johndoe
+github.com/johndoe
+
+PROFESSIONAL SUMMARY
+Experienced Software Engineer with 5+ years of experience in full-stack development,
+specializing in Python, JavaScript, and cloud technologies. Passionate about building
+scalable applications and leading development teams.
+
+WORK EXPERIENCE
+
+Senior Software Engineer | Tech Corp Inc. | 2020-Present
+- Lead development of microservices architecture serving 1M+ users
+- Implemented CI/CD pipelines reducing deployment time by 60%
+- Mentored junior developers and conducted code reviews
+- Developed REST APIs using FastAPI and Django
+
+Software Engineer | StartupXYZ | 2018-2020
+- Built responsive web applications using React and Node.js
+- Designed and implemented database schemas with PostgreSQL
+- Collaborated with cross-functional teams to deliver features
+- Optimized application performance improving load time by 40%
+
+EDUCATION
+
+Bachelor of Science in Computer Science
+University of Technology | 2014-2018
+- GPA: 3.8/4.0
+- Dean's List for 6 semesters
+- Member of Computer Science Club
+
+PROJECTS
+
+E-commerce Platform | 2022
+- Full-stack application using MERN stack
+- Implemented payment integration with Stripe
+- Deployed on AWS with Docker containers
+
+Data Analytics Dashboard | 2021
+- Real-time data visualization using D3.js
+- Backend API with Python and FastAPI
+- Database integration with MongoDB
+
+SKILLS
+Programming Languages: Python, JavaScript, Java, C++, SQL
+Frameworks: React, Node.js, Django, FastAPI, Express
+Databases: PostgreSQL, MongoDB, Redis, MySQL
+Cloud: AWS, Docker, Kubernetes, Jenkins
+Tools: Git, JIRA, Linux, Nginx

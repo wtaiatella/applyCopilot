@@ -1,0 +1,48 @@
+# --- IDE & OS ---
+.idea/
+.vscode/
+.DS_Store
+*.swp
+.windsurf/
+.junie/
+
+# --- Node / Frontend (Next.js, React) ---
+**/node_modules/
+**/.next/
+**/out/
+**/dist/
+**/.vercel/
+**/.turbo/
+*.tsbuildinfo
+
+# --- Python ---
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/.venv/
+**/venv/
+**/env/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ipynb_checkpoints/
+
+# --- Database ---
+*.db
+*.db-journal
+**/chroma_db/
+
+# --- Secrets (Crucial) ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env
+**/.env*.local
+
+# --- Project Specific ---
+logs/
+mydocs/
+test_scripts/
+**/uploads/
+noCodeSite/

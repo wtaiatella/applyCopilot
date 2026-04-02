@@ -5,7 +5,7 @@ export class ProfileService {
   async getProfile(include?: string): Promise<ApiResponse<Profile>> {
     try {
       const params = include ? { include } : undefined
-      const response = await apiClient.get<ApiResponse<Profile>>('/api/profile', params)
+      const response = await apiClient.get<ApiResponse<Profile>>('/api/profile/me', params)
       return response.data
     } catch (error) {
       throw error
@@ -14,7 +14,7 @@ export class ProfileService {
 
   async updateProfile(profileData: Partial<Profile>): Promise<ApiResponse<Profile>> {
     try {
-      const response = await apiClient.put<ApiResponse<Profile>>('/api/profile', profileData)
+      const response = await apiClient.patch<ApiResponse<Profile>>('/api/profile/update', profileData)
       return response.data
     } catch (error) {
       throw error

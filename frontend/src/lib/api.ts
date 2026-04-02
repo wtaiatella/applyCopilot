@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios'
-import { message } from 'antd'
+import { antdStatic } from './antd-static'
 
 export interface ApiError {
   message: string
@@ -77,7 +77,7 @@ class ApiClient {
       // Server responded with error status
       const { status, data } = error.response
       apiError.status = status
-      apiError.message = (data as any)?.message || `Erro ${status}`
+      apiError.message = (data as any)?.message || `Error ${status}`
       
       // Handle specific error codes
       switch (status) {
@@ -111,7 +111,11 @@ class ApiClient {
     }
 
     // Show error message to user
-    message.error(apiError.message)
+    if (antdStatic.msg) {
+      antdStatic.msg.error(apiError.message)
+    } else {
+      console.error('API Error:', apiError.message)
+    }
   }
 
   // Auth methods

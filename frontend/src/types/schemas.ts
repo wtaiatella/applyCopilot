@@ -47,6 +47,9 @@ export const ProfileSchema = BaseSchema.extend({
   salary_range: z.record(z.string(), z.number()).optional(),
   locations_of_interest: z.array(z.string()).optional(),
   technologies_of_interest: z.array(z.string()).optional(),
+  experiences: z.array(z.any()).optional(),
+  education: z.array(z.any()).optional(),
+  projects: z.array(z.any()).optional(),
   user_id: z.string(),
 })
 

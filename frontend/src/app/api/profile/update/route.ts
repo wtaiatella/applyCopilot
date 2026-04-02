@@ -27,6 +27,7 @@ export async function PATCH(request: Request) {
         skills: body.skills,
         experiences: body.experiences,
         education: body.education,
+        projects: body.projects,
         phone: body.phone,
         linkedinUrl: body.linkedinUrl,
         githubUrl: body.githubUrl,

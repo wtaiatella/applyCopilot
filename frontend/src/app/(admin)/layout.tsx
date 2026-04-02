@@ -3,11 +3,11 @@
 import React from 'react'
 import AppLayout from '@/components/layouts/AppLayout'
 
-interface DashboardLayoutProps {
+interface AdminLayoutProps {
   children: React.ReactNode
 }
 
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
+export default function AdminLayout({ children }: AdminLayoutProps) {
   return (
     <AppLayout>
       {children}

@@ -7,54 +7,48 @@ import {
   Form, 
   Input, 
   Button, 
-  Space,
-  Alert,
-  Divider,
-  Tag,
+  Space, 
+  Alert, 
+  Divider, 
+  Tag, 
   Collapse,
-  Switch
+  Badge
 } from 'antd'
 import { 
   EditOutlined, 
-  SaveOutlined,
-  CheckOutlined,
-  CloseOutlined,
-  WarningOutlined
+  SaveOutlined, 
+  CheckOutlined, 
+  CloseOutlined, 
+  WarningOutlined,
+  InfoCircleOutlined,
+  ThunderboltOutlined,
+  BookOutlined,
+  HistoryOutlined
 } from '@ant-design/icons'
 import type { CollapseProps } from 'antd'
 
-const { Title, Text } = Typography
-const { Panel } = Collapse
+const { Title, Text, Paragraph } = Typography
 const { TextArea } = Input
 
 interface ExtractedData {
-  personal_info?: {
-    name?: string
-    email?: string
-    phone?: string
-    location?: string
-    linkedin?: string
-    github?: string
-  }
   summary?: string
-  experience?: Array<{
+  skills?: string[]
+  experiences?: Array<{
     company?: string
     position?: string
-    duration?: string
+    startDate?: string
+    endDate?: string | null
     description?: string
+    achievements?: string[]
+    technologies?: string[]
   }>
   education?: Array<{
     institution?: string
     degree?: string
-    duration?: string
+    field?: string
+    startDate?: string
+    endDate?: string | null
     description?: string
-  }>
-  skills?: string[]
-  languages?: string[]
-  projects?: Array<{
-    name?: string
-    description?: string
-    technologies?: string[]
   }>
 }
 
@@ -68,30 +62,6 @@ export function ExtractedDataReview({ data, onConfirm, onEdit }: ExtractedDataRe
   const [editMode, setEditMode] = useState(false)
   const [formData, setFormData] = useState<ExtractedData>(data)
   const [form] = Form.useForm()
-  const [validationWarnings, setValidationWarnings] = useState<string[]>([])
-
-  const validateData = (dataToValidate: ExtractedData) => {
-    const warnings: string[] = []
-    
-    if (!dataToValidate.personal_info?.name) {
-      warnings.push('Nome não encontrado')
-    }
-    if (!dataToValidate.personal_info?.email) {
-      warnings.push('Email não encontrado')
-    }
-    if (!dataToValidate.experience || dataToValidate.experience.length === 0) {
-      warnings.push('Nenhuma experiência encontrada')
-    }
-    if (!dataToValidate.education || dataToValidate.education.length === 0) {
-      warnings.push('Nenhuma formação encontrada')
-    }
-    if (!dataToValidate.skills || dataToValidate.skills.length === 0) {
-      warnings.push('Nenhuma habilidade encontrada')
-    }
-    
-    setValidationWarnings(warnings)
-    return warnings.length === 0
-  }
 
   const handleEdit = () => {
     setEditMode(true)
@@ -102,7 +72,6 @@ export function ExtractedDataReview({ data, onConfirm, onEdit }: ExtractedDataRe
     form.validateFields().then((values) => {
       setFormData(values)
       setEditMode(false)
-      validateData(values)
       onEdit?.(values)
     })
   }
@@ -113,221 +82,192 @@ export function ExtractedDataReview({ data, onConfirm, onEdit }: ExtractedDataRe
   }
 
   const handleConfirm = () => {
-    const isValid = validateData(formData)
-    if (isValid || window.confirm('Existem avisos de validação. Deseja continuar mesmo assim?')) {
-      onConfirm?.(formData)
-    }
+    onConfirm?.(formData)
   }
 
-  const renderPersonalInfo = () => {
-    const personalInfo = formData.personal_info || {}
-    
-    if (editMode) {
-      return (
-        <Card size="small" title="Informações Pessoais">
-          <Form.Item label="Nome" name={['personal_info', 'name']}>
-            <Input placeholder="Seu nome completo" />
-          </Form.Item>
-          <Form.Item label="Email" name={['personal_info', 'email']}>
-            <Input placeholder="seu@email.com" />
-          </Form.Item>
-          <Form.Item label="Telefone" name={['personal_info', 'phone']}>
-            <Input placeholder="(00) 00000-0000" />
-          </Form.Item>
-          <Form.Item label="Localização" name={['personal_info', 'location']}>
-            <Input placeholder="Cidade, Estado" />
-          </Form.Item>
-          <Form.Item label="LinkedIn" name={['personal_info', 'linkedin']}>
-            <Input placeholder="linkedin.com/in/seuperfil" />
-          </Form.Item>
-          <Form.Item label="GitHub" name={['personal_info', 'github']}>
-            <Input placeholder="github.com/seuusuario" />
-          </Form.Item>
-        </Card>
-      )
-    }
-    
-    return (
-      <Card size="small" title="Informações Pessoais">
-        <Space direction="vertical" className="w-full">
-          {personalInfo.name && (
-            <div><Text strong>Nome:</Text> {personalInfo.name}</div>
-          )}
-          {personalInfo.email && (
-            <div><Text strong>Email:</Text> {personalInfo.email}</div>
-          )}
-          {personalInfo.phone && (
-            <div><Text strong>Telefone:</Text> {personalInfo.phone}</div>
-          )}
-          {personalInfo.location && (
-            <div><Text strong>Localização:</Text> {personalInfo.location}</div>
-          )}
-          {personalInfo.linkedin && (
-            <div><Text strong>LinkedIn:</Text> {personalInfo.linkedin}</div>
-          )}
-          {personalInfo.github && (
-            <div><Text strong>GitHub:</Text> {personalInfo.github}</div>
-          )}
-        </Space>
-      </Card>
-    )
-  }
+  const renderSummary = () => (
+    <div className="py-2">
+      <Title level={5} className="mb-2"><InfoCircleOutlined /> Professional Summary</Title>
+      {editMode ? (
+        <Form.Item name="summary">
+          <TextArea rows={4} className="rounded-lg" />
+        </Form.Item>
+      ) : (
+        <Paragraph className="bg-slate-50 p-4 rounded-xl border border-slate-100 italic text-slate-600">
+          "{formData.summary || 'No summary extracted.'}"
+        </Paragraph>
+      )}
+    </div>
+  )
 
-  const renderExperience = () => {
-    const experiences = formData.experience || []
-    
-    return (
-      <Card size="small" title="Experiência Profissional">
-        {experiences.length === 0 ? (
-          <Text type="secondary">Nenhuma experiência encontrada</Text>
-        ) : (
-          experiences.map((exp, index) => (
-            <Card key={index} size="small" className="mb-2">
+  const renderExperiences = () => (
+    <div className="py-2">
+      <Title level={5} className="mb-4"><HistoryOutlined /> Professional Experience</Title>
+      <Space direction="vertical" className="w-full" size="middle">
+        {formData.experiences?.map((exp, idx) => (
+          <Badge.Ribbon text={exp.company} key={idx} color="blue">
+            <Card size="small" className="border-slate-100 shadow-sm pt-4">
               <Space direction="vertical" className="w-full">
-                <div><Text strong>Empresa:</Text> {exp.company}</div>
-                <div><Text strong>Cargo:</Text> {exp.position}</div>
-                <div><Text strong>Período:</Text> {exp.duration}</div>
-                {exp.description && (
-                  <div><Text strong>Descrição:</Text> {exp.description}</div>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <Text strong className="text-lg block">{exp.position}</Text>
+                    <Text type="secondary" className="text-xs text-blue-500 font-medium uppercase tracking-wider">
+                      {exp.startDate} — {exp.endDate || 'Present'}
+                    </Text>
+                  </div>
+                </div>
+                
+                <Divider className="my-2" />
+                
+                <div>
+                  <Text type="secondary" className="text-xs font-bold uppercase mb-2 block tracking-tight">Achievements (Atomic Data)</Text>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {exp.achievements?.map((ach, aidx) => (
+                      <li key={aidx} className="text-slate-700 leading-relaxed">{ach}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                {exp.technologies && exp.technologies.length > 0 && (
+                  <div className="mt-2">
+                    <Space wrap size={[4, 4]}>
+                      {exp.technologies.map((tech, tidx) => (
+                        <Tag key={tidx} className="bg-slate-50 border-slate-200 text-slate-500 text-[10px] uppercase font-bold m-0 p-0 px-2 rounded-full">
+                          {tech}
+                        </Tag>
+                      ))}
+                    </Space>
+                  </div>
                 )}
               </Space>
             </Card>
-          ))
-        )}
-      </Card>
-    )
-  }
+          </Badge.Ribbon>
+        ))}
+      </Space>
+    </div>
+  )
 
-  const renderEducation = () => {
-    const education = formData.education || []
-    
-    return (
-      <Card size="small" title="Formação Acadêmica">
-        {education.length === 0 ? (
-          <Text type="secondary">Nenhuma formação encontrada</Text>
-        ) : (
-          education.map((edu, index) => (
-            <Card key={index} size="small" className="mb-2">
-              <Space direction="vertical" className="w-full">
-                <div><Text strong>Instituição:</Text> {edu.institution}</div>
-                <div><Text strong>Grau:</Text> {edu.degree}</div>
-                <div><Text strong>Período:</Text> {edu.duration}</div>
-                {edu.description && (
-                  <div><Text strong>Descrição:</Text> {edu.description}</div>
-                )}
-              </Space>
-            </Card>
-          ))
-        )}
-      </Card>
-    )
-  }
+  const renderEducation = () => (
+    <div className="py-2">
+      <Title level={5} className="mb-4"><BookOutlined /> Education</Title>
+      <Space direction="vertical" className="w-full">
+        {formData.education?.map((edu, idx) => (
+          <Card key={idx} size="small" className="bg-slate-50/50 border-slate-100">
+            <Text strong className="block">{edu.institution}</Text>
+            <Text className="text-slate-600">{edu.degree} in {edu.field}</Text>
+            <Text type="secondary" className="block text-xs mt-1">{edu.startDate} — {edu.endDate}</Text>
+          </Card>
+        ))}
+      </Space>
+    </div>
+  )
 
-  const renderSkills = () => {
-    const skills = formData.skills || []
-    
-    return (
-      <Card size="small" title="Habilidades">
-        {skills.length === 0 ? (
-          <Text type="secondary">Nenhuma habilidade encontrada</Text>
-        ) : (
-          <Space wrap>
-            {skills.map((skill, index) => (
-              <Tag key={index} color="blue">{skill}</Tag>
-            ))}
-          </Space>
-        )}
-      </Card>
-    )
-  }
+  const renderSkills = () => (
+    <div className="py-2">
+      <Title level={5} className="mb-2"><ThunderboltOutlined /> Extracted Skills</Title>
+      <Space wrap>
+        {formData.skills?.map((skill, idx) => (
+          <Tag key={idx} color="processing" className="rounded-full px-3">{skill}</Tag>
+        ))}
+      </Space>
+    </div>
+  )
 
-  const items: CollapseProps['items'] = [
+  const collapseItems: CollapseProps['items'] = [
     {
-      key: 'personal',
-      label: 'Informações Pessoais',
-      children: renderPersonalInfo(),
+      key: '1',
+      label: <Text strong>Professional Summary</Text>,
+      children: renderSummary(),
     },
     {
-      key: 'experience',
-      label: 'Experiência Profissional',
-      children: renderExperience(),
+      key: '2',
+      label: <Text strong>Experience ({formData.experiences?.length || 0})</Text>,
+      children: renderExperiences(),
     },
     {
-      key: 'education',
-      label: 'Formação Acadêmica',
+      key: '3',
+      label: <Text strong>Education ({formData.education?.length || 0})</Text>,
       children: renderEducation(),
     },
     {
-      key: 'skills',
-      label: 'Habilidades',
+      key: '4',
+      label: <Text strong>Skills ({formData.skills?.length || 0})</Text>,
       children: renderSkills(),
     },
   ]
 
   return (
-    <Card>
-      <Space direction="vertical" className="w-full">
-        <Space className="w-full justify-between">
-          <Title level={4}>Revisão de Dados Extraídos</Title>
+    <div className="animate-in fade-in duration-700">
+      <Space direction="vertical" className="w-full" size="large">
+        <Alert
+          message="Faithful Extraction verified"
+          description="Data has been classified based on your resume. No changes were made to your original text. Please verify the classification below."
+          type="info"
+          showIcon
+          icon={<InfoCircleOutlined />}
+          className="rounded-xl border-blue-100 bg-blue-50/30"
+        />
+
+        <div className="flex justify-between items-center mb-2">
+          <div>
+            <Title level={4} className="m-0">Data Classification Review</Title>
+            <Text type="secondary">Organizing your resume into atomic achievements.</Text>
+          </div>
           <Space>
             {!editMode ? (
-              <Button icon={<EditOutlined />} onClick={handleEdit}>
-                Editar
+              <Button icon={<EditOutlined />} onClick={handleEdit} className="rounded-lg">
+                Edit Mapping
               </Button>
             ) : (
-              <>
-                <Button icon={<SaveOutlined />} type="primary" onClick={handleSave}>
-                  Salvar
+              <Space>
+                <Button icon={<SaveOutlined />} type="primary" onClick={handleSave} className="rounded-lg">
+                  Save Changes
                 </Button>
-                <Button icon={<CloseOutlined />} onClick={handleCancel}>
-                  Cancelar
+                <Button icon={<CloseOutlined />} onClick={handleCancel} className="rounded-lg">
+                  Cancel
                 </Button>
-              </>
+              </Space>
             )}
           </Space>
-        </Space>
-
-        {validationWarnings.length > 0 && (
-          <Alert
-            message="Avisos de Validação"
-            description={
-              <ul>
-                {validationWarnings.map((warning, index) => (
-                  <li key={index}>{warning}</li>
-                ))}
-              </ul>
-            }
-            type="warning"
-            showIcon
-            icon={<WarningOutlined />}
-          />
-        )}
+        </div>
 
         <Form
           form={form}
           layout="vertical"
-          initialValues={formData}
-          onValuesChange={(_, allValues) => setFormData(allValues)}
+          style={{ width: '100%' }}
         >
-          <Collapse items={items} defaultActiveKey={['personal']} />
+          <Collapse 
+            defaultActiveKey={['1', '2']} 
+            ghost 
+            expandIconPosition="end"
+            className="bg-white border rounded-2xl overflow-hidden border-slate-200"
+            items={collapseItems}
+          />
         </Form>
 
-        <Divider />
+        <Divider className="my-2" />
 
-        <Space className="w-full justify-end">
-          <Button size="large">
-            Revisar Mais Tarde
-          </Button>
-          <Button 
-            type="primary" 
-            size="large" 
-            icon={<CheckOutlined />}
-            onClick={handleConfirm}
-          >
-            Confirmar Dados
-          </Button>
-        </Space>
+        <div className="flex justify-between items-center bg-slate-50 p-6 rounded-2xl border border-slate-100">
+          <div>
+            <Text strong className="block text-lg">Ready to build your library?</Text>
+            <Text type="secondary">Confirming will save this data to your Master Profile.</Text>
+          </div>
+          <Space size="middle">
+            <Button size="large" className="rounded-xl px-8 h-12">
+              Later
+            </Button>
+            <Button 
+              type="primary" 
+              size="large" 
+              icon={<CheckOutlined />}
+              onClick={handleConfirm}
+              className="rounded-xl px-8 h-12 shadow-md shadow-blue-200"
+            >
+              Confirm and Save
+            </Button>
+          </Space>
+        </div>
       </Space>
-    </Card>
+    </div>
   )
 }

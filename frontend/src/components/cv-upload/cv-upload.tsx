@@ -9,7 +9,6 @@ import {
   Button, 
   Space, 
   Alert,
-  List,
   Tag
 } from 'antd'
 import { 
@@ -17,7 +16,7 @@ import {
   FileTextOutlined, 
   DeleteOutlined,
   EyeOutlined,
-  UploadOutlined
+  LoadingOutlined
 } from '@ant-design/icons'
 import type { UploadProps, UploadFile } from 'antd'
 import { cvService } from '@/lib/services'
@@ -43,13 +42,13 @@ export function CVUpload({ onUploadSuccess, onProcessingComplete }: CVUploadProp
     const isDOCX = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     
     if (!isPDF && !isDOC && !isDOCX) {
-      setError('Apenas arquivos PDF, DOC ou DOCX são permitidos')
+      setError('Only PDF, DOC, or DOCX files are allowed')
       return false
     }
     
     const isLt10M = file.size / 1024 / 1024 < 10
     if (!isLt10M) {
-      setError('O arquivo deve ser menor que 10MB')
+      setError('File must be smaller than 10MB')
       return false
     }
     
@@ -67,7 +66,7 @@ export function CVUpload({ onUploadSuccess, onProcessingComplete }: CVUploadProp
     setError(null)
 
     try {
-      // Simulate upload progress
+      // Simulate initial upload progress
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
           if (prev >= 90) {
@@ -76,7 +75,7 @@ export function CVUpload({ onUploadSuccess, onProcessingComplete }: CVUploadProp
           }
           return prev + 10
         })
-      }, 200)
+      }, 100)
 
       const response = await cvService.uploadCV(file)
       
@@ -85,7 +84,7 @@ export function CVUpload({ onUploadSuccess, onProcessingComplete }: CVUploadProp
       
       if (response.success && response.data) {
         setUploadedFile({
-          uid: Date.now().toString(), // Generate unique ID
+          uid: Date.now().toString(),
           name: file.name,
           status: 'done',
           size: file.size,
@@ -94,16 +93,17 @@ export function CVUpload({ onUploadSuccess, onProcessingComplete }: CVUploadProp
         
         // Start polling for processing status
         pollProcessingStatus(response.data.file_path)
-        
         onUploadSuccess?.(response.data.file_path)
+      } else {
+        throw new Error(response.message || 'Upload failed')
       }
     } catch (err: any) {
-      setError(err.message || 'Erro ao fazer upload do arquivo')
+      setError(err.message || 'Error uploading file')
       setUploading(false)
       setUploadProgress(0)
     }
     
-    return false // Prevent default upload behavior
+    return false // Prevent default behavior
   }
 
   const pollProcessingStatus = async (fileId: string) => {
@@ -117,15 +117,15 @@ export function CVUpload({ onUploadSuccess, onProcessingComplete }: CVUploadProp
           setUploading(false)
           onProcessingComplete?.(response.data.extracted_data)
         } else if (response.data.status === 'failed') {
-          setError(response.data.error || 'Falha no processamento do arquivo')
+          setError(response.data.error || 'Failed to process file')
           setUploading(false)
         } else {
           // Continue polling
-          setTimeout(() => pollProcessingStatus(fileId), 2000)
+          setTimeout(() => pollProcessingStatus(fileId), 1500)
         }
       }
     } catch (err) {
-      setError('Erro ao verificar status do processamento')
+      setError('Error checking processing status')
       setUploading(false)
     }
   }
@@ -135,6 +135,7 @@ export function CVUpload({ onUploadSuccess, onProcessingComplete }: CVUploadProp
     setProcessingStatus(null)
     setError(null)
     setUploadProgress(0)
+    setUploading(false)
   }
 
   const uploadProps: UploadProps = {
@@ -146,92 +147,105 @@ export function CVUpload({ onUploadSuccess, onProcessingComplete }: CVUploadProp
   }
 
   return (
-    <Card className="w-full">
-      <Title level={4}>Upload de Currículo</Title>
-      <Text type="secondary">
-        Envie seu currículo em formato PDF, DOC ou DOCX (máximo 10MB)
-      </Text>
-
+    <div className="w-full">
       {error && (
         <Alert
-          message="Erro no Upload"
+          message="Upload Error"
           description={error}
           type="error"
           showIcon
           closable
-          className="mt-4"
+          className="mb-4"
           onClose={() => setError(null)}
         />
       )}
 
       {!uploadedFile ? (
-        <Dragger {...uploadProps} className="mt-4">
-          <p className="ant-upload-drag-icon">
+        <Dragger 
+          {...uploadProps} 
+          className="bg-slate-50 border-2 border-dashed border-slate-200 hover:border-blue-400 transition-colors p-8 rounded-2xl"
+        >
+          <p className="text-4xl text-blue-500 mb-4 text-center">
             <InboxOutlined />
           </p>
-          <p className="ant-upload-text">
-            Clique ou arraste o arquivo para esta área
+          <p className="text-lg font-medium text-slate-700 text-center">
+            Click or drag file to this area to upload
           </p>
-          <p className="ant-upload-hint">
-            Suporte para PDF, DOC, DOCX. Tamanho máximo: 10MB
+          <p className="text-slate-500 text-center mt-2">
+            Support for PDF, DOC, DOCX. Max size: 10MB
           </p>
         </Dragger>
       ) : (
-        <div className="mt-4">
-          <Card size="small">
-            <Space direction="vertical" className="w-full">
-              <Space>
-                <FileTextOutlined />
-                <Text strong>{uploadedFile.name}</Text>
-                <Tag color="blue">
-                  {(uploadedFile.size! / 1024 / 1024).toFixed(2)} MB
-                </Tag>
+        <Card className="border-slate-200 shadow-sm rounded-xl overflow-hidden">
+          <Space direction="vertical" className="w-full" size="middle">
+            <div className="flex items-center justify-between">
+              <Space size="middle">
+                <div className="w-10 h-10 bg-blue-50 text-blue-500 rounded-lg flex items-center justify-center text-xl">
+                  <FileTextOutlined />
+                </div>
+                <div>
+                  <Text strong className="block">{uploadedFile.name}</Text>
+                  <Text type="secondary" className="text-xs">
+                    {(uploadedFile.size! / 1024 / 1024).toFixed(2)} MB • {uploadedFile.type?.split('/')[1].toUpperCase()}
+                  </Text>
+                </div>
               </Space>
               
-              {uploading && (
-                <div>
-                  <Text type="secondary">
+              {!uploading && processingStatus?.status === 'completed' && (
+                <Tag color="success" className="m-0 rounded-full px-3">Completed</Tag>
+              )}
+            </div>
+            
+            {(uploading || processingStatus?.status === 'processing') && (
+              <div className="bg-slate-50 p-4 rounded-lg">
+                <div className="flex justify-between mb-2">
+                  <Text type="secondary" className="text-sm">
                     {processingStatus?.status === 'processing' 
-                      ? 'Processando arquivo...' 
-                      : 'Fazendo upload...'}
+                      ? 'AI Classification in progress...' 
+                      : 'Uploading file...'}
                   </Text>
-                  <Progress 
-                    percent={processingStatus?.progress || uploadProgress} 
-                    status={processingStatus?.status === 'failed' ? 'exception' : 'active'}
-                  />
+                  <Text className="text-sm font-medium">{uploadProgress}%</Text>
                 </div>
-              )}
-
-              {processingStatus?.status === 'completed' && (
-                <Alert
-                  message="Processamento Concluído"
-                  description="Seu currículo foi processado com sucesso!"
-                  type="success"
-                  showIcon
+                <Progress 
+                  percent={processingStatus?.progress || uploadProgress} 
+                  showInfo={false}
+                  status={processingStatus?.status === 'failed' ? 'exception' : 'active'}
+                  strokeColor="#3b82f6"
+                  className="mb-0"
                 />
-              )}
+              </div>
+            )}
 
-              <Space>
-                <Button 
-                  icon={<EyeOutlined />} 
-                  size="small"
-                  disabled={processingStatus?.status !== 'completed'}
-                >
-                  Visualizar Dados
-                </Button>
-                <Button 
-                  icon={<DeleteOutlined />} 
-                  size="small" 
-                  danger
-                  onClick={removeFile}
-                >
-                  Remover
-                </Button>
-              </Space>
-            </Space>
-          </Card>
-        </div>
+            {processingStatus?.status === 'completed' && (
+              <Alert
+                message="Processing Finished"
+                description="Your resume data was successfully extracted and classified."
+                type="success"
+                showIcon
+                className="rounded-lg"
+              />
+            )}
+
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <Button 
+                icon={<EyeOutlined />} 
+                disabled={processingStatus?.status !== 'completed'}
+                className="rounded-lg"
+              >
+                Review Data
+              </Button>
+              <Button 
+                icon={<DeleteOutlined />} 
+                danger
+                onClick={removeFile}
+                className="rounded-lg"
+              >
+                Remove
+              </Button>
+            </div>
+          </Space>
+        </Card>
       )}
-    </Card>
+    </div>
   )
 }

@@ -38,29 +38,32 @@ export async function parseCVWithOllama(cvText: string): Promise<CVParseResponse
   const MODEL = process.env.OLLAMA_MODEL || 'llama3.2:3b'
 
   const prompt = `
-    Analise o texto do currículo abaixo e retorne APENAS um objeto JSON estruturado com as seguintes chaves:
-    - summary: um resumo profissional de 2-3 frases.
-    - skills: um array de strings com as habilidades técnicas identificadas.
-    - experiences: um array de objetos, cada um com as chaves:
-        - company: nome da empresa.
-        - position: cargo ocupado.
-        - startDate: data de início.
-        - endDate: data de término ou null se for o emprego atual.
-        - description: breve descrição das responsabilidades.
-        - achievements: um array de conquistas em bullet points.
-        - technologies: um array de tecnologias usadas nessa experiência.
-    - education: um array de objetos, cada um com as chaves:
-        - institution: nome da instituição.
-        - degree: grau (Ex: Bacharelado).
-        - field: curso (Ex: Ciência da Computação).
-        - startDate: data de início.
-        - endDate: data de término.
-        - description: descrição adicional se houver.
+    Analyze the resume text below and return ONLY a structured JSON object with the following keys. 
+    IMPORTANT: Extract the information EXACTLY as it appears in the text. Do NOT summarize, rephrase, or improve the text. Maintain the original language and wording.
 
-    Currículo:
+    Keys:
+    - summary: the professional summary section prefixing the experience.
+    - skills: an array of strings with identified technical and soft skills.
+    - experiences: an array of objects, each with the keys:
+        - company: name of the company.
+        - position: job title held.
+        - startDate: start date of the position.
+        - endDate: end date or null if currently employed.
+        - description: the original responsibility/description text.
+        - achievements: an array of the original bullet points found in this experience.
+        - technologies: an array of technologies/tools explicitly mentioned.
+    - education: an array of objects, each with the keys:
+        - institution: name of the educational institution.
+        - degree: degree obtained.
+        - field: field of study.
+        - startDate: start date.
+        - endDate: end date.
+        - description: original additional details if any.
+
+    Resume Content:
     ${cvText}
 
-    Responda APENAS com o JSON válido.
+    Return ONLY the valid JSON object.
   `
 
   try {
@@ -76,7 +79,7 @@ export async function parseCVWithOllama(cvText: string): Promise<CVParseResponse
     })
 
     if (!response.ok) {
-      throw new Error('Falha ao comunicar com Ollama')
+      throw new Error('Failed to communicate with Ollama server')
     }
 
     const data = await response.json()
@@ -92,22 +95,22 @@ export async function parseJobWithOllama(jobMarkdown: string): Promise<JobParseR
   const MODEL = process.env.OLLAMA_MODEL || 'llama3.2:3b'
 
   const prompt = `
-    Analise o texto da vaga de emprego abaixo (em Markdown) e retorne APENAS um objeto JSON estruturado com as seguintes chaves:
-    - title: título da vaga.
-    - company: nome da empresa.
-    - location: localização (cidade/país).
-    - jobType: tipo (Full-time, Contract, etc).
-    - workModality: modalidade (Remote, Hybrid, On-site).
-    - salary: faixa salarial se mencionada, senão "Não informado".
-    - description: descrição resumida das atividades.
-    - requirements: um array de strings com os requisitos e qualificações.
-    - responsibilities: um array de strings com as responsabilidades.
-    - benefits: um array de strings com os benefícios.
+    Analyze the job posting text below (in Markdown) and return ONLY a structured JSON object with the following keys:
+    - title: job title.
+    - company: name of the company.
+    - location: location (city/country/remote).
+    - jobType: type (Full-time, Contract, etc).
+    - workModality: modality (Remote, Hybrid, On-site).
+    - salary: salary range if mentioned, otherwise "Not informed".
+    - description: summary of the job and company.
+    - requirements: an array of strings with requirements and qualifications.
+    - responsibilities: an array of strings with main responsibilities.
+    - benefits: an array of strings with benefits.
 
-    Vaga:
+    Job Content:
     ${jobMarkdown}
 
-    Responda APENAS com o JSON válido.
+    Return ONLY the valid JSON object.
   `
 
   try {
@@ -123,7 +126,7 @@ export async function parseJobWithOllama(jobMarkdown: string): Promise<JobParseR
     })
 
     if (!response.ok) {
-      throw new Error('Falha ao comunicar com Ollama')
+      throw new Error('Failed to communicate with Ollama server')
     }
 
     const data = await response.json()

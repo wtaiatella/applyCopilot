@@ -2,11 +2,11 @@
 
 import { usePathname, useRouter } from 'next/navigation'
 import { Layout, Menu } from 'antd'
-import { 
-  LayoutDashboard, 
-  User, 
-  Search, 
-  Briefcase, 
+import {
+  LayoutDashboard,
+  User,
+  Search,
+  Briefcase,
   Settings,
   FileText,
   Star,
@@ -32,21 +32,52 @@ export function Sidebar({ collapsed }: SidebarProps) {
       label: 'Dashboard',
     },
     {
-      key: '/profile',
+      key: 'profile-group',
       icon: <User size={18} />,
       label: 'My Profile',
       children: [
         {
-          key: '/profile/edit',
-          label: 'Edit Profile',
+          key: '/profile/basic-data',
+          label: 'Basic Data',
         },
         {
-          key: '/profile/cv',
-          label: 'Resume / CV',
+          key: '/profile/experiences',
+          label: 'Experiences',
         },
         {
-          key: '/profile/preferences',
-          label: 'Preferences',
+          key: '/profile/educations',
+          label: 'Educations',
+        },
+        {
+          key: '/profile/skills',
+          label: 'Skills',
+        },
+        {
+          key: '/profile/certifications',
+          label: 'Certifications',
+        },
+        {
+          key: '/profile/projects',
+          label: 'Projects',
+        },
+        {
+          key: '/profile/references',
+          label: 'References',
+        }
+      ],
+    },
+    {
+      key: '/cv-manager',
+      icon: <FileText size={18} />,
+      label: 'CV Manager',
+      children: [
+        {
+          key: '/cv-manager/versions',
+          label: 'Versions',
+        },
+        {
+          key: '/cv-manager/create',
+          label: 'Create CV',
         },
       ],
     },
@@ -73,11 +104,6 @@ export function Sidebar({ collapsed }: SidebarProps) {
       ],
     },
     {
-      key: '/cv-tailor',
-      icon: <FileText size={18} />,
-      label: 'AI Resume Tailor',
-    },
-    {
       key: '/settings',
       icon: <Settings size={18} />,
       label: 'Settings',
@@ -85,9 +111,9 @@ export function Sidebar({ collapsed }: SidebarProps) {
   ]
 
   return (
-    <Sider 
-      trigger={null} 
-      collapsible 
+    <Sider
+      trigger={null}
+      collapsible
       collapsed={collapsed}
       className="!bg-[#020617] border-r border-white/5"
       width={240}
@@ -102,7 +128,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
           </span>
         )}
       </div>
-      
+
       <Menu
         mode="inline"
         theme="dark"
@@ -112,7 +138,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         className="!bg-transparent border-none px-2"
         inlineIndent={16}
       />
-      
+
       {!collapsed && (
         <div className="absolute bottom-8 left-6 right-6 p-4 rounded-2xl bg-gradient-to-br from-primary/10 to-blue-500/10 border border-primary/20">
           <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">PRO PLAN</p>

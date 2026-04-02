@@ -57,6 +57,50 @@ export class CVService {
       throw error
     }
   }
+  async listManagedCVs(): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await apiClient.get<ApiResponse<any[]>>('/api/cv-manager')
+      return response.data
+    } catch (error) {
+      throw error
+    }
+  }
+
+  async createManagedCV(name: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await apiClient.post<ApiResponse<any>>('/api/cv-manager', { name })
+      return response.data
+    } catch (error) {
+      throw error
+    }
+  }
+
+  async updateManagedCV(id: string, data: { name?: string, isDefault?: boolean }): Promise<ApiResponse<any>> {
+    try {
+      const response = await apiClient.patch<ApiResponse<any>>(`/api/cv-manager/${id}`, data)
+      return response.data
+    } catch (error) {
+      throw error
+    }
+  }
+
+  async deleteManagedCV(id: string): Promise<ApiResponse<null>> {
+    try {
+      const response = await apiClient.delete<ApiResponse<null>>(`/api/cv-manager/${id}`)
+      return response.data
+    } catch (error) {
+      throw error
+    }
+  }
+
+  async duplicateManagedCV(id: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await apiClient.post<ApiResponse<any>>(`/api/cv-manager/${id}/duplicate`)
+      return response.data
+    } catch (error) {
+      throw error
+    }
+  }
 }
 
 export const cvService = new CVService()

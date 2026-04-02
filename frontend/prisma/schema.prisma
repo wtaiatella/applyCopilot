@@ -25,6 +25,7 @@ model User {
   profile      Profile?
   jobs         Job[]
   applications Application[]
+  managedCVs   ManagedCV[]
 }
 
 // -------------------------------------------------------
@@ -127,8 +128,10 @@ model Application {
 
   status      ApplicationStatus @default(PENDING)
 
-  // CV personalizado gerado para esta vaga (snapshot JSON do Profile)
-  customCvSnapshot Json?
+  // CV personalizado gerado para esta vaga
+  cvId        String?           @db.ObjectId
+  cv          ManagedCV?        @relation(fields: [cvId], references: [id])
+  customCvSnapshot Json?        // Snapshot do conteúdo no momento da aplicação
   coverLetter      String?
 
   appliedAt       DateTime?
@@ -139,6 +142,28 @@ model Application {
   updatedAt   DateTime @updatedAt
 
   @@unique([userId, jobId])
+}
+
+// -------------------------------------------------------
+// MANAGED CV — Specific CV versions
+// -------------------------------------------------------
+model ManagedCV {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId           String   @db.ObjectId
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name             String
+  isDefault        Boolean  @default(false)
+  
+  // Content snapshot (Summary, Skills, Selected Achievements)
+  content          Json
+  
+  applications     Application[]
+  applicationCount Int      @default(0)
+  lastUsedAt       DateTime?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 // -------------------------------------------------------

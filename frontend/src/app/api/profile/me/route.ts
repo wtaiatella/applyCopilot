@@ -16,13 +16,29 @@ export async function GET(request: Request) {
     }
 
     const profile = await prisma.profile.findUnique({
-      where: { userId: decoded.userId }
+      where: { userId: decoded.userId },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true
+          }
+        }
+      }
     })
 
     if (!profile) {
       // Auto-create profile if missing
       const newProfile = await prisma.profile.create({
-        data: { userId: decoded.userId }
+        data: { userId: decoded.userId },
+        include: {
+          user: {
+            select: {
+              name: true,
+              email: true
+            }
+          }
+        }
       })
       return NextResponse.json({ success: true, data: newProfile })
     }

@@ -32,25 +32,33 @@ export const UserLoginSchema = z.object({
 
 // Profile schemas
 export const ProfileSchema = BaseSchema.extend({
-  phone: z.string().optional(),
-  country: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().optional(),
-  linkedin_url: z.string().url().optional().or(z.literal('')),
-  github_url: z.string().url().optional().or(z.literal('')),
-  portfolio_url: z.string().url().optional().or(z.literal('')),
-  current_position: z.string().optional(),
-  summary: z.string().optional(),
-  skills: z.record(z.string(), z.any()).optional(),
-  contract_types: z.array(z.string()).optional(),
-  work_modality: z.array(z.string()).optional(),
-  salary_range: z.record(z.string(), z.number()).optional(),
-  locations_of_interest: z.array(z.string()).optional(),
-  technologies_of_interest: z.array(z.string()).optional(),
-  experiences: z.array(z.any()).optional(),
-  education: z.array(z.any()).optional(),
-  projects: z.array(z.any()).optional(),
-  user_id: z.string(),
+  phone: z.string().optional().nullable(),
+  country: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  state: z.string().optional().nullable(),
+  linkedinUrl: z.string().url().optional().or(z.literal('')).nullable(),
+  githubUrl: z.string().url().optional().or(z.literal('')).nullable(),
+  portfolioUrl: z.string().url().optional().or(z.literal('')).nullable(),
+  professionalTitle: z.string().optional().nullable(),
+  currentPosition: z.string().optional().nullable(),
+  summary: z.string().optional().nullable(),
+  summaries: z.array(z.any()).optional().default([]),
+  skills: z.array(z.string()).optional().default([]),
+  contractTypes: z.array(z.string()).optional().default([]),
+  workModality: z.array(z.string()).optional().default([]),
+  salaryMin: z.number().optional().nullable(),
+  salaryMax: z.number().optional().nullable(),
+  locationsOfInterest: z.array(z.string()).optional().default([]),
+  experiences: z.array(z.any()).optional().default([]),
+  education: z.array(z.any()).optional().default([]),
+  projects: z.array(z.any()).optional().default([]),
+  userId: z.string(),
+  name: z.string().optional(), // Virtual field for form integration
+  email: z.string().optional(), // Virtual field for form integration
+  user: z.object({
+    name: z.string(),
+    email: z.string().email(),
+  }).optional(),
 })
 
 // Education schemas

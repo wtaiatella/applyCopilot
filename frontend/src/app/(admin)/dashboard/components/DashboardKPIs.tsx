@@ -1,5 +1,5 @@
-'use client';
 import React from 'react';
+import { Card, Typography, Space, theme } from 'antd';
 import {
     Briefcase,
     TrendingUp,
@@ -10,6 +10,10 @@ import {
     ArrowDownRight,
     AlertTriangle,
 } from 'lucide-react';
+import { themeTokens } from '@/lib/theme-tokens';
+
+const { Text, Title } = Typography;
+const { useToken } = theme;
 
 interface KPICard {
     id: string;
@@ -64,8 +68,8 @@ const kpis: KPICard[] = [
         icon: MessageSquare,
         accent: 'text-warning',
         alert: true,
-      },
-      {
+    },
+    {
         id: 'kpi-week-apps',
         label: 'Applied This Week',
         value: '11',
@@ -74,8 +78,8 @@ const kpis: KPICard[] = [
         trendLabel: 'vs last week',
         icon: Calendar,
         accent: 'text-purple-400',
-      },
-      {
+    },
+    {
         id: 'kpi-conversion',
         label: 'Pipeline Conversion',
         value: '26.5%',
@@ -84,10 +88,12 @@ const kpis: KPICard[] = [
         trendLabel: 'vs last month',
         icon: TrendingUp,
         accent: 'text-positive',
-      },
+    },
 ];
 
 export default function DashboardKPIs() {
+    const { token } = useToken();
+
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             {kpis.map((kpi) => {
@@ -95,42 +101,63 @@ export default function DashboardKPIs() {
                 const isPositive = kpi.trend > 0;
                 const TrendIcon = isPositive ? ArrowUpRight : ArrowDownRight;
                 const trendColor = kpi.alert
-                    ? 'text-negative'
+                    ? token.colorError
                     : isPositive
-                        ? 'text-positive' : 'text-negative';
+                        ? token.colorSuccess : token.colorError;
 
                 return (
-                    <div
+                    <Card
                         key={kpi.id}
-                        className={`relative bg-surface border rounded-card p-5 transition-all hover:border-primary/30 ${kpi.alert
-                                ? 'border-warning/40 bg-warning/5' : 'border-border-default'
-                            }`}
+                        size="small"
+                        hoverable
+                        className={'overflow-hidden transition-all duration-300'}
+                        classNames={{
+                            body: 'border border-red-500'
+                        }}
+                        styles={{
+                            body: {
+                                borderColor: kpi.alert ? `${themeTokens.colors.status.warningBorder}` : 'none',
+                                height: '100%',
+                            }
+                        }}
                     >
-                        {kpi.alert && (
-                            <div className="absolute top-3 right-3">
-                                <AlertTriangle size={14} className="text-warning" />
-                            </div>
-                        )}
-                        <div className="flex items-start justify-between mb-3">
-                            <div className={`p-2 rounded-btn bg-surface-elevated ${kpi.accent}`}>
-                                <Icon size={16} />
+                        {/* Title: Icon + Label + Alert Indicator */}
+                        <div className="flex items-center justify-between mb-3">
+                            <Space align="center" size={10}>
+                                <div className={`p-1.5 rounded-lg bg-surface-elevated flex items-center justify-center ${kpi.accent}`}>
+                                    <Icon size={14} />
+                                </div>
+                                <Text className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                                    {kpi.label}
+                                </Text>
+                            </Space>
+                            {kpi.alert && (
+                                <AlertTriangle size={14} className="text-warning animate-bounce-subtle" />
+                            )}
+                        </div>
+
+                        {/* Value */}
+                        <div className="flex flex-col">
+                            <Title level={2} className="!mb-0.5 !text-2xl !text-text-primary tabular-nums">
+                                {kpi.value}
+                            </Title>
+
+                            {kpi.subValue && (
+                                <Text className="text-[11px] text-text-secondary mb-3">
+                                    {kpi.subValue}
+                                </Text>
+                            )}
+
+                            {/* Trend */}
+                            <div className="flex items-center gap-1 text-[11px] font-semibold mt-auto" style={{ color: trendColor }}>
+                                <TrendIcon size={12} />
+                                <span className="tabular-nums">{Math.abs(kpi.trend)}%</span>
+                                <Text className="text-text-muted font-normal text-[10px] ml-0.5">
+                                    {kpi.trendLabel}
+                                </Text>
                             </div>
                         </div>
-                        <p className="text-2xl font-bold tabular-nums text-text-primary mb-0.5">
-                            {kpi.value}
-                        </p>
-                        <p className="text-[11px] font-medium uppercase tracking-wider text-text-muted mb-2">
-                            {kpi.label}
-                        </p>
-                        {kpi.subValue && (
-                            <p className="text-xs text-text-secondary mb-2">{kpi.subValue}</p>
-                        )}
-                        <div className={`flex items-center gap-1 text-xs font-medium ${trendColor}`}>
-                            <TrendIcon size={12} />
-                            <span className="tabular-nums">{Math.abs(kpi.trend)}%</span>
-                            <span className="text-text-muted font-normal">{kpi.trendLabel}</span>
-                        </div>
-                    </div>
+                    </Card>
                 );
             })}
         </div>

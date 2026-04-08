@@ -16,7 +16,7 @@ export const themeTokens = {
       surface: '#0f172a',
       surfaceElevated: '#1e293b',
       border: 'rgba(255, 255, 255, 0.1)', // Unified border opacity
-      borderLight: 'rgba(255, 255, 255, 0.05)',
+      borderLight: 'rgb(0, 255, 0)',
     },
     text: {
       primary: '#f8fafc',

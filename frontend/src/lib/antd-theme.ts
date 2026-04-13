@@ -43,7 +43,6 @@ export const antdTheme: ThemeConfig = {
       borderRadiusLG: themeTokens.radius.card,
       colorBgContainer: themeTokens.colors.ui.surface,
       bodyPaddingSM: 20,
-      colorBorderSecondary: 'transparent',
     },
     Input: {
       borderRadius: themeTokens.radius.button,

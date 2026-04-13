@@ -111,14 +111,10 @@ export default function DashboardKPIs() {
                         size="small"
                         hoverable
                         className={'overflow-hidden transition-all duration-300'}
-                        classNames={{
-                            body: 'border'
-                        }}
                         styles={{
                             body: {
-                                ...(kpi.alert && { borderColor: `${themeTokens.colors.status.warningBorder}` }),
-                                height: '100%'
-                            }
+                                border: kpi.alert ? `1px solid ${themeTokens.colors.status.warningBorder}` : `1px solid ${themeTokens.colors.ui.border}`,
+                            },
                         }}
                     >
                         {/* Title: Icon + Label + Alert Indicator */}

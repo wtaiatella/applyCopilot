@@ -43,10 +43,13 @@ model Profile {
   linkedinUrl      String?
   githubUrl        String?
   portfolioUrl     String?
-  currentPosition  String?
+  professionalTitle String?
+  currentPosition  String? // Kept for backward compatibility if needed
 
   // Resumo profissional (editável pelo usuário)
-  summary          String?
+  summary          String?  // Primário/Ativo
+  summaries        Json[]   // Versões: { id, title, content, isDefault, createdAt }
+
 
   // Skills: ["TypeScript", "React", "Node.js", ...]
   skills           String[]

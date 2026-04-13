@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-ApplyCopilot is an intelligent system designed to automate and optimize the job search process. It uses AI agents and advanced orchestration to help developers find, analyze, and apply for jobs, focusing on remote international opportunities.
+ApplyCopilot is an intelligent system designed to automate and optimize the job search process. It uses AI agents to help developers find, analyze, and apply for jobs, focusing on remote opportunities.
 
 ## Project Objectives
 

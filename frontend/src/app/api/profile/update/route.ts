@@ -19,20 +19,32 @@ export async function PATCH(request: Request) {
 
     const body = await request.json()
 
+    // Update user name if provided
+    if (body.name) {
+      await prisma.user.update({
+        where: { id: decoded.userId },
+        data: { name: body.name }
+      })
+    }
+
     // Update profile in MongoDB using the userId from token
     const updatedProfile = await prisma.profile.update({
       where: { userId: decoded.userId },
       data: {
         summary: body.summary,
+        summaries: body.summaries,
         skills: body.skills,
         experiences: body.experiences,
         education: body.education,
         projects: body.projects,
         phone: body.phone,
+        city: body.city,
+        country: body.country,
         linkedinUrl: body.linkedinUrl,
         githubUrl: body.githubUrl,
         portfolioUrl: body.portfolioUrl,
-        currentPosition: body.currentPosition,
+        professionalTitle: body.professionalTitle,
+        currentPosition: body.currentPosition || body.professionalTitle,
         // search preferences
         contractTypes: body.contractTypes,
         workModality: body.workModality,

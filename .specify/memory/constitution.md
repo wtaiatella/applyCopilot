@@ -1,50 +1,148 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# ApplyCopilot Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Spec-Driven Development (NON-NEGOTIABLE)
+Every feature begins with a specification before any code is written.
+- `spec.md` defines WHAT and WHY — product perspective, technology-agnostic
+- `plan.md` defines HOW — technical decisions, architecture, dependencies
+- `tasks.md` defines the execution steps — atomic, trackable, testable
+- Technical details in `spec.md` are a blocker for merge
+- No implementation starts without an approved spec
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Trunk-Based Development
+The project follows a trunk-based branching strategy:
+- `main` is the single source of truth and always deployable
+- Feature branches are short-lived (max 2 days before merge)
+- All commits follow **Conventional Commits** standard:
+  - `feat:` new features
+  - `fix:` bug fixes
+  - `chore:` maintenance tasks
+  - `docs:` documentation changes
+  - `test:` test additions or fixes
+  - `refactor:` code restructuring without behavior change
+- Direct commits to `main` are forbidden — always use a feature branch + PR
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Test-First (NON-NEGOTIABLE)
+Testing is mandatory and enforced before merge:
+- **Unit Tests (Jest):** All business logic, utilities, and pure functions
+- **Integration Tests:** All third-party system boundaries must be tested:
+  - AI services (Ollama, Gemini, Claude)
+  - Email service (Resend)
+  - Database (MongoDB via Prisma)
+  - Authentication (NextAuth.js)
+- **Minimum coverage: 80%** — PRs below this threshold are blocked
+- TDD cycle enforced: Write test → Confirm it fails → Implement → Confirm it passes
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. English-Only Codebase
+All code artifacts must be written exclusively in English:
+- Variable names, function names, class names
+- Code comments and inline documentation
+- Commit messages and PR descriptions
+- Spec, plan, and task files
+- API routes, database field names, and type definitions
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. AI Cost Optimization (NON-NEGOTIABLE)
+The AI processing pipeline follows a strict cost-efficiency hierarchy:
+1. **TensorFlow.js** — mathematical pre-filtering (free, local)
+2. **Ollama (local LLM)** — structured parsing and simple transformations (free, local)
+3. **Premium AI (Gemini/Claude API)** — only for high-complexity tasks (paid)
+- Premium AI must NEVER be used for tasks solvable by local models
+- Every new AI feature must justify its tier placement in `plan.md`
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+### VI. Privacy by Default
+Sensitive user data must be processed locally whenever possible:
+- CV parsing and initial profile extraction: local only (Ollama)
+- Pre-filtering of job compatibility: local only (TensorFlow.js)
+- Data sent to external APIs must be minimized and documented in `plan.md`
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### VII. UI Consistency (Ant Design + Tailwind CSS)
+- Ant Design 6 is the primary component library — do not reinvent UI primitives
+- Tailwind CSS 4 is used exclusively for layout, spacing, and custom styling
+- **Dark mode is the default and priority** — all components must support dark/light themes
+- Use Ant Design's built-in theme system (`ConfigProvider`) for theming
+- No custom color values outside the Ant Design token system unless explicitly justified
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+## Security Requirements
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### Credential Handling (NON-NEGOTIABLE)
+**NEVER store credentials, auth tokens, API keys, or any sensitive artifacts in:**
+- `.windsurf/` folder or any agent configuration folder
+- `.specify/` templates or memory files
+- `specs/` files or any tracked markdown files
+- Any file that may be committed to version control
+
+**Always request that sensitive values be stored in a dedicated file:**
+```
+.env.agent       ← agent-specific secrets
+.env.local       ← local development secrets
+.env             ← non-sensitive defaults only
+```
+
+Example `.env.agent` structure:
+```env
+GEMINI_API_KEY=your_key_here
+CLAUDE_API_KEY=your_key_here
+NEXTAUTH_SECRET=your_secret_here
+MONGODB_URL=your_url_here
+RESEND_API_KEY=your_key_here
+```
+
+Always ensure `.gitignore` contains:
+```
+.env.agent
+.env*.local
+*.token
+*.secret
+```
+
+### Authentication
+- NextAuth.js is the sole authentication solution
+- Supported providers: **Credentials (email/password)**, **Google**, **GitHub**
+- No custom auth implementations outside NextAuth.js
+
+## Development Workflow
+
+### Environment Strategy
+- **Single environment: `dev` (Docker local)**
+- Future migration target: Akamai bare-metal server
+- Docker Compose manages all local services (Next.js, MongoDB, Ollama)
+- No staging or production environment until explicitly defined
+
+### Folder Structure (Enforced)
+```
+/
+├── frontend/                  ← Unified Next.js 16 project
+│   ├── src/
+│   │   ├── app/               ← Pages, API Routes, Server Actions
+│   │   ├── components/        ← Ant Design/Tailwind UI Components
+│   │   ├── lib/               ← TensorFlow, Ollama, Prisma configs
+│   │   ├── services/          ← External API integrations
+│   │   └── types/             ← Zod/TypeScript definitions
+│   └── prisma/                ← MongoDB Schema
+├── docs/                      ← Technical documentation
+└── .windsurf/                 ← Windsurf agent configurations (NO SECRETS)
+```
+
+### Documentation Separation of Concerns
+- **`spec.md` — Product Perspective (What & Why)**
+  - MUST remain technology-agnostic
+  - NO implementation details, frameworks, or libraries
+  - Focus: User Stories, Requirements, Acceptance Criteria
+- **`plan.md` — Engineering Perspective (How)**
+  - Contains ALL technical decisions
+  - Specifies frameworks, libraries, architecture patterns
+  - Documents AI tier justification for every AI feature
+- **`tasks.md` — Execution (Steps)**
+  - Atomic, independently executable tasks
+  - Each task maps to a testable outcome
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+- This constitution supersedes all other practices and conventions
+- All PRs must verify compliance with these principles before merge
+- Amendments require: documentation of the change, rationale, and update to this file
+- Complexity must be justified — prefer simple solutions (YAGNI)
+- Use `.specify/memory/` for runtime development guidance and project context
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-04-13 | **Last Amended**: 2026-04-13

@@ -40,11 +40,17 @@ The project has been consolidated into a modern and efficient architecture:
 ├── apps/ (if applicable to future monorepo)
 ├── frontend/ (Unified Next.js Project)
 │   ├── src/
-│   │   ├── app/ (Pages, API Routes, Actions)
-│   │   ├── components/ (Ant Design/Tailwind UI Components)
-│   │   ├── lib/ (TensorFlow, Ollama, Prisma configurations)
-│   │   ├── services/ (External API integrations)
-│   │   └── types/ (Zod/TypeScript definitions)
+|   |   ├── app/api/                    # API Routes
+|   |   ├── app/actions/                # Backend actions, DB, external APIs
+|   |   ├── app/(main)/(home)/page.tsx   # Frontend home
+|   |   ├── app/(main)/dashboard/       # Frontend dashboard
+|   |   ├── app/(auth)/                 # Auth pages
+|   |   ├── lib/tensorflow/             # ML local
+|   |   ├── lib/ollama/                 # AI local
+|   |   ├── components/                 # UI components
+|   |   ├── types/                      # Zod types
+|   |   ├── stores/                     # Zustand contexts
+|   |   └── services/                   # Mail, JWT
 │   └── prisma/ (MongoDB Schema)
 ├── docs/ (Technical documentation)
 └── .agent/ (Coding assistant configurations)
@@ -54,3 +60,20 @@ The project has been consolidated into a modern and efficient architecture:
 *   **Cost Efficiency:** Up to 90% reduction in paid token consumption through strategic use of local AI (Ollama) and mathematical filters (TensorFlow).
 *   **Privacy:** Initial processing of sensitive data performed locally.
 *   **User Experience:** Premium interface with Ant Design and high performance with Next.js.
+
+```
+applycopilot/
+├─frontend/
+   ├─src/
+       ├── app/api/                    # API Routes
+       ├── app/actions/                # Backend actions, DB, external APIs
+       ├── app/(main)/(home)/page.tsx   # Frontend home
+       ├── app/(main)/dashboard/       # Frontend dashboard
+       ├── app/(auth)/                 # Auth pages
+       ├── lib/tensorflow/             # ML local
+       ├── lib/ollama/                 # AI local
+       ├── components/                 # UI components
+       ├── types/                      # Zod types
+       ├── stores/                     # Zustand contexts
+       └── services/                   # Mail, JWT
+```

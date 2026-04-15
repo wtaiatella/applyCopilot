@@ -1,0 +1,335 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+}
+
+// User Authentication and Profile
+model User {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  email           String    @unique
+  passwordHash    String
+  name            String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  profile         UserProfile?
+  applications    Application[]
+  portalConfigs   PortalConfig[]
+  sessions        Session[]
+  jobMatches      JobMatch[]
+  
+  @@map("users")
+}
+
+model UserProfile {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String    @unique @db.ObjectId
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Basic Information
+  title           String?
+  summary         String?
+  location        String?
+  phone           String?
+  website         String?
+  
+  // Relations
+  experiences     Experience[]
+  education       Education[]
+  projects        Project[]
+  skills          Skill[]
+  references      Reference[]
+  
+  // AI Processing
+  vectorEmbedding Json?      // TensorFlow.js compatibility vectors
+  processingStatus ProcessingStatus @default(PENDING)
+  
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_profiles")
+}
+
+model Experience {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  profileId       String    @db.ObjectId
+  company         String
+  position        String
+  startDate       DateTime
+  endDate         DateTime?
+  current         Boolean   @default(false)
+  description     String[]
+  technologies    String[]
+  
+  profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  @@map("experiences")
+}
+
+model Education {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  profileId       String    @db.ObjectId
+  institution     String
+  degree          String
+  field           String?
+  startDate       DateTime
+  endDate         DateTime?
+  current         Boolean   @default(false)
+  gpa             String?
+  achievements    String[]
+  
+  profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  @@map("education")
+}
+
+model Project {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  profileId       String    @db.ObjectId
+  name            String
+  description     String[]
+  technologies    String[]
+  startDate       DateTime
+  endDate         DateTime?
+  url             String?
+  
+  profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  @@map("projects")
+}
+
+model Skill {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  profileId       String    @db.ObjectId
+  name            String
+  category        SkillCategory
+  proficiency     ProficiencyLevel
+  yearsExperience  Int?
+  
+  profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  @@unique([profileId, name])
+  @@map("skills")
+}
+
+model Reference {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  profileId       String    @db.ObjectId
+  name            String
+  position        String
+  company         String
+  email           String?
+  phone           String?
+  relationship    String
+  
+  profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  @@map("references")
+}
+
+// Job Portal and Listings
+model PortalConfig {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String    @db.ObjectId
+  name            String
+  type            PortalType
+  url             String?
+  enabled         Boolean   @default(true)
+  
+  // Scraping Configuration
+  selectors       Json?      // CSS selectors for data extraction
+  headers         Json?      // Custom headers for requests
+  rateLimit       Int?       // Requests per minute
+  
+  // Relations
+  jobListings     JobListing[]
+  
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("portal_configs")
+}
+
+model JobListing {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  portalId        String    @db.ObjectId
+  externalId      String    // Portal-specific job ID
+  
+  // Basic Job Information
+  title           String
+  company         String
+  location        String?
+  remote          Boolean   @default(false)
+  type            EmploymentType
+  description     String
+  requirements    String[]
+  responsibilities String[]
+  technologies    String[]
+  salary          Json?     // Min/max, currency
+  url             String
+  postedAt        DateTime
+  expiresAt       DateTime?
+  
+  // AI Processing
+  vectorEmbedding Json?      // TensorFlow.js compatibility vectors
+  processingStatus ProcessingStatus @default(PENDING)
+  
+  // Relations
+  portal          PortalConfig @relation(fields: [portalId], references: [id], onDelete: Cascade)
+  matches         JobMatch[]
+  applications    Application[]
+  
+  @@unique([portalId, externalId])
+  @@map("job_listings")
+}
+
+model JobMatch {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String    @db.ObjectId
+  jobListingId    String    @db.ObjectId
+  
+  // Compatibility Scoring
+  overallScore     Float     // 0-100 overall compatibility
+  skillsScore     Float?     // Skills matching score
+  experienceScore Float?     // Experience relevance score
+  educationScore  Float?     // Education matching score
+  
+  // AI Analysis
+  analysis        Json?      // Detailed AI analysis results
+  suggestions     String[]   // AI-generated improvement suggestions
+  
+  // Metadata
+  calculatedAt    DateTime  @default(now())
+  algorithm       String    @default("tensorflow-cosine")
+  
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobListing      JobListing @relation(fields: [jobListingId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, jobListingId])
+  @@map("job_matches")
+}
+
+// Application Tracking
+model Application {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String    @db.ObjectId
+  jobListingId    String    @db.ObjectId
+  
+  // Status Tracking
+  status          ApplicationStatus @default(APPLIED)
+  appliedAt       DateTime  @default(now())
+  lastUpdated     DateTime  @updatedAt
+  
+  // Application Materials
+  cvVersion       Json?      // CV version used for application
+  coverLetter     String?    // AI-generated cover letter
+  notes           String?    // User notes about application
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobListing      JobListing @relation(fields: [jobListingId], references: [id], onDelete: Cascade)
+  interviewStages InterviewStage[]
+  
+  @@unique([userId, jobListingId])
+  @@map("applications")
+}
+
+model InterviewStage {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  applicationId   String    @db.ObjectId
+  
+  stage           InterviewType
+  scheduledAt     DateTime?
+  completedAt     DateTime?
+  status          StageStatus @default(SCHEDULED)
+  notes           String?
+  feedback        String?
+  
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  
+  @@map("interview_stages")
+}
+
+model Session {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String    @db.ObjectId
+  token           String    @unique
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+// Enums
+enum SkillCategory {
+  TECHNICAL
+  SOFT_SKILL
+  LANGUAGE
+  FRAMEWORK
+  TOOL
+  DOMAIN
+}
+
+enum ProficiencyLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+  FREELANCE
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  VIEWED
+  INTERVIEW
+  TECHNICAL_TEST
+  OFFER
+  REJECTED
+  WITHDRAWN
+}
+
+enum InterviewType {
+  PHONE_SCREEN
+  TECHNICAL
+  BEHAVIORAL
+  SYSTEM_DESIGN
+  FINAL_ROUND
+  CULTURAL_FIT
+}
+
+enum StageStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  RESCHEDULED
+}
+
+enum PortalType {
+  WEREMOTE
+  LINKEDIN
+  INDEED
+  GLASSDOOR
+  CUSTOM
+}

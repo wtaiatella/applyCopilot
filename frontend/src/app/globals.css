@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+/* Ant Design integration with Tailwind CSS 4 */
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -19,8 +20,22 @@
   }
 }
 
+/* Ensure Ant Design components work with Tailwind */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Ant Design dark mode integration */
+.ant-app {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Custom utilities for ApplyCopilot */
+@theme {
+  --applycopilot-primary: #1677ff;
+  --applycopilot-primary-hover: #4096ff;
+  --applycopilot-primary-active: #0958d9;
 }

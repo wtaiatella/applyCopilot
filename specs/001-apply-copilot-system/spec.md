@@ -110,6 +110,41 @@ As a job seeker, I want to track the status of all my job applications in one pl
 - **SC-004**: System reduces job search time by 70% compared to manual methods through automated discovery and filtering
 - **SC-005**: System maintains 99% uptime for core features (profile management, job search, application tracking)
 
+## Clarifications
+
+### AI Processing Strategy
+**Decision**: Hybrid approach with local processing for basic tasks and premium APIs for high-value content generation
+- Local AI (Ollama) handles: CV parsing, job data extraction, basic compatibility scoring
+- Premium APIs handle: Cover letter generation, advanced CV improvement suggestions, nuanced job matching
+- Fallback: Local processing when premium APIs are unavailable
+- Use Case: Convert scraped markdown files to structured JSON for consistent job listings
+
+### User Authentication & Data Persistence
+**Decision**: Email/password authentication with MongoDB database persistence
+- MongoDB with Prisma ORM for all user data storage (CV profiles, applications, preferences)
+- No export functionality needed since data persists in database
+- Authentication system for user account management and data security
+
+### Job Portal Scraping Frequency
+**Decision**: On-demand scraping with user-initiated searches
+- Scraping triggered only when user explicitly initiates job search
+- No background or scheduled scraping to avoid unnecessary API calls
+- Users control when and which portals to search
+
+### Compatibility Scoring Algorithm
+**Decision**: TensorFlow.js cosine similarity with TF-IDF vectorization
+- Initial scoring using cosine similarity between CV and job description vectors
+- Vector structure: skills matrix with hard/soft skills and preference weightings
+- Different scoring ranges for preferred vs complementary skills
+- Lightweight mathematical approach suitable for pre-filtering
+
+### Error Handling for AI Service Failures
+**Decision**: Graceful degradation with queue and retry mechanism
+- Queue failed AI requests and automatically retry when services return
+- Provide basic functionality using local processing during outages
+- User notifications for service status and queued operations
+- Fallback to local Ollama processing when premium APIs are unavailable
+
 ## Assumptions
 
 - Users have existing CVs in digital format (PDF or DOCX)

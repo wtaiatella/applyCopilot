@@ -1,13 +1,13 @@
 # Implementation Plan: ApplyCopilot Job Search Automation System
 
-**Branch**: `001-apply-copilot-system` | **Date**: 2025-06-17 | **Spec**: [spec.md](spec.md)
+**Branch**: `001-apply-copilot-system` | **Date**: 2025-06-17 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/001-apply-copilot-system/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
 
 ## Summary
 
-ApplyCopilot is an intelligent job search automation system that helps users discover remote opportunities and personalize application materials. The system uses a cost-optimized AI pipeline: TensorFlow.js for pre-filtering, Ollama for local parsing, and premium AI (Gemini/Claude) for high-complexity tasks like personalized content generation. The architecture follows Next.js 16 with App Router, Ant Design 6 + Tailwind CSS 4 for UI, and MongoDB with Prisma for data management.
+ApplyCopilot is an intelligent job search automation system that helps users upload and parse CVs, discover relevant remote jobs through AI-powered filtering, and generate personalized application materials. The system uses a hybrid AI approach with local processing (Ollama, TensorFlow.js) for basic tasks and premium APIs (Gemini) for high-value content generation, all backed by MongoDB with Prisma ORM for data persistence.
 
 ## Technical Context
 
@@ -17,127 +17,49 @@ ApplyCopilot is an intelligent job search automation system that helps users dis
   the iteration process.
 -->
 
-**Language/Version**: TypeScript 5.x (Next.js 16)  
-**Primary Dependencies**: Next.js 16, Ant Design 6, Tailwind CSS 4, Prisma, TensorFlow.js, Ollama SDK  
-**Storage**: MongoDB (managed via Prisma)  
-**Testing**: Jest (unit), Playwright (integration/e2e)  
-**Target Platform**: Web browser (Chrome, Firefox, Safari, Edge)  
-**Project Type**: Full-stack web application  
-**Performance Goals**: <2s for 100 job processing, <5s CV upload and parsing, 99% uptime  
-**Constraints**: AI cost optimization hierarchy (TensorFlow.js → Ollama → Premium AI), local processing for sensitive data  
-**Scale/Scope**: 1k+ concurrent users, 100k+ job listings processed daily
+**Language/Version**: TypeScript 5.6+ (Next.js 16)
+**Primary Dependencies**: Next.js 16, React 19, Ant Design 6, Tailwind CSS 4, Prisma, TensorFlow.js, Ollama SDK, Gemini API
+**Storage**: MongoDB with Prisma ORM
+**Testing**: Jest (unit/integration), Playwright (E2E)
+**Target Platform**: Web application (Node.js server, browser client)
+**Project Type**: web-service
+**Performance Goals**: <2s processing for 100 job listings, <5s CV upload and parsing, 99% uptime
+**Constraints**: <200ms p95 for API responses, <1GB memory usage for local AI processing
+**Scale/Scope**: 1000+ concurrent users, 10k+ job listings per search
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-### ✅ Spec-Driven Development
-- Spec is technology-agnostic and focuses on user value
-- No implementation details found in spec.md
-- Plan will contain all technical decisions
+### ✅ Compliance Status
 
-### ✅ Trunk-Based Development
-- Feature branch follows naming convention: `001-apply-copilot-system`
-- Will use Conventional Commits during implementation
-- All changes will be merged via PR to main
+**I. Spec-Driven Development**: ✅ PASS - Specification complete before implementation
+**II. Trunk-Based Development**: ✅ PASS - Feature branch strategy followed
+**III. Test-First**: ✅ PASS - Testing strategy defined (Jest + Playwright, 80% coverage)
+**IV. English-Only Codebase**: ✅ PASS - All documentation in English
+**V. AI Cost Optimization**: ✅ PASS - Hybrid approach with clear tier justification:
+- TensorFlow.js: Mathematical pre-filtering (free, local)
+- Ollama: CV parsing, job data extraction, basic compatibility scoring (free, local)
+- Gemini API: Cover letters, advanced CV suggestions, nuanced matching (paid, high-value only)
+**VI. Privacy by Default**: ✅ PASS - CV processing and pre-filtering local only
+**VII. UI Consistency**: ✅ PASS - Ant Design 6 + Tailwind CSS 4, dark mode priority
 
-### ✅ Test-First
-- Jest for unit tests (business logic, utilities)
-- Playwright for integration tests (AI services, database, auth)
-- 80% coverage requirement enforced
+**VIII. Security Requirements**: ✅ PASS - NextAuth.js credentials provider, MongoDB with Prisma, proper .env handling
 
-### ✅ English-Only Codebase
-- All code, comments, and documentation in English
-- Variable names, function names, API routes in English
+### Technical Decions Aligned with Constitution
 
-### ✅ AI Cost Optimization
-- TensorFlow.js for pre-filtering (free, local)
-- Ollama for CV parsing and structured data extraction (free, local)
-- Premium AI only for high-complexity tasks (personalized content generation)
-
-### ✅ Privacy by Default
-- CV processing and profile extraction: local only
-- Job compatibility pre-filtering: local only
-- Minimal data sent to external APIs
-
-### ✅ UI Consistency
-- Ant Design 6 as primary component library
-- Tailwind CSS 4 for layout and custom styling
-- Dark mode as default priority
-
-### ✅ Security Requirements
-- NextAuth.js for authentication
-- Credentials stored in .env.agent (not in tracked files)
-- No secrets in specs or documentation
-
-**GATE STATUS: ✅ PASSED - Ready for Phase 0 Research**
-
----
-
-## Constitution Check (Post-Phase 1 Design)
-
-*Re-evaluation after completing research and design phases*
-
-### ✅ Spec-Driven Development
-- Spec remains technology-agnostic and focused on user value
-- Plan contains all technical decisions and architecture
-- Data model and contracts derived from spec requirements
-
-### ✅ Trunk-Based Development
-- Feature branch follows naming convention: `001-apply-copilot-system`
-- Implementation will use Conventional Commits
-- All changes will be merged via PR to main
-
-### ✅ Test-First
-- Jest for unit tests (business logic, utilities, validation)
-- Playwright for integration tests (AI services, database, auth)
-- 80% coverage requirement maintained in quickstart guide
-
-### ✅ English-Only Codebase
-- All code examples, documentation, and API contracts in English
-- Variable names, function names, API routes follow English conventions
-
-### ✅ AI Cost Optimization
-- TensorFlow.js for pre-filtering (free, local) ✓
-- Ollama for CV parsing and structured data extraction (free, local) ✓
-- Premium AI only for high-complexity tasks (personalized content generation) ✓
-- Cost optimization strategies documented in research.md
-
-### ✅ Privacy by Default
-- CV processing and profile extraction: local only ✓
-- Job compatibility pre-filtering: local only ✓
-- Minimal data sent to external APIs documented in contracts
-- Temporary file storage with automatic cleanup
-
-### ✅ UI Consistency
-- Ant Design 6 as primary component library ✓
-- Tailwind CSS 4 for layout and custom styling ✓
-- Dark mode implementation with ConfigProvider ✓
-- Component patterns documented in quickstart guide
-
-### ✅ Security Requirements
-- NextAuth.js for authentication ✓
-- Rate limiting defined in API contracts ✓
-- File validation and security measures documented ✓
-- Credential storage in .env.agent (not tracked)
-
-**GATE STATUS: ✅ PASSED - Ready for Phase 2 Tasks**
-
-## Phase 1 Complete: Design & Contracts
-
-✅ **Research Completed**: All technical decisions documented with rationale  
-✅ **Data Model Defined**: Complete entity relationships and validation rules  
-✅ **API Contracts Specified**: Comprehensive API documentation  
-✅ **Quickstart Guide Created**: Development setup and patterns  
-✅ **Agent Context Updated**: Windsurf configuration enhanced  
-✅ **Constitution Verified**: All gates passed post-design
+1. **AI Pipeline**: TensorFlow.js → Ollama → Gemini follows cost optimization hierarchy
+2. **Authentication**: NextAuth.js with credentials provider as required
+3. **Database**: MongoDB with Prisma ORM for flexible schema
+4. **UI Framework**: Ant Design 6 + Tailwind CSS 4 with dark mode support
+5. **Testing**: Jest + Playwright with 80% minimum coverage requirement
 
 ## Project Structure
 
 ### Documentation (this feature)
 
 ```text
-specs/001-apply-copilot-system/
+specs/[###-feature]/
 ├── plan.md              # This file (/speckit.plan command output)
 ├── research.md          # Phase 0 output (/speckit.plan command)
 ├── data-model.md        # Phase 1 output (/speckit.plan command)
@@ -147,48 +69,54 @@ specs/001-apply-copilot-system/
 ```
 
 ### Source Code (repository root)
+<!--
+  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
+  for this feature. Delete unused options and expand the chosen structure with
+  real paths (e.g., apps/admin, packages/something). The delivered plan must
+  not include Option labels.
+-->
 
 ```text
-frontend/                  # Unified Next.js 16 project
+frontend/                  ← Unified Next.js 16 project
 ├── src/
-│   ├── app/               # Pages, API Routes, Server Actions
-│   │   ├── api/          # API endpoints for job scraping, AI processing
-│   │   ├── actions/      # Server actions for database operations
-│   │   ├── (auth)/       # Authentication pages
-│   │   ├── (main)/       # Main application pages
-│   │   │   ├── dashboard/ # Job search and application tracking
-│   │   │   └── profile/   # CV management and profile editing
-│   │   └── globals.css   # Tailwind CSS imports
-│   ├── components/        # Ant Design/Tailwind UI Components
-│   │   ├── ui/          # Reusable UI components
-│   │   ├── forms/       # Profile and job search forms
-│   │   └── layout/      # Layout components
-│   ├── lib/              # TensorFlow, Ollama, Prisma configs
-│   │   ├── tensorflow/   # ML models for job matching
-│   │   ├── ollama/      # Local AI integration
-│   │   ├── prisma/      # Database client
-│   │   └── auth/        # NextAuth configuration
-│   ├── services/         # External API integrations
-│   │   ├── scraping/    # Job portal scrapers
-│   │   ├── ai/          # AI service integrations
-│   │   └── email/       # Email notifications
-│   ├── types/            # Zod/TypeScript definitions
-│   └── stores/           # Zustand state management
-├── prisma/               # MongoDB Schema
-│   ├── schema.prisma     # Database schema
-│   └── migrations/       # Database migrations
-└── tests/                # Jest and Playwright tests
-    ├── unit/             # Unit tests
-    ├── integration/      # Integration tests
-    └── e2e/              # End-to-end tests
+│   ├── app/               ← Pages, API Routes, Server Actions
+│   │   ├── api/           ← API endpoints (auth, jobs, profile)
+│   │   ├── dashboard/     ← Application tracking
+│   │   ├── jobs/          ← Job discovery and filtering
+│   │   ├── profile/       ← CV upload and profile management
+│   │   └── layout.tsx     ← Root layout with theme provider
+│   ├── components/        ← Ant Design/Tailwind UI Components
+│   │   ├── ui/            ← Reusable UI components
+│   │   ├── forms/         ├── Profile and job search forms
+│   │   └── layout/        ← Layout components
+│   ├── lib/               ← TensorFlow, Ollama, Prisma configs
+│   │   ├── ai/            ← AI processing pipeline
+│   │   ├── db/            ← Database configuration
+│   │   └── scraping/      ← Job portal scrapers
+│   ├── services/          ← External API integrations
+│   │   ├── auth.ts        ← NextAuth.js configuration
+│   │   ├── gemini.ts      ← Premium AI service
+│   │   └── ollama.ts      ← Local AI service
+│   └── types/             ← Zod/TypeScript definitions
+├── prisma/                ← MongoDB Schema
+│   ├── schema.prisma      ← Database schema
+│   └── migrations/        ← Database migrations
+└── tests/
+    ├── __mocks__/         ← Test mocks
+    ├── integration/        ← Integration tests
+    └── unit/               ← Unit tests
 
-docs/                      # Technical documentation
-└── project description.md # Project overview
-
-.windsurf/                 # Windsurf agent configurations (NO SECRETS)
+specs/001-apply-copilot-system/
+├── plan.md              # This file
+├── research.md          # Phase 0 output
+├── data-model.md        # Phase 1 output
+├── quickstart.md        # Phase 1 output
+├── contracts/           # Phase 1 output
+│   └── api.md           # API contract documentation
+└── tasks.md             # Phase 2 output
 ```
 
-**Structure Decision**: Unified Next.js 16 full-stack application following the constitution-mandated folder structure. All frontend, backend, and API code resides in the `frontend/` directory with clear separation of concerns using Next.js App Router conventions.
+**Structure Decision**: Unified Next.js 16 application following constitution-mandated folder structure. Single frontend/ directory contains all application code with clear separation of concerns (app/, components/, lib/, services/). MongoDB with Prisma handles data persistence, and AI processing is distributed between local (TensorFlow.js, Ollama) and premium (Gemini) services.
 
 ## Complexity Tracking
 

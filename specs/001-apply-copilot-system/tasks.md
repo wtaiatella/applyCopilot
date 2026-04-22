@@ -22,9 +22,9 @@ Initialize Next.js 16 project with required dependencies, configuration, and dev
 - [X] T003 Install and configure database dependencies (Prisma, MongoDB)
 - [X] T004 Install and configure AI dependencies (TensorFlow.js, Ollama SDK)
 - [X] T005 Install testing dependencies (Jest, Playwright, Testing Library)
-- [ ] T006 Configure environment variables and .env files
-- [ ] T007 Set up Prisma schema and generate client
-- [ ] T008 Configure NextAuth.js with credentials provider
+- [X] T006 Configure environment variables and .env files
+- [X] T007 Set up Prisma schema and generate client
+- [X] T008 Configure NextAuth.js with credentials provider
 - [ ] T009 Set up Docker Compose for local services (MongoDB, Redis, Ollama)
 - [ ] T010 Configure ESLint, Prettier, and TypeScript settings
 - [ ] T011 Set up project folder structure per implementation plan
@@ -56,6 +56,15 @@ Implement core infrastructure components required by all user stories.
 - [ ] T022 Configure TensorFlow.js for compatibility scoring
 - [ ] T023 Create base API route structure
 - [ ] T024 Implement health check and monitoring endpoints
+- [ ] T025 Install and configure Resend API for email delivery
+- [ ] T026 Install and configure Twilio WhatsApp Business API
+- [ ] T027 Create email service layer in frontend/src/lib/email/
+- [ ] T028 Create notification queue system for retry logic
+- [ ] T029 Implement password reset flow with secure tokens
+- [ ] T030 Create welcome email template and trigger on registration
+- [ ] T031 Implement job match notification email service
+- [ ] T032 Create WhatsApp notification service for critical alerts
+- [ ] T033 Build notification preferences management UI
 
 ## Phase 3: User Story 1 - Profile Setup and CV Processing
 
@@ -71,22 +80,22 @@ Enable users to upload CVs and automatically extract/organize professional infor
 
 ### Implementation Tasks
 
-- [ ] T025 [P] Create CV parsing service in frontend/src/lib/parsing/cv-parser.ts
-- [ ] T026 [P] Implement PDF extraction using pdf-parse library
-- [ ] T027 [P] Implement DOCX extraction using mammoth.js
-- [ ] T028 [US1] Create User model and authentication API in frontend/src/app/api/auth/
-- [ ] T029 [P] Create UserProfile API routes in frontend/src/app/api/profile/
-- [ ] T030 [US1] Implement CV upload endpoint in frontend/src/app/api/profile/upload-cv/route.ts
-- [ ] T031 [P] Create Ollama integration for structured data extraction in frontend/src/lib/ai/ollama.ts
-- [ ] T032 [US1] Implement AI-powered CV parsing pipeline
-- [ ] T033 [P] Create profile data validation schemas in frontend/src/lib/validation/
-- [ ] T034 [US1] Build profile management UI components in frontend/src/components/profile/
-- [ ] T035 [US1] Create tabbed interface for profile sections in frontend/src/components/profile/ProfileTabs.tsx
-- [ ] T036 [US1] Implement editable forms for each profile section
-- [ ] T037 [US1] Create profile page in frontend/src/app/profile/page.tsx
-- [ ] T038 [US1] Add profile navigation to main layout
-- [ ] T039 [US1] Implement profile data persistence to database
-- [ ] T040 [US1] Add profile editing and update functionality
+- [ ] T034 [P] Create CV parsing service in frontend/src/lib/parsing/cv-parser.ts
+- [ ] T035 [P] Implement PDF extraction using pdf-parse library
+- [ ] T036 [P] Implement DOCX extraction using mammoth.js
+- [ ] T037 [US1] Create User model and authentication API in frontend/src/app/api/auth/
+- [ ] T038 [P] Create UserProfile API routes in frontend/src/app/api/profile/
+- [ ] T039 [US1] Implement CV upload endpoint in frontend/src/app/api/profile/upload-cv/route.ts
+- [ ] T040 [P] Create Ollama integration for structured data extraction in frontend/src/lib/ai/ollama.ts
+- [ ] T041 [US1] Implement AI-powered CV parsing pipeline
+- [ ] T042 [P] Create profile data validation schemas in frontend/src/lib/validation/
+- [ ] T043 [US1] Build profile management UI components in frontend/src/components/profile/
+- [ ] T044 [US1] Create tabbed interface for profile sections in frontend/src/components/profile/ProfileTabs.tsx
+- [ ] T045 [US1] Implement editable forms for each profile section
+- [ ] T046 [US1] Create profile page in frontend/src/app/profile/page.tsx
+- [ ] T047 [US1] Add profile navigation to main layout
+- [ ] T048 [US1] Implement profile data persistence to database
+- [ ] T049 [US1] Add profile editing and update functionality
 
 ## Phase 4: User Story 2 - Job Discovery and Smart Filtering
 
@@ -102,21 +111,21 @@ Enable users to search remote jobs across portals with AI-powered filtering.
 
 ### Implementation Tasks
 
-- [ ] T041 [P] Create job portal configuration models and API in frontend/src/app/api/portals/
-- [ ] T042 [P] Implement web scraping service with Playwright in frontend/src/lib/scraping/
-- [ ] T043 [P] Create generic job scraper in frontend/src/lib/scraping/generic-scraper.ts
-- [ ] T044 [P] Implement provider-specific scrapers (WeWorkRemotely, LinkedIn) in frontend/src/lib/scraping/providers/
-- [ ] T045 [US2] Create job search API endpoints in frontend/src/app/api/search/
-- [ ] T046 [P] Implement TensorFlow.js compatibility scoring in frontend/src/lib/ai/tensorflow-matcher.ts
-- [ ] T047 [US2] Create AI processing pipeline (prefilter → parse → analyze) in frontend/src/lib/ai/pipeline.ts
-- [ ] T048 [P] Set up job data storage and caching with Redis
-- [ ] T049 [US2] Build job search UI components in frontend/src/components/jobs/
-- [ ] T050 [US2] Create job listing cards with compatibility scores in frontend/src/components/jobs/JobCard.tsx
-- [ ] T051 [US2] Implement job filtering and search interface in frontend/src/components/jobs/JobSearch.tsx
-- [ ] T052 [US2] Create job results page in frontend/src/app/jobs/page.tsx
-- [ ] T053 [US2] Add job favoriting functionality
-- [ ] T054 [US2] Implement real-time search progress tracking
-- [ ] T055 [US2] Add job detail view and external link handling
+- [ ] T050 [P] Create job portal configuration models and API in frontend/src/app/api/portals/
+- [ ] T051 [P] Implement web scraping service with Playwright in frontend/src/lib/scraping/
+- [ ] T052 [P] Create generic job scraper in frontend/src/lib/scraping/generic-scraper.ts
+- [ ] T053 [P] Implement provider-specific scrapers (WeWorkRemotely, LinkedIn) in frontend/src/lib/scraping/providers/
+- [ ] T054 [US2] Create job search API endpoints in frontend/src/app/api/search/
+- [ ] T055 [P] Implement TensorFlow.js compatibility scoring in frontend/src/lib/ai/tensorflow-matcher.ts
+- [ ] T056 [P] Create AI processing pipeline (prefilter → parse → analyze) in frontend/src/lib/ai/pipeline.ts
+- [ ] T057 [P] Set up job data storage and caching with Redis
+- [ ] T058 [US2] Build job search UI components in frontend/src/components/jobs/
+- [ ] T059 [US2] Create job listing cards with compatibility scores in frontend/src/components/jobs/JobCard.tsx
+- [ ] T060 [US2] Implement job filtering and search interface in frontend/src/components/jobs/JobSearch.tsx
+- [ ] T061 [US2] Create job results page in frontend/src/app/jobs/page.tsx
+- [ ] T062 [US2] Add job favoriting functionality
+- [ ] T063 [US2] Implement real-time search progress tracking
+- [ ] T064 [US2] Add job detail view and external link handling
 
 ## Phase 5: User Story 3 - Application Personalization
 
@@ -132,18 +141,18 @@ Generate AI-powered CV suggestions and personalized cover letters for specific j
 
 ### Implementation Tasks
 
-- [ ] T056 [P] Create Gemini API client for premium AI services in frontend/src/lib/ai/gemini.ts
-- [ ] T057 [P] Implement CV suggestion generation service in frontend/src/lib/ai/cv-suggestions.ts
-- [ ] T058 [P] Create cover letter generation service in frontend/src/lib/ai/cover-letter.ts
-- [ ] T059 [US3] Create application management API in frontend/src/app/api/applications/
-- [ ] T060 [P] Implement AI service cost optimization and caching
-- [ ] T061 [US3] Build application personalization UI in frontend/src/components/applications/
-- [ ] T062 [US3] Create CV suggestions component in frontend/src/components/applications/CVSuggestions.tsx
-- [ ] T063 [US3] Implement cover letter generator in frontend/src/components/applications/CoverLetterGenerator.tsx
-- [ ] T064 [US3] Add application materials preview and editing
-- [ ] T065 [US3] Create application submission workflow
-- [ ] T066 [US3] Implement AI content quality validation
-- [ ] T067 [US3] Add user feedback mechanism for generated content
+- [ ] T065 [P] Create Gemini API client for premium AI services in frontend/src/lib/ai/gemini.ts
+- [ ] T066 [P] Implement CV suggestion generation service in frontend/src/lib/ai/cv-suggestions.ts
+- [ ] T067 [P] Create cover letter generation service in frontend/src/lib/ai/cover-letter.ts
+- [ ] T068 [US3] Create application management API in frontend/src/app/api/applications/
+- [ ] T069 [P] Implement AI service cost optimization and caching
+- [ ] T070 [US3] Build application personalization UI in frontend/src/components/applications/
+- [ ] T071 [US3] Create CV suggestions component in frontend/src/components/applications/CVSuggestions.tsx
+- [ ] T072 [US3] Implement cover letter generator in frontend/src/components/applications/CoverLetterGenerator.tsx
+- [ ] T073 [US3] Add application materials preview and editing
+- [ ] T074 [US3] Create application submission workflow
+- [ ] T075 [US3] Implement AI content quality validation
+- [ ] T076 [US3] Add user feedback mechanism for generated content
 
 ## Phase 6: User Story 4 - Application Tracking Dashboard
 
@@ -159,17 +168,17 @@ Provide comprehensive dashboard for tracking job application status and progress
 
 ### Implementation Tasks
 
-- [ ] T068 [P] Create application status management API in frontend/src/app/api/dashboard/
-- [ ] T069 [P] Implement dashboard statistics calculation service
-- [ ] T070 [US4] Build dashboard UI components in frontend/src/components/dashboard/
-- [ ] T071 [US4] Create application status tracking interface in frontend/src/components/dashboard/ApplicationTracker.tsx
-- [ ] T072 [US4] Implement dashboard statistics widgets in frontend/src/components/dashboard/StatsWidgets.tsx
-- [ ] T073 [US4] Create application timeline view in frontend/src/components/dashboard/ApplicationTimeline.tsx
-- [ ] T074 [US4] Build main dashboard page in frontend/src/app/dashboard/page.tsx
-- [ ] T075 [US4] Add status update workflows and notifications
-- [ ] T076 [US4] Implement follow-up reminder system
-- [ ] T077 [US4] Create dashboard filtering and search
-- [ ] T078 [US4] Add export functionality for application data
+- [ ] T077 [P] Create application status management API in frontend/src/app/api/dashboard/
+- [ ] T078 [P] Implement dashboard statistics calculation service
+- [ ] T079 [US4] Build dashboard UI components in frontend/src/components/dashboard/
+- [ ] T080 [US4] Create application status tracking interface in frontend/src/components/dashboard/ApplicationTracker.tsx
+- [ ] T081 [US4] Implement dashboard statistics widgets in frontend/src/components/dashboard/StatsWidgets.tsx
+- [ ] T082 [US4] Create application timeline view in frontend/src/components/dashboard/ApplicationTimeline.tsx
+- [ ] T083 [US4] Build main dashboard page in frontend/src/app/dashboard/page.tsx
+- [ ] T084 [US4] Add status update workflows and notifications
+- [ ] T085 [US4] Implement follow-up reminder system
+- [ ] T086 [US4] Create dashboard filtering and search
+- [ ] T087 [US4] Add export functionality for application data
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
@@ -184,32 +193,32 @@ Implement final polish, performance optimization, and production readiness.
 
 ### Implementation Tasks
 
-- [ ] T079 [P] Implement comprehensive error handling and user feedback
-- [ ] T080 [P] Add loading states and progress indicators throughout UI
-- [ ] T081 [P] Implement dark mode theme support with Ant Design ConfigProvider
-- [ ] T082 [P] Add responsive design for mobile and tablet
-- [ ] T083 [P] Implement accessibility features (ARIA labels, keyboard navigation)
-- [ ] T084 [P] Add comprehensive input validation and sanitization
-- [ ] T085 [P] Implement security headers and CSRF protection
-- [ ] T086 [P] Add performance monitoring and metrics collection
-- [ ] T087 [P] Optimize database queries and add proper indexing
-- [ ] T088 [P] Implement AI service fallback and retry mechanisms
-- [ ] T089 [P] Add comprehensive logging and error tracking
-- [ ] T090 [P] Create user onboarding flow and help documentation
-- [ ] T091 [P] Implement data export and privacy controls
-- [ ] T092 [P] Add automated testing pipeline (unit, integration, E2E)
-- [ ] T093 [P] Create production deployment configuration
-- [ ] T094 [P] Add monitoring and alerting for production issues
+- [ ] T088 [P] Implement comprehensive error handling and user feedback
+- [ ] T089 [P] Add loading states and progress indicators throughout UI
+- [ ] T090 [P] Implement dark mode theme support with Ant Design ConfigProvider
+- [ ] T091 [P] Add responsive design for mobile and tablet
+- [ ] T092 [P] Implement accessibility features (ARIA labels, keyboard navigation)
+- [ ] T093 [P] Add comprehensive input validation and sanitization
+- [ ] T094 [P] Implement security headers and CSRF protection
+- [ ] T095 [P] Add performance monitoring and metrics collection
+- [ ] T096 [P] Optimize database queries and add proper indexing
+- [ ] T097 [P] Implement AI service fallback and retry mechanisms
+- [ ] T098 [P] Add comprehensive logging and error tracking
+- [ ] T099 [P] Create user onboarding flow and help documentation
+- [ ] T100 [P] Implement data export and privacy controls
+- [ ] T101 [P] Add automated testing pipeline (unit, integration, E2E)
+- [ ] T102 [P] Create production deployment configuration
+- [ ] T103 [P] Add monitoring and alerting for production issues
 
 ## Dependencies
 
 ### User Story Completion Order
 1. **Phase 1 & 2**: Setup and Infrastructure (prerequisites for all stories)
-2. **User Story 1** (T025-T040): Profile Setup - Foundation for all other features
-3. **User Story 2** (T041-T055): Job Discovery - Core value proposition
-4. **User Story 3** (T056-T067): Application Personalization - Advanced AI features
-5. **User Story 4** (T068-T078): Application Tracking - Supporting functionality
-6. **Phase 7** (T079-T094): Polish & Production Readiness
+2. **User Story 1** (T034-T049): Profile Setup - Foundation for all other features
+3. **User Story 2** (T050-T064): Job Discovery - Core value proposition
+4. **User Story 3** (T065-T076): Application Personalization - Advanced AI features
+5. **User Story 4** (T077-T087): Application Tracking - Supporting functionality
+6. **Phase 7** (T088-T103): Polish & Production Readiness
 
 ### Critical Dependencies
 - User Story 1 → User Story 2 (profile data needed for job matching)
@@ -219,15 +228,15 @@ Implement final polish, performance optimization, and production readiness.
 ## Parallel Execution Opportunities
 
 ### Within User Stories
-- **Profile Setup**: CV parsing (T025-T027) can run parallel with UI components (T034-T037)
-- **Job Discovery**: Scraping (T041-T044) can run parallel with AI pipeline (T046-T047)
-- **Application Personalization**: AI services (T056-T058) can run parallel with UI components (T061-T063)
-- **Application Tracking**: API development (T068-T069) can run parallel with UI components (T070-T073)
+- **Profile Setup**: CV parsing (T034-T036) can run parallel with UI components (T043-T047)
+- **Job Discovery**: Scraping (T050-T053) can run parallel with AI pipeline (T055-T056)
+- **Application Personalization**: AI services (T065-T067) can run parallel with UI components (T070-T072)
+- **Application Tracking**: API development (T077-T078) can run parallel with UI components (T079-T082)
 
 ### Cross-Story Parallelization
 - Infrastructure tasks (T013-T024) can run parallel with early story tasks
 - UI components can be developed in parallel with backend APIs
-- Testing and polish tasks (T079-T094) can start as soon as respective features are complete
+- Testing and polish tasks (T088-T103) can start as soon as respective features are complete
 
 ## Implementation Strategy
 
@@ -239,27 +248,27 @@ Implement final polish, performance optimization, and production readiness.
 - Add basic UI with dark mode support
 
 ### Incremental Delivery
-1. **Release 1**: Profile management + Job search (T001-T055)
-2. **Release 2**: Application personalization (T056-T067)
-3. **Release 3**: Application tracking dashboard (T068-T078)
-4. **Release 4**: Polish and production optimization (T079-T094)
+1. **Release 1**: Profile management + Job search (T001-T064)
+2. **Release 2**: Application personalization (T065-T076)
+3. **Release 3**: Application tracking dashboard (T077-T087)
+4. **Release 4**: Polish and production optimization (T088-T103)
 
 ### Risk Mitigation
-- **AI Service Dependencies**: Implement fallbacks and caching early (T021, T060)
-- **Performance**: Monitor and optimize database queries from start (T087)
-- **Security**: Implement validation and sanitization from beginning (T083)
-- **Scalability**: Design for horizontal scaling with proper indexing (T087)
+- **AI Service Dependencies**: Implement fallbacks and caching early (T021, T069)
+- **Performance**: Monitor and optimize database queries from start (T096)
+- **Security**: Implement validation and sanitization from beginning (T093)
+- **Scalability**: Design for horizontal scaling with proper indexing (T096)
 
 ## Task Summary
 
-- **Total Tasks**: 94
+- **Total Tasks**: 103
 - **Setup Tasks**: 12 (Phase 1)
-- **Infrastructure Tasks**: 12 (Phase 2)
-- **User Story 1 Tasks**: 16 (T025-T040)
-- **User Story 2 Tasks**: 15 (T041-T055)
-- **User Story 3 Tasks**: 12 (T056-T067)
-- **User Story 4 Tasks**: 11 (T068-T078)
-- **Polish Tasks**: 16 (T079-T094)
+- **Infrastructure Tasks**: 21 (Phase 2, T013-T033)
+- **User Story 1 Tasks**: 16 (T034-T049)
+- **User Story 2 Tasks**: 15 (T050-T064)
+- **User Story 3 Tasks**: 12 (T065-T076)
+- **User Story 4 Tasks**: 11 (T077-T087)
+- **Polish Tasks**: 16 (T088-T103)
 
 ### Parallel Opportunities Identified
 - **High Parallelization**: 35+ tasks can be executed in parallel

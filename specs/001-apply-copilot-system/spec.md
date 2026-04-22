@@ -67,12 +67,36 @@ As a job seeker, I want to track the status of all my job applications in one pl
 
 ---
 
+### User Story 5 - Communication & Notifications (Priority: P2)
+
+As a registered user, I want to receive timely notifications about important events (password recovery, job matches, application updates) via email and WhatsApp so that I never miss critical opportunities or security alerts.
+
+**Why this priority**: Communication is essential for user engagement and security. Password recovery enables account access restoration, job match notifications drive core platform value, and status updates keep users informed without requiring constant manual checking.
+
+**Independent Test**: Can be fully tested by triggering each notification type (welcome email, password reset, job matches, application status change) and verifying delivery via both email and WhatsApp channels.
+
+**Acceptance Scenarios**:
+
+1. **Given** I am a new user who just registered, **When** my account is created, **Then** I receive a welcome email within 30 seconds with platform introduction and quick start guide
+2. **Given** I forgot my password, **When** I request password reset via email, **Then** I receive a secure reset link within 60 seconds that expires after 24 hours
+3. **Given** AI finds job matches for my profile, **When** 3+ compatible jobs are identified, **Then** I receive a batched email digest within 5 minutes with job summaries and compatibility scores
+4. **Given** I have verified my phone number, **When** a critical event occurs (interview scheduled), **Then** I receive WhatsApp notification within 1 minute with details and preparation tips
+5. **Given** I want to control notifications, **When** I update my preferences, **Then** system respects my choices and only sends opted-in notification types
+
+---
+
 ### Edge Cases
 
 - What happens when CV upload fails due to corrupted file or unsupported format?
 - How does system handle job portals that change their HTML structure or require authentication?
 - What happens when AI services (Ollama, premium APIs) are unavailable or rate-limited?
 - How does system handle users with minimal work experience or non-standard CV formats?
+- What happens when user requests multiple password resets in short time? (Rate limiting: max 3 requests per hour)
+- How does system handle email bounces or undeliverable addresses? (Mark as invalid after 3 soft bounces, 1 hard bounce)
+- What if WhatsApp API is temporarily unavailable? (Queue messages, retry with exponential backoff, fallback to email)
+- How does system prevent notification fatigue from too many job matches? (Batch multiple matches, respect user frequency preferences)
+- What happens when email template rendering fails? (Use plain text fallback, log error, alert developers)
+- How does system handle users who mark emails as spam? (Honor unsubscribe, investigate content, update reputation)
 
 ## Requirements *(mandatory)*
 
@@ -91,6 +115,16 @@ As a job seeker, I want to track the status of all my job applications in one pl
 - **FR-011**: System MUST generate personalized cover letters using premium AI
 - **FR-012**: System MUST provide application status tracking with predefined stages
 - **FR-013**: System MUST maintain user data privacy by processing sensitive information locally when possible
+- **FR-014**: System MUST send welcome email to new users within 30 seconds of registration
+- **FR-015**: System MUST allow users to request password reset via email with secure time-limited tokens (24 hours)
+- **FR-016**: System MUST send job match notification emails when AI identifies compatible positions, batching multiple matches
+- **FR-017**: System MUST support WhatsApp Business API integration for critical notifications (interviews, deadlines)
+- **FR-018**: System MUST implement fallback to email when WhatsApp delivery fails
+- **FR-019**: System MUST provide notification preference settings allowing users to control email/WhatsApp frequency and types
+- **FR-020**: System MUST track email delivery status (sent, delivered, opened, bounced) for analytics
+- **FR-021**: System MUST implement rate limiting on notification endpoints (max 3 password resets/hour, max 5 emails/minute per user)
+- **FR-022**: System MUST render HTML email templates with ApplyCopilot branding and responsive design
+- **FR-023**: System MUST provide unsubscribe links in all non-transactional emails with 24-hour processing guarantee
 
 ### Key Entities *(include if feature involves data)*
 
@@ -99,6 +133,10 @@ As a job seeker, I want to track the status of all my job applications in one pl
 - **Job Match**: Relationship entity storing compatibility scores, analysis results, and AI-generated insights between user profile and job listings
 - **Application**: Tracking entity representing user's job application status and history for specific positions
 - **Portal Configuration**: User preferences for job sources, scraping settings, and search criteria
+- **EmailTemplate**: Stores HTML/text templates for different notification types (welcome, password reset, job matches) with variables and branding
+- **NotificationLog**: Audit trail of all sent notifications with delivery status, timestamps, retry attempts, and error tracking
+- **UserNotificationPreferences**: User settings for notification channels (email, WhatsApp), frequency (immediate, digest), and types (matches, status updates)
+- **PasswordResetToken**: Secure token entity for password recovery with expiration timestamp and user reference
 
 ## Success Criteria *(mandatory)*
 
@@ -109,6 +147,13 @@ As a job seeker, I want to track the status of all my job applications in one pl
 - **SC-003**: Users report 80% satisfaction with AI-generated application materials (CV suggestions and cover letters)
 - **SC-004**: System reduces job search time by 70% compared to manual methods through automated discovery and filtering
 - **SC-005**: System maintains 99% uptime for core features (profile management, job search, application tracking)
+- **SC-006**: Password reset emails delivered within 60 seconds with 99.5% delivery rate
+- **SC-007**: Welcome emails sent to 100% of new registrations within 30 seconds
+- **SC-008**: Job match notification emails achieve minimum 25% open rate and 5% click-through rate
+- **SC-009**: WhatsApp notifications delivered within 1 minute with 95% delivery rate for critical events
+- **SC-010**: Email bounce rate stays below 2% indicating good list hygiene
+- **SC-011**: Password reset success rate (completed resets / requested) exceeds 85%
+- **SC-012**: Support tickets related to "not receiving notifications" reduced by 90%
 
 ## Clarifications
 
@@ -145,6 +190,22 @@ As a job seeker, I want to track the status of all my job applications in one pl
 - User notifications for service status and queued operations
 - Fallback to local Ollama processing when premium APIs are unavailable
 
+### Communication & Notification Strategy
+**Decision**: Resend for transactional emails, Twilio WhatsApp Business API for mobile notifications
+- Resend API handles: Welcome emails, password reset, job match digests, application status updates
+- WhatsApp Business API handles: Critical notifications only (interview scheduling, deadline reminders)
+- Email templates: Server-side rendered React components with ApplyCopilot branding
+- Rate limiting: Prevents abuse and maintains sender reputation
+- Fallback: Email delivery when WhatsApp fails or user prefers email only
+
+### Notification Frequency & User Control
+**Decision**: Smart batching with user-configurable preferences
+- Job matches: Batched into single email when 3+ matches found within 5-minute window
+- Critical events: Immediate delivery via both email and WhatsApp (if enabled)
+- Digest mode: Daily summary option for users who prefer less frequent updates
+- Unsubscribe: Always honored for non-transactional emails (marketing, digests)
+- Transactional emails (password reset, security alerts): Cannot be disabled
+
 ## Assumptions
 
 - Users have existing CVs in digital format (PDF or DOCX)
@@ -154,3 +215,10 @@ As a job seeker, I want to track the status of all my job applications in one pl
 - Premium AI APIs remain available and cost-effective for the target usage volume
 - Job portals do not implement aggressive anti-scraping measures that would prevent data extraction
 - Users understand that AI-generated content should be reviewed and personalized before submission
+- Users have valid email addresses and will verify them during registration
+- Resend API maintains deliverability rates of 95%+ for transactional emails
+- WhatsApp Business API pricing is acceptable for notification volume (critical events only)
+- Users consent to receiving transactional emails as part of Terms of Service
+- Third-party communication APIs (Resend, Twilio) maintain 99%+ uptime SLA
+- Email templates render correctly across major email clients (Gmail, Outlook, Apple Mail)
+- SMS fallback is not required for MVP; email is sufficient fallback for WhatsApp failures

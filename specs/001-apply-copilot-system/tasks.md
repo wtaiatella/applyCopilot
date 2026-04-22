@@ -44,8 +44,8 @@ Implement core infrastructure components required by all user stories.
 
 ### Implementation Tasks
 
-- [ ] T013 Create Prisma schema for all entities (User, UserProfile, JobListing, etc.)
-- [ ] T014 Implement database connection and client configuration
+- [X] T013 Create Prisma schema for all entities (User, UserProfile, JobListing, etc.)
+- [X] T014 Implement database connection and client configuration
 - [ ] T015 Create authentication middleware and session management
 - [ ] T016 Implement API error handling and response formatting
 - [ ] T017 Set up logging with Winston

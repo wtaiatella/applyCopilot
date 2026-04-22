@@ -1,6 +1,3 @@
-import { PrismaClient } from '@prisma/client'
-
-// Create Prisma client instance
-const prisma = new PrismaClient()
-
-export default prisma
+// Re-export from db module for backward compatibility
+// Use src/lib/db/index.ts for new code
+export { prisma as default, prisma } from './db';

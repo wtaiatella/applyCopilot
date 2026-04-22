@@ -16,16 +16,19 @@ model User {
   email           String    @unique
   passwordHash    String
   name            String
+  avatar          String?
+  emailVerified   DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  
+
   // Relations
   profile         UserProfile?
   applications    Application[]
   portalConfigs   PortalConfig[]
+  searchQueries   SearchQuery[]
   sessions        Session[]
   jobMatches      JobMatch[]
-  
+
   @@map("users")
 }
 
@@ -34,27 +37,28 @@ model UserProfile {
   userId          String    @unique @db.ObjectId
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  
+
   // Basic Information
   title           String?
   summary         String?
   location        String?
   phone           String?
   website         String?
-  
+
   // Relations
   experiences     Experience[]
   education       Education[]
   projects        Project[]
   skills          Skill[]
   references      Reference[]
-  
+  summaries       ProfileSummary[]
+
   // AI Processing
   vectorEmbedding Json?      // TensorFlow.js compatibility vectors
   processingStatus ProcessingStatus @default(PENDING)
-  
+
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@map("user_profiles")
 }
 
@@ -129,10 +133,24 @@ model Reference {
   email           String?
   phone           String?
   relationship    String
-  
+
   profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  
+
   @@map("references")
+}
+
+model ProfileSummary {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  profileId       String    @db.ObjectId
+  title           String
+  content         String
+  isAIGenerated   Boolean   @default(false)
+  isActive        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+
+  profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("profile_summaries")
 }
 
 // Job Portal and Listings
@@ -221,22 +239,25 @@ model Application {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   userId          String    @db.ObjectId
   jobListingId    String    @db.ObjectId
-  
+
   // Status Tracking
-  status          ApplicationStatus @default(APPLIED)
-  appliedAt       DateTime  @default(now())
+  status          ApplicationStatus @default(SAVED)
+  appliedAt       DateTime?
   lastUpdated     DateTime  @updatedAt
-  
+
   // Application Materials
   cvVersion       Json?      // CV version used for application
   coverLetter     String?    // AI-generated cover letter
   notes           String?    // User notes about application
-  
+  nextSteps       String?
+  followUpDate    DateTime?
+
   // Relations
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   jobListing      JobListing @relation(fields: [jobListingId], references: [id], onDelete: Cascade)
   interviewStages InterviewStage[]
-  
+  statusHistory   StatusChange[]
+
   @@unique([userId, jobListingId])
   @@map("applications")
 }
@@ -244,17 +265,30 @@ model Application {
 model InterviewStage {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   applicationId   String    @db.ObjectId
-  
+
   stage           InterviewType
   scheduledAt     DateTime?
   completedAt     DateTime?
   status          StageStatus @default(SCHEDULED)
   notes           String?
   feedback        String?
-  
+
   application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  
+
   @@map("interview_stages")
+}
+
+model StatusChange {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  applicationId   String    @db.ObjectId
+
+  status          ApplicationStatus
+  changedAt       DateTime  @default(now())
+  notes           String?
+
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@map("status_changes")
 }
 
 model Session {
@@ -302,6 +336,7 @@ enum ProcessingStatus {
 }
 
 enum ApplicationStatus {
+  SAVED
   APPLIED
   VIEWED
   INTERVIEW
@@ -333,4 +368,49 @@ enum PortalType {
   INDEED
   GLASSDOOR
   CUSTOM
+}
+
+model SearchQuery {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String    @db.ObjectId
+
+  // Search Criteria
+  title           String
+  keywords        String[]
+  technologies    String[]
+  experienceLevel ExperienceLevel
+
+  // Filters
+  remoteOnly      Boolean   @default(false)
+  salaryMin       Int?
+  salaryMax       Int?
+  locations       String[]
+
+  // Portal Selection
+  portalIds       String[]
+
+  // Search Settings
+  isActive        Boolean   @default(true)
+  lastRun         DateTime?
+  frequency       SearchFrequency
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("search_queries")
+}
+
+enum ExperienceLevel {
+  ENTRY
+  MID
+  SENIOR
+  LEAD
+}
+
+enum SearchFrequency {
+  DAILY
+  WEEKLY
+  MANUAL
 }

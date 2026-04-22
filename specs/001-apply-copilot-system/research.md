@@ -60,6 +60,10 @@
 - Prisma provides type-safe database access and excellent TypeScript integration
 - Good performance for read-heavy workloads (job searches, profile viewing)
 
+**Technical Constraint**:
+- **Prisma v6.x required** - Prisma v7.x does not support MongoDB (per https://www.prisma.io/docs/orm/core-concepts/supported-databases/mongodb)
+- Must pin `@prisma/client` and `prisma` packages to v6.x to maintain MongoDB compatibility
+
 **Alternatives Considered**:
 - PostgreSQL: More rigid schema, less suitable for unstructured CV data
 - Direct MongoDB driver: Loses type safety and development ergonomics of Prisma

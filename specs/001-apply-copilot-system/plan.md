@@ -18,8 +18,8 @@ ApplyCopilot is an intelligent job search automation system that helps users upl
 -->
 
 **Language/Version**: TypeScript 5.6+ (Next.js 16)
-**Primary Dependencies**: Next.js 16, React 19, Ant Design 6, Tailwind CSS 4, Prisma, TensorFlow.js, Ollama SDK, Gemini API
-**Storage**: MongoDB with Prisma ORM
+**Primary Dependencies**: Next.js 16, React 19, Ant Design 6, Tailwind CSS 4, Prisma v6.x, TensorFlow.js, Ollama SDK, Gemini API
+**Storage**: MongoDB with Prisma ORM v6.x (Prisma v7+ does not support MongoDB)
 **Testing**: Jest (unit/integration), Playwright (E2E)
 **Target Platform**: Web application (Node.js server, browser client)
 **Project Type**: web-service

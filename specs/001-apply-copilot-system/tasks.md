@@ -25,10 +25,10 @@ Initialize Next.js 16 project with required dependencies, configuration, and dev
 - [X] T006 Configure environment variables and .env files
 - [X] T007 Set up Prisma schema and generate client
 - [X] T008 Configure NextAuth.js with credentials provider
-- [ ] T009 Set up Docker Compose for local services (MongoDB, Redis, Ollama)
-- [ ] T010 Configure ESLint, Prettier, and TypeScript settings
-- [ ] T011 Set up project folder structure per implementation plan
-- [ ] T012 Create initial Git repository and commit structure
+- [X] T009 Set up Docker Compose for local services (MongoDB, Redis, Ollama)
+- [X] T010 Configure ESLint, Prettier, and TypeScript settings
+- [X] T011 Set up project folder structure per implementation plan
+- [X] T012 Create initial Git repository and commit structure
 
 ## Phase 2: Foundational Infrastructure
 

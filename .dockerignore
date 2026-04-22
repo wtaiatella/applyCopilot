@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+**/.next/
+**/dist/
+**/out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Version control
+.git/
+.gitignore
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Build artifacts
+build/
+dist/
+*.tsbuildinfo
+
+# Database files
+*.db
+*.db-journal
+mongodb_data/
+redis_data/
+ollama_data/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Prisma
+frontend/prisma/migrations/

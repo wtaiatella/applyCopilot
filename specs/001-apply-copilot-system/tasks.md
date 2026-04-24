@@ -56,9 +56,9 @@ Implement core infrastructure components required by all user stories.
 - [X] T022 Configure TensorFlow.js for compatibility scoring
 - [X] T023 Create base API route structure
 - [X] T024 Implement health check and monitoring endpoints
-- [ ] T025 Install and configure Resend API for email delivery
-- [ ] T026 Install and configure Twilio WhatsApp Business API
-- [ ] T027 Create email service layer in frontend/src/lib/email/
+- [X] T025 Install and configure Resend API for email delivery
+- [X] T026 Install and configure Twilio WhatsApp Business API
+- [X] T027 Create email service layer in frontend/src/lib/email/
 - [ ] T028 Create notification queue system for retry logic
 - [ ] T029 Implement password reset flow with secure tokens
 - [ ] T030 Create welcome email template and trigger on registration

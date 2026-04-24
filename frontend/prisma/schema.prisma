@@ -239,16 +239,13 @@ model Application {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   userId          String    @db.ObjectId
   jobListingId    String    @db.ObjectId
-
-  // Status Tracking
   status          ApplicationStatus @default(SAVED)
-  appliedAt       DateTime?
-  lastUpdated     DateTime  @updatedAt
-
-  // Application Materials
+  notes           String?
   cvVersion       Json?      // CV version used for application
   coverLetter     String?    // AI-generated cover letter
-  notes           String?    // User notes about application
+  appliedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  lastUpdated     DateTime  @updatedAt
   nextSteps       String?
   followUpDate    DateTime?
 

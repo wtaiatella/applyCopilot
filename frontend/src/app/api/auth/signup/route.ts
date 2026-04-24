@@ -9,9 +9,16 @@ import {
   DatabaseError,
 } from '@/lib/api'
 import { loggers } from '@/lib/logging'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
+
+  // Check rate limit (5 requests per minute for auth endpoints)
+  const { allowed, response } = await checkRateLimit('AUTH', request)
+  if (!allowed) {
+    return response!
+  }
 
   try {
     const { name, email, password } = await request.json()

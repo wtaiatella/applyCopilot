@@ -55,7 +55,7 @@ Implement core infrastructure components required by all user stories.
 - [X] T021 Set up AI service clients (Ollama, Gemini)
 - [X] T022 Configure TensorFlow.js for compatibility scoring
 - [X] T023 Create base API route structure
-- [ ] T024 Implement health check and monitoring endpoints
+- [X] T024 Implement health check and monitoring endpoints
 - [ ] T025 Install and configure Resend API for email delivery
 - [ ] T026 Install and configure Twilio WhatsApp Business API
 - [ ] T027 Create email service layer in frontend/src/lib/email/

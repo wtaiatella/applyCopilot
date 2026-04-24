@@ -51,7 +51,7 @@ Implement core infrastructure components required by all user stories.
 - [X] T017 Set up logging with Winston
 - [X] T018 Configure rate limiting middleware
 - [X] T019 Create input validation schemas with Zod
-- [ ] T020 Implement file upload handling for CV files
+- [X] T020 Implement file upload handling for CV files
 - [ ] T021 Set up AI service clients (Ollama, Gemini)
 - [ ] T022 Configure TensorFlow.js for compatibility scoring
 - [ ] T023 Create base API route structure

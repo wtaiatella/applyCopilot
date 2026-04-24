@@ -4,12 +4,13 @@ import prisma from '@/lib/prisma'
 import {
   createdResponse,
   handleApiError,
-  BadRequestError,
   AlreadyExistsError,
   DatabaseError,
+  ValidationError,
 } from '@/lib/api'
 import { loggers } from '@/lib/logging'
 import { checkRateLimit } from '@/lib/rate-limit'
+import { signUpSchema, SignUpInput } from '@/lib/validation'
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -21,21 +22,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { name, email, password } = await request.json()
+    const body = await request.json()
+
+    // Validate with Zod
+    const validationResult = signUpSchema.safeParse(body)
+    if (!validationResult.success) {
+      const errors = validationResult.error.flatten().fieldErrors
+      throw new ValidationError('Invalid input', errors)
+    }
+
+    const { name, email, password }: SignUpInput = validationResult.data
 
     loggers.auth.info('Signup attempt', { email })
-
-    // Validation
-    if (!name || !email || !password) {
-      throw new BadRequestError('All fields are required')
-    }
-
-    if (password.length < 8) {
-      throw new BadRequestError('Password must be at least 8 characters', {
-        field: 'password',
-        minLength: 8,
-      })
-    }
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({

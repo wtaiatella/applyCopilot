@@ -47,8 +47,8 @@ Implement core infrastructure components required by all user stories.
 - [X] T013 Create Prisma schema for all entities (User, UserProfile, JobListing, etc.)
 - [X] T014 Implement database connection and client configuration
 - [X] T015 Create authentication middleware and session management
-- [ ] T016 Implement API error handling and response formatting
-- [ ] T017 Set up logging with Winston
+- [X] T016 Implement API error handling and response formatting
+- [X] T017 Set up logging with Winston
 - [ ] T018 Configure rate limiting middleware
 - [ ] T019 Create input validation schemas with Zod
 - [ ] T020 Implement file upload handling for CV files

@@ -3,6 +3,8 @@
 // Based on API contract: specs/001-apply-copilot-system/contracts/api.md
 
 import { NextRequest } from 'next/server';
+import * as pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
 import {
   createdResponse,
   handleApiError,
@@ -13,40 +15,8 @@ import {
 } from '@/lib/api';
 import { loggers } from '@/lib/logging';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { saveFile, validateFile } from '@/lib/storage';
-
-// Mock AI processing function (will be replaced with actual Ollama/Gemini integration in T021)
-async function processCVWithAI(fileId: string): Promise<{
-  basicData: {
-    firstName: string;
-    lastName: string;
-    phone?: string;
-    location?: string;
-    portfolioLinks: string[];
-  };
-  experiences: unknown[];
-  education: unknown[];
-  projects: unknown[];
-  skills: unknown[];
-  references: unknown[];
-}> {
-  // TODO: Implement actual AI processing in T021
-  // This is a placeholder that returns mock data
-  return {
-    basicData: {
-      firstName: 'John',
-      lastName: 'Doe',
-      phone: '+1 555-123-4567',
-      location: 'San Francisco, CA',
-      portfolioLinks: ['https://johndoe.dev'],
-    },
-    experiences: [],
-    education: [],
-    projects: [],
-    skills: [],
-    references: [],
-  };
-}
+import { saveFile, validateFile, getFile } from '@/lib/storage';
+import { AIService } from '@/lib/ai';
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -91,12 +61,52 @@ export async function POST(request: NextRequest) {
       throw new ValidationError(saveResult.error || 'Failed to save file');
     }
 
-    // Process CV with AI (mock for now, real implementation in T021)
+    // Extract text from file
+    let cvText: string;
+    try {
+      const fileResult = await getFile(saveResult.fileId);
+      if (!fileResult || (typeof fileResult === 'string')) {
+        throw new AIProcessingError('Failed to retrieve uploaded file');
+      }
+
+      const { buffer, metadata } = fileResult;
+
+      // Extract text based on file type
+      if (metadata.mimeType === 'application/pdf') {
+        const pdfData = await (pdfParse as unknown as (b: Buffer) => Promise<{ text: string }>)(buffer);
+        cvText = pdfData.text;
+      } else if (
+        metadata.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        metadata.mimeType === 'application/msword'
+      ) {
+        const docResult = await mammoth.extractRawText({ buffer });
+        cvText = docResult.value;
+      } else {
+        throw new InvalidFileTypeError(['PDF', 'DOCX']);
+      }
+
+      if (!cvText || cvText.trim().length === 0) {
+        throw new AIProcessingError('Could not extract text from CV file');
+      }
+    } catch (error) {
+      loggers.ai.error('CV text extraction failed', {
+        fileId: saveResult.fileId,
+        error: (error as Error).message,
+      });
+      throw new AIProcessingError('Failed to extract text from CV file');
+    }
+
+    // Process CV with AI (Ollama)
     let extractedData;
     try {
-      extractedData = await processCVWithAI(saveResult.fileId);
-    } catch {
-      throw new AIProcessingError('Failed to extract data from CV');
+      extractedData = await AIService.parseCV(cvText);
+      loggers.ai.info('CV parsed successfully', { fileId: saveResult.fileId });
+    } catch (error) {
+      loggers.ai.error('CV AI processing failed', {
+        fileId: saveResult.fileId,
+        error: (error as Error).message,
+      });
+      throw new AIProcessingError('Failed to process CV with AI');
     }
 
     const duration = Date.now() - startTime;

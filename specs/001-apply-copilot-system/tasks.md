@@ -52,7 +52,7 @@ Implement core infrastructure components required by all user stories.
 - [X] T018 Configure rate limiting middleware
 - [X] T019 Create input validation schemas with Zod
 - [X] T020 Implement file upload handling for CV files
-- [ ] T021 Set up AI service clients (Ollama, Gemini)
+- [X] T021 Set up AI service clients (Ollama, Gemini)
 - [ ] T022 Configure TensorFlow.js for compatibility scoring
 - [ ] T023 Create base API route structure
 - [ ] T024 Implement health check and monitoring endpoints

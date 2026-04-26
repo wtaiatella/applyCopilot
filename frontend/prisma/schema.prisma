@@ -31,6 +31,7 @@ model User {
   notificationQueue NotificationQueue[]
   notificationLogs  NotificationLog[]
   notificationPreferences UserNotificationPreferences?
+  passwordResetTokens PasswordResetToken[]
 
   @@map("users")
 }
@@ -301,6 +302,20 @@ model Session {
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@map("sessions")
+}
+
+model PasswordResetToken {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String    @db.ObjectId
+  token           String    @unique
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("password_reset_tokens")
 }
 
 // Enums

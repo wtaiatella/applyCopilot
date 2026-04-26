@@ -268,3 +268,62 @@ ApplyCopilot - Your AI Job Search Assistant
 `,
   };
 }
+
+// Password reset email template
+export function getPasswordResetTemplate(resetUrl: string): EmailTemplate {
+  return {
+    subject: 'Reset your ApplyCopilot password',
+    html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset Your Password</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+    .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+    .button { display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+    .warning { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin: 20px 0; }
+    .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Password Reset Request</h1>
+  </div>
+  <div class="content">
+    <p>We received a request to reset your ApplyCopilot password.</p>
+
+    <a href="${resetUrl}" class="button">Reset Password</a>
+
+    <div class="warning">
+      <strong>Important:</strong> This link expires in 24 hours and can only be used once.
+    </div>
+
+    <p>If you didn't request this password reset, you can safely ignore this email. Your password will remain unchanged.</p>
+
+    <div class="footer">
+      <p>ApplyCopilot - Making job search smarter</p>
+      <p>This is an automated security email. Please do not reply.</p>
+    </div>
+  </div>
+</body>
+</html>
+    `,
+    text: `Password Reset Request
+
+We received a request to reset your ApplyCopilot password.
+
+Reset your password: ${resetUrl}
+
+Important: This link expires in 24 hours and can only be used once.
+
+If you didn't request this password reset, you can safely ignore this email. Your password will remain unchanged.
+
+ApplyCopilot - Making job search smarter
+This is an automated security email. Please do not reply.
+`,
+  };
+}

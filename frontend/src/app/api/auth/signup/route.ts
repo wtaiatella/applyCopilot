@@ -11,6 +11,8 @@ import {
 import { loggers } from '@/lib/logging'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { signUpSchema, SignUpInput } from '@/lib/validation'
+import { sendEmail } from '@/lib/email'
+import { getWelcomeEmailTemplate } from '@/lib/email/templates'
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -60,6 +62,26 @@ export async function POST(request: NextRequest) {
       })
     } catch {
       throw new DatabaseError('Failed to create user')
+    }
+
+    // Send welcome email (non-blocking)
+    try {
+      const firstName = name.split(' ')[0]
+      const emailTemplate = getWelcomeEmailTemplate(firstName)
+      await sendEmail({
+        to: email,
+        subject: emailTemplate.subject,
+        html: emailTemplate.html,
+        text: emailTemplate.text,
+      })
+      loggers.email.info('Welcome email sent', { userId: user.id, email })
+    } catch (emailError) {
+      // Log error but don't fail registration if email fails
+      loggers.email.error('Failed to send welcome email', {
+        userId: user.id,
+        email,
+        error: (emailError as Error).message,
+      })
     }
 
     const duration = Date.now() - startTime

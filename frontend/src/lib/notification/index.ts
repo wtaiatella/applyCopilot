@@ -47,3 +47,14 @@ export {
   flushAllBatches,
   getBatchStats,
 } from './job-match-service';
+
+// WhatsApp critical alerts service
+export {
+  sendCriticalWhatsAppAlert,
+  sendInterviewAlert,
+  sendDeadlineAlert,
+  sendOfferAlert,
+  sendStatusChangeAlert,
+  sendBulkCriticalAlert,
+  type CriticalAlertType,
+} from './whatsapp-alerts';

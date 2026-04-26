@@ -122,6 +122,13 @@ hooks:
     prompt: Commit implementation changes?
     description: Auto-commit after implementation
     condition: null
+  - extension: bash
+    command: /Users/wagnertaiatella/repos/applyCopilot/.specify/scripts/bash/verify-build.sh
+    enabled: true
+    optional: true
+    prompt: Verify build and lint after implementation?
+    description: Run npm run lint and npm run build to verify code quality
+    condition: null
   - extension: sync
     command: speckit.sync.analyze
     enabled: true

@@ -62,7 +62,7 @@ Implement core infrastructure components required by all user stories.
 - [X] T028 Create notification queue system for retry logic
 - [X] T029 Implement password reset flow with secure tokens
 - [X] T030 Create welcome email template and trigger on registration
-- [ ] T031 Implement job match notification email service
+- [X] T031 Implement job match notification email service
 - [ ] T032 Create WhatsApp notification service for critical alerts
 - [ ] T033 Build notification preferences management UI
 

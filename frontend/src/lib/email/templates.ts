@@ -327,3 +327,118 @@ This is an automated security email. Please do not reply.
 `,
   };
 }
+
+// Job match batch template for 3+ jobs (digest)
+export interface JobMatchInfo {
+  jobId: string;
+  jobTitle: string;
+  company: string;
+  compatibilityScore: number;
+}
+
+export function getJobMatchBatchTemplate(
+  firstName: string,
+  matches: JobMatchInfo[]
+): EmailTemplate {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const jobsList = matches
+    .map(
+      (match) => `
+    <tr>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+        <strong>${match.jobTitle}</strong><br>
+        <span style="color: #6b7280;">${match.company}</span>
+      </td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+        <span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold;">
+          ${match.compatibilityScore}%
+        </span>
+      </td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">
+        <a href="${baseUrl}/jobs/${match.jobId}" style="color: #667eea; text-decoration: none;">View →</a>
+      </td>
+    </tr>
+  `
+    )
+    .join('');
+
+  const jobsText = matches
+    .map(
+      (match) =>
+        `- ${match.jobTitle} at ${match.company} (${match.compatibilityScore}% match) - ${baseUrl}/jobs/${match.jobId}`
+    )
+    .join('\n');
+
+  return {
+    subject: `🎯 ${matches.length} New Job Matches Found for You!`,
+    html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Matches Found</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+    .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+    .summary { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; }
+    .summary-number { font-size: 48px; font-weight: bold; color: #667eea; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; background: white; border-radius: 8px; overflow: hidden; }
+    th { background: #f3f4f6; padding: 12px; text-align: left; font-weight: 600; }
+    .button { display: inline-block; background: #22c55e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+    .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🎯 Great News!</h1>
+    <p>We found ${matches.length} jobs that match your profile</p>
+  </div>
+  <div class="content">
+    <p>Hi ${firstName},</p>
+    <p>Our AI analyzed your profile and found these matching opportunities:</p>
+    
+    <div class="summary">
+      <div class="summary-number">${matches.length}</div>
+      <div>New Job Matches</div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="text-align: left;">Job</th>
+          <th style="text-align: center;">Match Score</th>
+          <th style="text-align: center;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${jobsList}
+      </tbody>
+    </table>
+
+    <a href="${baseUrl}/jobs" class="button">View All Matches</a>
+    
+    <div class="footer">
+      <p>ApplyCopilot - Your AI Job Search Assistant</p>
+      <p><a href="${baseUrl}/settings/notifications" style="color: #6b7280;">Manage notification preferences</a></p>
+    </div>
+  </div>
+</body>
+</html>
+    `,
+    text: `🎯 ${matches.length} New Job Matches Found!
+
+Hi ${firstName},
+
+Our AI analyzed your profile and found these matching opportunities:
+
+${jobsText}
+
+View all matches: ${baseUrl}/jobs
+
+ApplyCopilot - Your AI Job Search Assistant
+Manage notifications: ${baseUrl}/settings/notifications
+`,
+  };
+}

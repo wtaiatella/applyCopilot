@@ -39,3 +39,11 @@ export {
   NotificationChannelConst,
   DEFAULT_FALLBACK_CONFIG,
 } from './types';
+
+// Job match notification service
+export {
+  queueJobMatchNotification,
+  triggerJobMatchNotification,
+  flushAllBatches,
+  getBatchStats,
+} from './job-match-service';

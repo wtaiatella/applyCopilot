@@ -64,7 +64,7 @@ Implement core infrastructure components required by all user stories.
 - [X] T030 Create welcome email template and trigger on registration
 - [X] T031 Implement job match notification email service
 - [X] T032 Create WhatsApp notification service for critical alerts
-- [ ] T033 Build notification preferences management UI
+- [X] T033 Build notification preferences management UI
 
 ## Phase 3: User Story 1 - Profile Setup and CV Processing
 

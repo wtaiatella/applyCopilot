@@ -2,7 +2,7 @@
 // Task T032: Create WhatsApp notification service for critical alerts
 // Handles interview scheduling, deadline reminders, and other critical events
 
-import { sendWhatsAppMessage, formatWhatsAppNumber, WhatsAppResponse } from '@/lib/email/twilio';
+import { sendWhatsAppMessage, formatWhatsAppNumber } from '@/lib/email/twilio';
 import { prisma } from '@/lib/db';
 import logger from '@/lib/logging/logger';
 

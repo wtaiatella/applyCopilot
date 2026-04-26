@@ -145,7 +145,7 @@ export class OllamaClient {
   /**
    * Build prompt for structured data generation
    */
-  private buildStructuredPrompt(prompt: string, schema?: Record<string, any>): string {
+  private buildStructuredPrompt(prompt: string, schema?: Record<string, unknown>): string {
     let fullPrompt = `You are a helpful AI assistant that responds with valid JSON only.
 
 ${prompt}
@@ -353,7 +353,7 @@ Extract the following information:
   /**
    * Generate compatibility analysis
    */
-  async analyzeCompatibility(profileData: any, jobData: any): Promise<{
+  async analyzeCompatibility(profileData: unknown, jobData: unknown): Promise<{
     overallScore: number
     skillsMatch: number
     experienceMatch: number

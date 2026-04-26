@@ -140,16 +140,17 @@ export const profileUpdateSchema = z.object({
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
 
 // CV upload response validation
+// Note: id fields are already optional in schemas, so .omit() is not needed
 export const cvUploadResponseSchema = z.object({
   success: z.boolean(),
   profileId: uuidSchema.optional(),
   extractedData: z.object({
     basicData: userBasicDataSchema,
-    experiences: z.array(experienceSchema.omit({ id: true })),
-    education: z.array(educationSchema.omit({ id: true })),
-    projects: z.array(projectSchema.omit({ id: true })),
-    skills: z.array(skillSchema.omit({ id: true })),
-    references: z.array(referenceSchema.omit({ id: true })),
+    experiences: z.array(experienceSchema),
+    education: z.array(educationSchema),
+    projects: z.array(projectSchema),
+    skills: z.array(skillSchema),
+    references: z.array(referenceSchema),
   }).optional(),
   error: z.string().optional(),
 });

@@ -34,7 +34,7 @@ const notificationPreferencesSchema = z.object({
  * GET /api/settings/notifications
  * Get user's notification preferences
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   try {
     const session = await getServerSession(authOptions);
 
@@ -192,7 +192,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
  * DELETE /api/settings/notifications
  * Reset notification preferences to defaults
  */
-export async function DELETE(request: NextRequest): Promise<NextResponse> {
+export async function DELETE(): Promise<NextResponse> {
   try {
     const session = await getServerSession(authOptions);
 

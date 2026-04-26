@@ -31,7 +31,7 @@ export default function SignUp() {
       } else {
         setError(data.error || 'Erro ao criar conta')
       }
-    } catch (err) {
+    } catch {
       setError('Erro ao criar conta')
     } finally {
       setLoading(false)

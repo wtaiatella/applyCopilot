@@ -143,7 +143,7 @@ export class JobMatcher {
     })
 
     // Create TF-IDF vector
-    return vocabulary.map((term, index) => {
+    return vocabulary.map((term) => {
       const tf = wordCount.get(term) || 0
       // For simplicity, using term frequency only
       // In production, would calculate IDF across document corpus
@@ -168,7 +168,6 @@ export class JobMatcher {
   extractExperienceVector(years: number): number[] {
     // Normalize years of experience to 0-1 range
     // Assuming 0-10 years as the range
-    const normalized = Math.min(years / 10, 1)
     
     // Create experience level vector [entry, mid, senior, lead]
     if (years < 2) return [1, 0, 0, 0]

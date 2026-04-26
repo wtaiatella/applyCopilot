@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Button, Form, Input, Card, Typography, Space } from 'antd'
-import { signIn, getSession } from 'next-auth/react'
+import { Button, Form, Input, Card, Typography } from 'antd'
+import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
 const { Title } = Typography
@@ -24,7 +24,7 @@ export default function SignIn() {
       } else {
         router.push('/dashboard')
       }
-    } catch (err) {
+    } catch {
       setError('Erro ao fazer login')
     } finally {
       setLoading(false)

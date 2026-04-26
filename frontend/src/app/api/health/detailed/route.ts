@@ -2,7 +2,6 @@
 // GET /api/health/detailed - Detailed health check with component status
 // Based on task T024: Implement health check and monitoring endpoints
 
-import { NextRequest } from 'next/server';
 import { successResponse, handleApiError } from '@/lib/api';
 import prisma from '@/lib/prisma';
 import { ollamaClient } from '@/lib/ai/ollama';
@@ -20,6 +19,7 @@ interface DetailedHealth {
   uptime: number;
   version: string;
   environment: string;
+  responseTime: number;
   components: {
     database: HealthComponent;
     ai: {
@@ -34,9 +34,9 @@ interface DetailedHealth {
   };
 }
 
-export async function GET(_request: NextRequest) {
+export async function GET() {
+  const startTime = Date.now();
   try {
-    const startTime = Date.now();
 
     // Database health check
     let databaseStatus: HealthComponent = { status: 'healthy', responseTime: 0 };
@@ -49,8 +49,8 @@ export async function GET(_request: NextRequest) {
     }
 
     // AI services health checks
-    const ollamaAvailable = ollamaClient.isAvailable();
-    const geminiAvailable = geminiClient.isAvailable();
+    const ollamaAvailable = await ollamaClient.isAvailable();
+    const geminiAvailable = await geminiClient.isAvailable();
 
     const ollamaStatus: HealthComponent = {
       status: ollamaAvailable ? 'healthy' : 'degraded',
@@ -86,6 +86,7 @@ export async function GET(_request: NextRequest) {
       uptime: process.uptime(),
       version: process.env.npm_package_version || '1.0.0',
       environment: process.env.NODE_ENV || 'development',
+      responseTime: Date.now() - startTime,
       components: {
         database: databaseStatus,
         ai: {

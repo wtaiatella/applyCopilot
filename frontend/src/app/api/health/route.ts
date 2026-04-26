@@ -2,11 +2,10 @@
 // GET /api/health - Basic health check
 // Based on task T024: Implement health check and monitoring endpoints
 
-import { NextRequest } from 'next/server';
 import { successResponse, handleApiError } from '@/lib/api';
 import prisma from '@/lib/prisma';
 
-export async function GET(_request: NextRequest) {
+export async function GET() {
   try {
     const startTime = Date.now();
 
@@ -19,7 +18,7 @@ export async function GET(_request: NextRequest) {
       // MongoDB health check - ping command
       await prisma.$runCommandRaw({ ping: 1 });
       dbResponseTime = Date.now() - dbStart;
-    } catch (_error) {
+    } catch {
       dbStatus = 'unhealthy';
     }
 

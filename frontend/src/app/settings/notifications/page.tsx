@@ -101,6 +101,7 @@ export default function NotificationSettingsPage() {
     if (status === 'authenticated') {
       fetchPreferences();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
   const fetchPreferences = async () => {
@@ -140,12 +141,19 @@ export default function NotificationSettingsPage() {
     try {
       setSaving(true);
 
-      // Format time values
+      // Format time values - TimePicker returns dayjs objects
+      const formatTimeValue = (val: unknown): string | null => {
+        if (!val) return null;
+        if (dayjs.isDayjs(val)) return val.format('HH:mm');
+        if (typeof val === 'string') return val;
+        return null;
+      };
+
       const formattedValues = {
         ...values,
-        digestTime: values.digestTime ? dayjs(values.digestTime).format('HH:mm') : null,
-        quietHoursStart: values.quietHoursStart ? dayjs(values.quietHoursStart).format('HH:mm') : null,
-        quietHoursEnd: values.quietHoursEnd ? dayjs(values.quietHoursEnd).format('HH:mm') : null,
+        digestTime: formatTimeValue(values.digestTime),
+        quietHoursStart: formatTimeValue(values.quietHoursStart),
+        quietHoursEnd: formatTimeValue(values.quietHoursEnd),
       };
 
       const response = await fetch('/api/settings/notifications', {
@@ -186,7 +194,7 @@ export default function NotificationSettingsPage() {
 
       message.success('Preferences reset to defaults');
       await fetchPreferences();
-    } catch (err) {
+    } catch {
       message.error('Failed to reset preferences');
     } finally {
       setSaving(false);

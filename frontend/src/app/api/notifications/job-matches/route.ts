@@ -97,7 +97,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  * GET /api/notifications/job-matches
  * Get current batch status for the user
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   try {
     const session = await getServerSession(authOptions);
 
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * PUT /api/notifications/job-matches
  * Force flush pending batch for immediate notification
  */
-export async function PUT(request: NextRequest): Promise<NextResponse> {
+export async function PUT(): Promise<NextResponse> {
   try {
     const session = await getServerSession(authOptions);
 

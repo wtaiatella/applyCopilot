@@ -6,7 +6,6 @@ import {
   sendDeadlineAlert,
   sendOfferAlert,
   sendStatusChangeAlert,
-  CriticalAlertType,
 } from '@/lib/notification';
 import { authOptions } from '@/lib/auth/config';
 import logger from '@/lib/logging/logger';
@@ -136,7 +135,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  * GET /api/notifications/whatsapp-alerts
  * Get WhatsApp alert configuration status
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   try {
     const session = await getServerSession(authOptions);
 

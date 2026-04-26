@@ -20,9 +20,6 @@ export async function POST(request: NextRequest) {
     const {
       portals,
       keywords,
-      experienceLevel,
-      remote = true,
-      location,
     } = body;
 
     if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {

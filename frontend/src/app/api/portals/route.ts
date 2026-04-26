@@ -41,18 +41,26 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, url, isActive = true } = body;
+    const { name, url, type = 'GENERIC', enabled = true } = body;
 
-    if (!name || !url) {
-      throw new ValidationError('Name and URL are required');
+    if (!name) {
+      throw new ValidationError('Name is required');
+    }
+
+    // Get user from session (simplified - should use auth)
+    const userId = body.userId; // TODO: Get from authenticated session
+    if (!userId) {
+      throw new ValidationError('User ID is required');
     }
 
     // Create new portal configuration
-    const portal = await prisma.jobPortal.create({
+    const portal = await prisma.portalConfig.create({
       data: {
         name,
         url,
-        isActive,
+        type,
+        enabled,
+        userId,
       },
     });
 

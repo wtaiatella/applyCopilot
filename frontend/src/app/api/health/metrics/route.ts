@@ -2,11 +2,10 @@
 // GET /api/health/metrics - System metrics for monitoring
 // Based on task T024: Implement health check and monitoring endpoints
 
-import { NextRequest } from 'next/server';
 import { successResponse, handleApiError } from '@/lib/api';
 import prisma from '@/lib/prisma';
 
-export async function GET(_request: NextRequest) {
+export async function GET() {
   try {
     const memoryUsage = process.memoryUsage();
 

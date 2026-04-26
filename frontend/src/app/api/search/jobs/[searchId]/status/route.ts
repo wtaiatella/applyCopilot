@@ -9,7 +9,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { searchId: string } }
+  { params }: { params: Promise<{ searchId: string }> }
 ) {
   try {
     // Check rate limit (job search category - 10 req/min)
@@ -18,7 +18,7 @@ export async function GET(
       return response!;
     }
 
-    const { searchId } = params;
+    const { searchId } = await params;
 
     // TODO: Fetch search status from database or cache
     // For now, return placeholder status

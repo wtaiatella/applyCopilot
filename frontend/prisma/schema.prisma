@@ -28,6 +28,9 @@ model User {
   searchQueries   SearchQuery[]
   sessions        Session[]
   jobMatches      JobMatch[]
+  notificationQueue NotificationQueue[]
+  notificationLogs  NotificationLog[]
+  notificationPreferences UserNotificationPreferences?
 
   @@map("users")
 }
@@ -410,4 +413,165 @@ enum SearchFrequency {
   DAILY
   WEEKLY
   MANUAL
+}
+
+// Notification System
+model NotificationQueue {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String    @db.ObjectId
+
+  // Notification Content
+  type            NotificationType
+  channel         NotificationChannel
+  status          QueueStatus        @default(PENDING)
+
+  // Recipient Data
+  email           String?
+  phone           String?
+
+  // Message Content
+  subject         String?
+  body            String
+  template        String?           // Template name if using templates
+  variables       Json?             // Template variables
+
+  // Retry Logic
+  attempts        Int               @default(0)
+  maxAttempts     Int               @default(3)
+  lastError       String?
+  nextRetryAt     DateTime?
+
+  // Scheduling
+  scheduledAt     DateTime?         // For delayed notifications
+  processedAt     DateTime?
+  deliveredAt     DateTime?
+
+  // Fallback
+  fallbackChannel NotificationChannel?
+  fallbackSent    Boolean           @default(false)
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRetryAt])
+  @@index([userId, createdAt])
+  @@map("notification_queue")
+}
+
+model NotificationLog {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String    @db.ObjectId
+  queueId         String?   @db.ObjectId
+
+  // Notification Details
+  type            NotificationType
+  channel         NotificationChannel
+  status          DeliveryStatus
+
+  // Recipient
+  recipient       String            // Email or phone number
+
+  // Content Summary
+  subject         String?
+  bodyPreview     String            // First 200 chars for audit
+
+  // Delivery Tracking
+  sentAt          DateTime          @default(now())
+  deliveredAt     DateTime?
+  openedAt        DateTime?
+  bouncedAt       DateTime?
+  bounceReason    String?
+
+  // Error Tracking
+  error           String?
+  retryCount      Int               @default(0)
+
+  // Provider Response
+  providerMessageId String?           // Resend/Twilio message ID
+  providerResponse  Json?             // Full provider response
+
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, sentAt])
+  @@index([status, sentAt])
+  @@index([type, sentAt])
+  @@map("notification_logs")
+}
+
+model UserNotificationPreferences {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String    @unique @db.ObjectId
+
+  // Channel Preferences
+  emailEnabled    Boolean           @default(true)
+  whatsappEnabled Boolean           @default(false)
+  whatsappNumber  String?
+
+  // Frequency Settings
+  jobMatchFrequency NotificationFrequency @default(DIGEST)
+  digestDay       Int?                // 0-6 for Sunday-Saturday
+  digestTime      String?             // HH:MM format
+
+  // Notification Types
+  notifyOnJobMatches    Boolean       @default(true)
+  notifyOnApplicationUpdates Boolean  @default(true)
+  notifyOnInterviewScheduled Boolean @default(true)
+  notifyOnDeadline      Boolean       @default(true)
+  notifyOnSecurityAlert Boolean       @default(true)
+
+  // Quiet Hours
+  quietHoursStart String?             // HH:MM
+  quietHoursEnd   String?             // HH:MM
+  timezone        String              @default("America/Sao_Paulo")
+
+  updatedAt       DateTime            @updatedAt
+
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_notification_preferences")
+}
+
+// Enums for Notification System
+enum NotificationType {
+  WELCOME
+  PASSWORD_RESET
+  JOB_MATCH
+  APPLICATION_STATUS
+  INTERVIEW_SCHEDULED
+  DEADLINE_REMINDER
+  SECURITY_ALERT
+  SYSTEM_MAINTENANCE
+}
+
+enum NotificationChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+}
+
+enum QueueStatus {
+  PENDING
+  PROCESSING
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  SENT
+  DELIVERED
+  OPENED
+  BOUNCED
+  FAILED
+  COMPLAINED
+}
+
+enum NotificationFrequency {
+  IMMEDIATE
+  DIGEST
+  DAILY
+  WEEKLY
+  NEVER
 }

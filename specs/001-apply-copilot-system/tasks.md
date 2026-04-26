@@ -59,7 +59,7 @@ Implement core infrastructure components required by all user stories.
 - [X] T025 Install and configure Resend API for email delivery
 - [X] T026 Install and configure Twilio WhatsApp Business API
 - [X] T027 Create email service layer in frontend/src/lib/email/
-- [ ] T028 Create notification queue system for retry logic
+- [X] T028 Create notification queue system for retry logic
 - [ ] T029 Implement password reset flow with secure tokens
 - [ ] T030 Create welcome email template and trigger on registration
 - [ ] T031 Implement job match notification email service

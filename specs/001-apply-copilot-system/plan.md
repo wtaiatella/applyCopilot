@@ -42,7 +42,7 @@ ApplyCopilot is an intelligent job search automation system that helps users upl
 - Ollama: CV parsing, job data extraction, basic compatibility scoring (free, local)
 - Gemini API: Cover letters, advanced CV suggestions, nuanced matching (paid, high-value only)
 **VI. Privacy by Default**: ✅ PASS - CV processing and pre-filtering local only
-**VII. UI Consistency**: ✅ PASS - Ant Design 6 + Tailwind CSS 4, dark mode priority
+**VII. UI Consistency**: ✅ PASS - Ant Design 6 + Tailwind CSS 4, dark mode priority, UI Theming Strategy documented and implemented (see section below)
 
 **VIII. Security Requirements**: ✅ PASS - NextAuth.js credentials provider, MongoDB with Prisma, proper .env handling
 
@@ -52,7 +52,35 @@ ApplyCopilot is an intelligent job search automation system that helps users upl
 2. **Authentication**: NextAuth.js with credentials provider as required
 3. **Database**: MongoDB with Prisma ORM for flexible schema
 4. **UI Framework**: Ant Design 6 + Tailwind CSS 4 with dark mode support
-5. **Testing**: Jest + Playwright with 80% minimum coverage requirement
+5. **UI Theming**: Centralized theme configuration in `frontend/src/lib/theme.ts` - all Ant Design customizations MUST go here, NOT in `globals.css`
+6. **Testing**: Jest + Playwright with 80% minimum coverage requirement
+
+## UI Theming Strategy
+
+### Ant Design Theme Configuration
+
+**Policy**: All Ant Design color and style customizations MUST be centralized in a dedicated theme configuration file.
+
+**Location**: `frontend/src/lib/theme.ts`
+
+**Requirements**:
+- Theme configuration MUST use Ant Design's `ThemeConfig` type
+- Dark mode is the default (using `theme.darkAlgorithm`)
+- All color tokens (primary, hover, active states) MUST be defined in the theme file
+- Component-specific overrides (if needed) MUST be defined in the `components` section of `ThemeConfig`
+
+**Prohibited**:
+- DO NOT add Ant Design CSS variable overrides to `globals.css`
+- DO NOT define inline theme configurations in components
+- DO NOT create custom CSS classes that override Ant Design component styles (unless absolutely necessary)
+
+**Exception Handling**:
+Only add Ant Design-related CSS to `globals.css` for very specific edge cases that cannot be handled by Ant Design's `ConfigProvider` theme system. Such exceptions MUST be documented with a comment explaining why the theme system is insufficient.
+
+**Integration**:
+- `registry.tsx` imports the theme from `@/lib/theme` and passes it to `ConfigProvider`
+- `globals.css` contains only Tailwind CSS utilities and base HTML element styles
+- This ensures a single source of truth for Ant Design theming and consistent styling across the application
 
 ## Project Structure
 

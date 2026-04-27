@@ -1,6 +1,30 @@
 @import "tailwindcss";
 
-/* Ant Design integration with Tailwind CSS 4 */
+/**
+ * Global CSS Configuration
+ * 
+ * IMPORTANT POLICY - Ant Design Theming:
+ * 
+ * 1. All Ant Design color and style customizations MUST be done in:
+ *    frontend/src/lib/theme.ts
+ * 
+ * 2. This file (globals.css) should ONLY contain:
+ *    - Tailwind CSS utilities and configurations
+ *    - Base HTML element styles (html, body)
+ *    - Custom utility classes that are NOT Ant Design overrides
+ * 
+ * 3. DO NOT add Ant Design token overrides here (e.g., --applycopilot-primary)
+ *    Those belong in the ThemeConfig object in @/lib/theme.ts
+ * 
+ * 4. Exception: Only add Ant Design-related CSS here for very specific edge cases
+ *    that cannot be handled by Ant Design's ConfigProvider theme system.
+ *    Such exceptions must be documented with a comment explaining why.
+ * 
+ * Rationale: Maintaining a single source of truth for Ant Design theming ensures
+ * consistent styling, easier dark/light mode switching, and better maintainability.
+ */
+
+/* Tailwind CSS theme variables */
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -20,22 +44,17 @@
   }
 }
 
-/* Ensure Ant Design components work with Tailwind */
+/* Base styles - these work alongside Ant Design */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
-/* Ant Design dark mode integration */
+/* 
+ * Ant Design app container integration
+ * This ensures the Ant Design App component blends with the page background
+ */
 .ant-app {
-  background: var(--background);
-  color: var(--foreground);
-}
-
-/* Custom utilities for ApplyCopilot */
-@theme {
-  --applycopilot-primary: #1677ff;
-  --applycopilot-primary-hover: #4096ff;
-  --applycopilot-primary-active: #0958d9;
+  background: transparent;
 }

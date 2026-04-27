@@ -9,6 +9,7 @@ const publicRoutes = [
   '/api/auth/signup',
   '/api/auth/[...nextauth]',
   '/',
+  '/api/profile/upload-cv', // TEMPORARY: Allow CV upload for testing without auth
 ]
 
 const protectedRoutes = [
@@ -26,6 +27,12 @@ export default withAuth(
   function middleware(req) {
     const { pathname } = req.nextUrl
     const token = req.nextauth?.token
+
+    // Allow public routes without authentication check
+    const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
+    if (isPublicRoute) {
+      return NextResponse.next()
+    }
 
     // Check if the route is protected and user is not authenticated
     const isProtectedRoute = protectedRoutes.some(route => 

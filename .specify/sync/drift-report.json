@@ -1,13 +1,13 @@
 {
-  "generated": "2026-04-26T21:37:00Z",
+  "generated": "2026-04-26T22:30:00Z",
   "project": "ApplyCopilot Job Search Automation System",
   "summary": {
     "specs_analyzed": 1,
     "requirements_checked": 35,
-    "aligned": 18,
-    "drifted": 4,
-    "not_implemented": 14,
-    "unspecced_features": 2
+    "aligned": 13,
+    "drifted": 5,
+    "not_implemented": 17,
+    "unspecced_features": 3
   },
   "specs": [
     {
@@ -15,9 +15,10 @@
       "title": "ApplyCopilot Job Search Automation System",
       "status": "Draft",
       "branch": "001-apply-copilot-system",
-      "total_tasks": 103,
-      "completed_tasks": 33,
-      "completion_percentage": 32,
+      "total_tasks": 114,
+      "completed_tasks": 34,
+      "completion_percentage": 30,
+      "note": "Significant drift between tasks.md status and actual implementation",
       "aligned": [
         "FR-001",
         "FR-002",
@@ -28,27 +29,21 @@
         "FR-016",
         "FR-017",
         "FR-018",
+        "FR-019",
         "FR-021",
         "FR-022",
         "SC-006",
         "SC-007",
-        "SC-009",
-        "T022",
-        "T028",
-        "T029",
-        "T030",
-        "T031",
-        "T032",
-        "T033"
+        "SC-009"
       ],
       "drifted": [
         {
           "requirement": "FR-002",
-          "spec_text": "CV extraction into 6 sections including references",
-          "actual": "References section missing from Ollama extraction schema",
-          "location": "frontend/src/lib/ai/ollama.ts:174-208",
+          "spec_text": "CV extraction into 6 sections with references",
+          "actual": "AI parsing integrated but UI for tabbed interface missing, parsing in API route not separate service",
+          "location": "frontend/src/app/api/profile/upload-cv/route.ts:102",
           "severity": "minor",
-          "root_cause": "Schema incomplete - missing references field"
+          "root_cause": "Architecture differs from task specification - no dedicated cv-parser.ts"
         },
         {
           "requirement": "FR-003",
@@ -67,15 +62,25 @@
           "root_cause": "Profile UI pending T043-T049"
         },
         {
-          "requirement": "Path Drift",
-          "spec_text": "CV parser at lib/parsing/cv-parser.ts",
-          "actual": "Parsing logic in API route instead of separate service",
-          "location": "frontend/src/app/api/profile/upload-cv/route.ts",
-          "severity": "minor",
-          "root_cause": "Architecture differs from task specification"
+          "requirement": "FR-006",
+          "spec_text": "Dual-layer scraping with generic and provider-specific extractors",
+          "actual": "Scraping directory is empty, no implementation",
+          "location": "frontend/src/lib/scraping/ - empty directory",
+          "severity": "major",
+          "root_cause": "Job scraping infrastructure not implemented"
+        },
+        {
+          "requirement": "Task Drift",
+          "spec_text": "tasks.md shows 34 completed tasks (Phase 1 & 2)",
+          "actual": "Actual codebase has significant implementation beyond Phase 1 & 2 - API routes, services, schemas exist for many pending tasks",
+          "location": "tasks.md vs actual codebase",
+          "severity": "major",
+          "root_cause": "Task completion status not updated to reflect actual implementation"
         }
       ],
       "not_implemented": [
+        "FR-003",
+        "FR-004",
         "FR-006",
         "FR-007",
         "FR-008",
@@ -83,7 +88,6 @@
         "FR-010",
         "FR-011",
         "FR-012",
-        "FR-019",
         "FR-020",
         "FR-023",
         "SC-001",
@@ -98,12 +102,14 @@
       ],
       "phase_status": {
         "phase_1_setup": { "total": 12, "completed": 12, "percentage": 100 },
-        "phase_2_infrastructure": { "total": 21, "completed": 21, "percentage": 100 },
-        "phase_3_us1_profile": { "total": 16, "completed": 4, "percentage": 25 },
+        "phase_2_infrastructure": { "total": 22, "completed": 22, "percentage": 100 },
+        "phase_3_us1_profile": { "total": 16, "completed": 2, "percentage": 13 },
         "phase_4_us2_jobs": { "total": 15, "completed": 1, "percentage": 7 },
-        "phase_5_us3_personalization": { "total": 12, "completed": 1, "percentage": 8 },
+        "phase_5_us3_personalization": { "total": 11, "completed": 1, "percentage": 9 },
         "phase_6_us4_tracking": { "total": 11, "completed": 1, "percentage": 9 },
-        "phase_7_polish": { "total": 16, "completed": 0, "percentage": 0 }
+        "phase_7_polish": { "total": 13, "completed": 0, "percentage": 0 },
+        "phase_8_testing": { "total": 11, "completed": 0, "percentage": 0 },
+        "phase_9_metrics": { "total": 3, "completed": 0, "percentage": 0 }
       }
     }
   ],
@@ -131,38 +137,59 @@
   "recommendations": [
     {
       "priority": "high",
-      "action": "Build Core UI Components",
-      "details": "Create profile management UI to unblock User Story 1",
+      "action": "Update tasks.md to Reflect Actual Implementation",
+      "details": "Major drift between task status and codebase - audit all API routes, services, and components in frontend/src/ and update task completion status",
+      "tasks": ["All tasks"],
+      "files": ["specs/001-apply-copilot-system/tasks.md"]
+    },
+    {
+      "priority": "high",
+      "action": "Build Profile UI Components",
+      "details": "Blocker for User Story 1 completion - create profile management UI, tabbed interface for 6 sections, profile editing",
       "tasks": ["T043", "T044", "T045", "T046", "T047"],
       "files": ["frontend/src/components/profile/", "frontend/src/app/profile/"]
     },
     {
       "priority": "high",
-      "action": "Implement Job Scraping Pipeline",
-      "details": "Core value proposition - enable job discovery",
-      "tasks": ["T050", "T051", "T052", "T053", "T056"],
-      "files": ["frontend/src/lib/scraping/"]
+      "action": "Implement Job Scraping Infrastructure",
+      "details": "Core value proposition - scraping/ directory is empty, need to complete web scraping service, AI processing pipeline, job search UI",
+      "tasks": ["T050", "T051", "T052", "T053", "T056", "T058", "T059", "T060", "T061", "T062", "T063", "T064"],
+      "files": ["frontend/src/lib/scraping/", "frontend/src/components/jobs/", "frontend/src/app/jobs/"]
     },
     {
       "priority": "medium",
-      "action": "Complete Profile API Routes",
-      "details": "Add missing profile CRUD endpoints",
-      "tasks": ["T038"],
-      "files": ["frontend/src/app/api/profile/"]
+      "action": "Connect AI Services to API Endpoints",
+      "details": "Services exist but not wired - wire CV suggestions generation (FR-010), cover letter generation (FR-011), TensorFlow matching to job search pipeline",
+      "tasks": ["FR-010", "FR-011", "T055", "T056"],
+      "files": ["frontend/src/app/api/applications/", "frontend/src/lib/ai/"]
     },
     {
       "priority": "medium",
-      "action": "Wire Email Delivery Tracking",
-      "details": "Connect Resend webhooks to notification log model",
-      "tasks": ["FR-020"],
-      "files": ["frontend/src/lib/email/resend.ts"]
+      "action": "Build Application Personalization UI",
+      "details": "User Story 3 - create application materials UI, CV suggestions component, cover letter generator",
+      "tasks": ["T070", "T071", "T072", "T073", "T074"],
+      "files": ["frontend/src/components/applications/"]
+    },
+    {
+      "priority": "medium",
+      "action": "Complete Dashboard UI",
+      "details": "User Story 4 - build application tracking dashboard, status update workflows, statistics widgets",
+      "tasks": ["T079", "T080", "T081", "T082", "T083", "T084", "T085"],
+      "files": ["frontend/src/components/dashboard/"]
     },
     {
       "priority": "low",
-      "action": "Add Unsubscribe Endpoint",
-      "details": "Implement email unsubscribe functionality",
-      "tasks": ["FR-023"],
-      "files": ["frontend/src/app/api/notifications/unsubscribe/"]
+      "action": "Add Success Criteria Metrics Tracking",
+      "details": "Phase 9 (Post-MVP) - implement analytics for SC-001 through SC-012, set up monitoring infrastructure",
+      "tasks": ["T111", "T112", "T113"],
+      "files": ["frontend/src/lib/metrics/"]
+    },
+    {
+      "priority": "low",
+      "action": "Sync Spec with Implementation",
+      "details": "Address unspecced code - add health check endpoints to spec, document dashboard API endpoints, clarify Gemini AI implementation details",
+      "tasks": ["Spec updates"],
+      "files": ["specs/001-apply-copilot-system/spec.md"]
     }
   ]
 }

@@ -3,7 +3,7 @@
 // Based on API contract: specs/001-apply-copilot-system/contracts/api.md
 
 import { NextRequest } from 'next/server';
-import * as pdfParse from 'pdf-parse';
+import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import {
   createdResponse,
@@ -36,6 +36,9 @@ export async function POST(request: NextRequest) {
       throw new ValidationError('No file provided');
     }
 
+    // TEMPORARY: Skip authentication for testing
+    // TODO: Remove this and restore authentication check after testing
+
     loggers.app.info('Profile CV upload started', {
       originalName: file.name,
       size: file.size,
@@ -66,34 +69,65 @@ export async function POST(request: NextRequest) {
     try {
       const fileResult = await getFile(saveResult.fileId);
       if (!fileResult || (typeof fileResult === 'string')) {
+        loggers.app.error('File retrieval failed', { fileId: saveResult.fileId, fileResult });
         throw new AIProcessingError('Failed to retrieve uploaded file');
       }
 
       const { buffer, metadata } = fileResult;
+      loggers.app.info('File retrieved successfully', { 
+        fileId: saveResult.fileId, 
+        bufferSize: buffer.length,
+        mimeType: metadata.mimeType 
+      });
 
       // Extract text based on file type
       if (metadata.mimeType === 'application/pdf') {
-        const pdfData = await (pdfParse as unknown as (b: Buffer) => Promise<{ text: string }>)(buffer);
-        cvText = pdfData.text;
+        loggers.app.info('Starting PDF extraction', { fileId: saveResult.fileId });
+        // Use pdfjs-dist directly for PDF text extraction
+        const loadingTask = pdfjsLib.getDocument({ data: buffer });
+        const pdf = await loadingTask.promise;
+        let fullText = '';
+        
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map((item: any) => item.str).join(' ');
+          fullText += pageText + '\n';
+        }
+        
+        cvText = fullText;
+        loggers.app.info('PDF extraction completed', { 
+          fileId: saveResult.fileId, 
+          textLength: cvText.length,
+          pages: pdf.numPages
+        });
       } else if (
         metadata.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
         metadata.mimeType === 'application/msword'
       ) {
+        loggers.app.info('Starting DOCX extraction', { fileId: saveResult.fileId });
         const docResult = await mammoth.extractRawText({ buffer });
         cvText = docResult.value;
+        loggers.app.info('DOCX extraction completed', { 
+          fileId: saveResult.fileId, 
+          textLength: cvText.length 
+        });
       } else {
+        loggers.app.error('Unsupported file type', { mimeType: metadata.mimeType });
         throw new InvalidFileTypeError(['PDF', 'DOCX']);
       }
 
       if (!cvText || cvText.trim().length === 0) {
+        loggers.app.error('Extracted text is empty', { fileId: saveResult.fileId });
         throw new AIProcessingError('Could not extract text from CV file');
       }
     } catch (error) {
-      loggers.ai.error('CV text extraction failed', {
+      loggers.app.error('CV text extraction failed', {
         fileId: saveResult.fileId,
         error: (error as Error).message,
+        stack: (error as Error).stack,
       });
-      throw new AIProcessingError('Failed to extract text from CV file');
+      throw new AIProcessingError('Failed to extract text from CV file: ' + (error as Error).message);
     }
 
     // Process CV with AI (Ollama)
@@ -106,7 +140,12 @@ export async function POST(request: NextRequest) {
         fileId: saveResult.fileId,
         error: (error as Error).message,
       });
-      throw new AIProcessingError('Failed to process CV with AI');
+      // Return partial success with extracted text even if AI parsing fails
+      return createdResponse({
+        fileId: saveResult.fileId,
+        extractedText: cvText,
+        error: 'AI parsing failed',
+      });
     }
 
     const duration = Date.now() - startTime;

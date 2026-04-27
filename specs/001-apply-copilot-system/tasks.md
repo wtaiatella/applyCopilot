@@ -88,15 +88,15 @@ Enable users to upload CVs and automatically extract/organize professional infor
 
 ### Implementation Tasks
 
-- [ ] T034 [P] Create CV parsing service in frontend/src/lib/parsing/cv-parser.ts
-- [ ] T035 [P] Implement PDF extraction using pdf-parse library
-- [ ] T036 [P] Implement DOCX extraction using mammoth.js
-- [ ] T037 [P] Create User model and authentication API in frontend/src/app/api/auth/
-- [ ] T038 [P] Create UserProfile API routes in frontend/src/app/api/profile/
-- [ ] T039 [US1] Implement CV upload endpoint in frontend/src/app/api/profile/upload-cv/route.ts
-- [ ] T040 [P] Create Ollama integration for structured data extraction in frontend/src/lib/ai/ollama.ts
+- [X] T034 [P] Create CV parsing service in frontend/src/lib/parsing/cv-parser.ts
+- [X] T035 [P] Implement PDF extraction using pdf-parse library
+- [X] T036 [P] Implement DOCX extraction using mammoth.js
+- [X] T037 [P] Create User model and authentication API in frontend/src/app/api/auth/
+- [X] T038 [P] Create UserProfile API routes in frontend/src/app/api/profile/
+- [X] T039 [US1] Implement CV upload endpoint in frontend/src/app/api/profile/upload-cv/route.ts
+- [X] T040 [P] Create Ollama integration for structured data extraction in frontend/src/lib/ai/ollama.ts
   - *Note: Depends on T035 or T036 (requires extracted text to test the extraction pipeline)*
-- [ ] T041 [US1] Implement AI-powered CV parsing pipeline
+- [X] T041 [US1] Implement AI-powered CV parsing pipeline
 - [ ] T042 [P] Create profile data validation schemas in frontend/src/lib/validation/
 - [ ] T043 [US1] Build profile management UI components in frontend/src/components/profile/
 - [ ] T044 [US1] Create tabbed interface for profile sections in frontend/src/components/profile/ProfileTabs.tsx

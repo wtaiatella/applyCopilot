@@ -102,7 +102,7 @@ As a registered user, I want to receive timely notifications about important eve
 
 ### Functional Requirements
 
-- **FR-001**: System MUST allow users to upload CV files in PDF or DOCX format
+- **FR-001**: System MUST allow users to upload CV files in PDF or DOCX format and store them securely in an AWS S3 bucket
 - **FR-002**: System MUST automatically extract and categorize CV data into six main sections (basic data, experiences, education, projects, skills, references)
 - **FR-003**: System MUST provide tabbed interface for managing multiple items within each profile section
 - **FR-004**: System MUST allow users to edit extracted data and add free-form context descriptions
@@ -165,8 +165,9 @@ As a registered user, I want to receive timely notifications about important eve
 - Use Case: Convert scraped markdown files to structured JSON for consistent job listings
 
 ### User Authentication & Data Persistence
-**Decision**: Email/password authentication with MongoDB database persistence
-- MongoDB with Prisma ORM for all user data storage (CV profiles, applications, preferences)
+**Decision**: Email/password authentication with MongoDB for relational data, AWS S3 for file storage
+- MongoDB with Prisma ORM for user data storage (CV profiles, applications, preferences)
+- AWS S3 bucket (ApplyCopilot) for storing physical CV files (PDF/DOCX)
 - No export functionality needed since data persists in database
 - Authentication system for user account management and data security
 

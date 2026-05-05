@@ -18,8 +18,8 @@ ApplyCopilot is an intelligent job search automation system that helps users upl
 -->
 
 **Language/Version**: TypeScript 5.6+ (Next.js 16)
-**Primary Dependencies**: Next.js 16, React 19, Ant Design 6, Tailwind CSS 4, Prisma v6.x, TensorFlow.js, Ollama SDK, Gemini API
-**Storage**: MongoDB with Prisma ORM v6.x (Prisma v7+ does not support MongoDB)
+**Primary Dependencies**: Next.js 16, React 19, Ant Design 6, Tailwind CSS 4, Prisma v6.x, TensorFlow.js, Ollama SDK, Gemini API, AWS SDK
+**Storage**: MongoDB with Prisma ORM v6.x (Prisma v7+ does not support MongoDB) for relational data, AWS S3 for CV file storage
 **Testing**: Jest (unit/integration), Playwright (E2E)
 **Target Platform**: Web application (Node.js server, browser client)
 **Project Type**: web-service
@@ -144,7 +144,7 @@ specs/001-apply-copilot-system/
 └── tasks.md             # Phase 2 output
 ```
 
-**Structure Decision**: Unified Next.js 16 application following constitution-mandated folder structure. Single frontend/ directory contains all application code with clear separation of concerns (app/, components/, lib/, services/). MongoDB with Prisma handles data persistence, and AI processing is distributed between local (TensorFlow.js, Ollama) and premium (Gemini) services.
+**Structure Decision**: Unified Next.js 16 application following constitution-mandated folder structure. Single frontend/ directory contains all application code with clear separation of concerns (app/, components/, lib/, services/). MongoDB with Prisma handles relational data persistence, AWS S3 handles physical CV file storage, and AI processing is distributed between local (TensorFlow.js, Ollama) and premium (Gemini) services.
 
 ## Complexity Tracking
 

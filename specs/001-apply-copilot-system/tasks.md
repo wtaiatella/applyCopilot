@@ -20,6 +20,7 @@ Initialize Next.js 16 project with required dependencies, configuration, and dev
 - [X] T001 Initialize Next.js 16 project with TypeScript
 - [X] T002 Install and configure core dependencies (React 19, Ant Design 6, Tailwind CSS 4)
 - [X] T003 Install and configure database dependencies (Prisma, MongoDB)
+- [ ] T003a Install and configure AWS SDK for S3 file storage (ApplyCopilot bucket)
 - [X] T004 Install and configure AI dependencies (TensorFlow.js, Ollama SDK)
 - [X] T005 Install testing dependencies (Jest, Playwright, Testing Library)
 - [X] T006 Configure environment variables and .env files
@@ -51,7 +52,7 @@ Implement core infrastructure components required by all user stories.
 - [X] T017 Set up logging with Winston
 - [X] T018 Configure rate limiting middleware
 - [X] T019 Create input validation schemas with Zod
-- [X] T020 Implement file upload handling for CV files
+- [ ] T020 Implement file upload handling and AWS S3 integration for CV files
 - [X] T021 Set up AI service clients (Ollama, Gemini)
 - [X] T022 Configure TensorFlow.js for compatibility scoring
 - [X] T023 Create base API route structure
@@ -63,8 +64,11 @@ Implement core infrastructure components required by all user stories.
 - [X] T029 Implement password reset flow with secure tokens
 - [X] T030 Create welcome email template and trigger on registration
 - [X] T031 Implement job match notification email service
+- [ ] T031a Implement Resend webhook endpoints to capture email delivery/bounce events into NotificationLog
 - [X] T032 Create WhatsApp notification service for critical alerts
+- [ ] T032a Implement fallback logic to email when WhatsApp delivery fails
 - [X] T033 Build notification preferences management UI
+- [ ] T033b Create unsubscribe API endpoint with 24-hour processing guarantee
 - [X] T033a Create Ant Design theme configuration file
   - Create `frontend/src/lib/theme.ts` with centralized ThemeConfig
   - Define dark mode as default (theme.darkAlgorithm)
@@ -250,6 +254,7 @@ Implement comprehensive test coverage to meet Constitution-mandated 80% minimum 
 - [ ] T107 [P] Write integration tests for email and notification services (Resend, Twilio)
 - [ ] T108 [P] Write E2E tests for critical user flows (signup → profile → job search → application)
 - [ ] T109 [P] Add automated testing pipeline (CI/CD for unit, integration, E2E tests)
+- [ ] T109a [P] Build comprehensive Settings page layout for user preferences and account management
 - [ ] T110 [P] Review and refine notification preferences UI when implementing Settings page
   - *Note: T033 was implemented in Phase 2 but needs UI/UX review during Settings page development*
 
@@ -336,11 +341,11 @@ Implement comprehensive metrics collection and monitoring infrastructure for mea
 
 ## Task Summary
 
-- **Total Tasks**: 114 (113 + T033a added for Ant Design theme configuration)
-- **Completed Tasks**: 34 (T001-T033, T033a in Phases 1-2)
-- **Pending Tasks**: 80 (T034-T113)
-- **Setup Tasks**: 12 (Phase 1, T001-T012) ✅
-- **Infrastructure Tasks**: 22 (Phase 2, T013-T033, T033a) ✅
+- **Total Tasks**: 119 (113 + T033a + T003a, T031a, T032a, T033b, T109a added)
+- **Completed Tasks**: 33
+- **Pending Tasks**: 86
+- **Setup Tasks**: 13 (Phase 1, T001-T012, T003a)
+- **Infrastructure Tasks**: 25 (Phase 2, T013-T033, T033a, T031a, T032a, T033b)
   - Includes T033a: Ant Design theme configuration per UI Theming Strategy
 - **User Story 1 Tasks**: 16 (Phase 3, T034-T049)
 - **User Story 2 Tasks**: 15 (Phase 4, T050-T064)
@@ -348,7 +353,7 @@ Implement comprehensive metrics collection and monitoring infrastructure for mea
 - **User Story 4 Tasks**: 11 (Phase 6, T076-T086)
 - **Polish Tasks**: 13 (Phase 7, T087-T099)
   - T089 updated: Refine dark mode and add light mode toggle (base theme done in T033a)
-- **Testing Tasks**: 11 (Phase 8, T100-T110)
+- **Testing Tasks**: 12 (Phase 8, T100-T110, T109a)
 - **Metrics & Monitoring Tasks**: 3 (Phase 9, T111-T113) - Post-MVP
 
 ### MVP vs Post-MVP Breakdown

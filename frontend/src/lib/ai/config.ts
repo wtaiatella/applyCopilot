@@ -17,8 +17,9 @@ export interface AIConfig {
 export const defaultAIConfig: AIConfig = {
   ollama: {
     baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-    model: process.env.OLLAMA_MODEL || 'llama3.2:3b',
-    timeout: 30000
+    // Modelo definido no Docker - sem fallback para garantir configuração explícita
+    model: process.env.OLLAMA_MODEL || '',
+    timeout: 300000 // 5 minutos para processamento de CV
   },
   tensorflow: {
     useGPU: false // Set to true if GPU is available

@@ -35,10 +35,17 @@ export class OllamaClient {
   private config: OllamaConfig
 
   constructor(config: Partial<OllamaConfig> = {}) {
+    // Modelo é definido no container Docker via OLLAMA_MODEL
+    // Não usar fallback - garantir que a variável esteja configurada
+    const model = process.env.OLLAMA_MODEL
+    if (!model) {
+      throw new Error('OLLAMA_MODEL environment variable is required. Set it in .env or docker-compose.yml')
+    }
+
     this.config = {
       baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-      model: process.env.OLLAMA_MODEL || 'llama3.2:3b',
-      timeout: 30000,
+      model,
+      timeout: 300000, // 5 minutos para processamento de CV
       ...config
     }
 
@@ -210,12 +217,56 @@ ${JSON.stringify(schema, null, 2)}
 
 ${cvText}
 
-Extract the following information:
-1. Basic personal information (name, email, phone, location)
-2. Work experience with company, position, dates, and descriptions
-3. Education with institution, degree, field, and dates
-4. Projects with name, description, and technologies
-5. Skills with name, category, and proficiency level`
+Return ONLY a JSON object with the extracted data in this exact format:
+{
+  "basicData": {
+    "firstName": "extracted first name",
+    "lastName": "extracted last name",
+    "email": "extracted email",
+    "phone": "extracted phone",
+    "location": "extracted location"
+  },
+  "experiences": [
+    {
+      "company": "company name",
+      "position": "job title",
+      "startDate": "start date",
+      "endDate": "end date or null",
+      "current": true/false,
+      "description": ["description line 1", "description line 2"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "institution name",
+      "degree": "degree name",
+      "field": "field of study",
+      "startDate": "start date",
+      "endDate": "end date or null",
+      "current": true/false
+    }
+  ],
+  "projects": [
+    {
+      "name": "project name (extract from experience descriptions if no separate project section)",
+      "description": ["description"],
+      "technologies": ["tech1", "tech2"]
+    }
+  ],
+  "skills": [
+    {
+      "name": "skill name (extract from Summary and experience descriptions)",
+      "category": "category (e.g., Frontend, Backend, DevOps, Database, Cloud)",
+      "proficiency": "level (e.g., Beginner, Intermediate, Advanced)"
+    }
+  ]
+}
+
+IMPORTANT:
+- Extract skills from the Summary section and experience descriptions if no separate skills section exists
+- Extract projects from experience descriptions if no separate projects section exists
+- Extract REAL data from the CV. Do NOT include type definitions or schema.
+- Return ONLY the JSON object with actual data.`
 
     const schema = {
       type: "object",

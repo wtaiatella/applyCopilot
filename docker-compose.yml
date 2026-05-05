@@ -52,14 +52,18 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+      - ./scripts/ollama-entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/entrypoint.sh"]
     networks:
       - applycopilot-network
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 120s
     # GPU support is optional - Ollama will use CPU if GPU not available
 
   # Ollama Web UI (optional) - Web interface for managing models

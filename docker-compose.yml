@@ -1,29 +1,4 @@
-version: '3.8'
-
 services:
-  # MongoDB - Primary database for the application
-  mongodb:
-    image: mongo:7.0
-    container_name: applycopilot-mongodb
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: adminpassword
-      MONGO_INITDB_DATABASE: applycopilot
-    volumes:
-      - mongodb_data:/data/db
-      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
-    networks:
-      - applycopilot-network
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
   # Redis - Caching and session storage
   redis:
     image: redis:7-alpine
@@ -43,56 +18,8 @@ services:
       start_period: 10s
     command: redis-server --appendonly yes
 
-  # Ollama - Local AI model serving
-  ollama:
-    image: ollama/ollama:latest
-    container_name: applycopilot-ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-      - ./scripts/ollama-entrypoint.sh:/entrypoint.sh:ro
-    entrypoint: ["/entrypoint.sh"]
-    networks:
-      - applycopilot-network
-    environment:
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-    # GPU support is optional - Ollama will use CPU if GPU not available
-
-  # Ollama Web UI (optional) - Web interface for managing models
-  ollama-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: applycopilot-ollama-webui
-    restart: unless-stopped
-    ports:
-      - "3001:8080"
-    environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_SECRET_KEY=your-secret-key-change-in-production
-    volumes:
-      - ollama_webui_data:/app/backend/data
-    networks:
-      - applycopilot-network
-    depends_on:
-      - ollama
-    profiles:
-      - webui
-
 volumes:
-  mongodb_data:
-    driver: local
   redis_data:
-    driver: local
-  ollama_data:
-    driver: local
-  ollama_webui_data:
     driver: local
 
 networks:

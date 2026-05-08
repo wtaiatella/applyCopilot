@@ -64,7 +64,7 @@ Implement core infrastructure components required by all user stories.
 - [X] T029 Implement password reset flow with secure tokens
 - [X] T030 Create welcome email template and trigger on registration
 - [X] T031 Implement job match notification email service
-- [ ] T031a Implement Resend webhook endpoints to capture email delivery/bounce events into NotificationLog
+- [X] T031a Implement Resend webhook endpoints to capture email delivery/bounce events into NotificationLog
 - [X] T032 Create WhatsApp notification service for critical alerts
 - [ ] T032a Implement fallback logic to email when WhatsApp delivery fails
 - [X] T033 Build notification preferences management UI
@@ -77,6 +77,9 @@ Implement core infrastructure components required by all user stories.
   - Update `registry.tsx` to import theme from @/lib/theme
   - Update `globals.css` with theming policy documentation
   - **Rationale**: Establishes single source of truth for Ant Design theming per UI Theming Strategy in plan.md
+- [X] T033c Build Login and Registration UI pages in frontend/src/app/auth/
+- [X] T033d Implement Password Recovery UI flow (Forgot Password & Reset Password pages)
+- [X] T033e Implement Email Validation UI flow (Verification page & resend link)
 
 ## Phase 3: User Story 1 - Profile Setup and CV Processing
 
@@ -101,14 +104,16 @@ Enable users to upload CVs and automatically extract/organize professional infor
 - [X] T040 [P] Create Ollama integration for structured data extraction in frontend/src/lib/ai/ollama.ts
   - *Note: Depends on T035 or T036 (requires extracted text to test the extraction pipeline)*
 - [X] T041 [US1] Implement AI-powered CV parsing pipeline
-- [ ] T042 [P] Create profile data validation schemas in frontend/src/lib/validation/
-- [ ] T043 [US1] Build profile management UI components in frontend/src/components/profile/
-- [ ] T044 [US1] Create tabbed interface for profile sections in frontend/src/components/profile/ProfileTabs.tsx
-- [ ] T045 [US1] Implement editable forms for each profile section
-- [ ] T046 [US1] Create profile page in frontend/src/app/profile/page.tsx
-- [ ] T047 [US1] Add profile navigation to main layout
-- [ ] T048 [US1] Implement profile data persistence to database
-- [ ] T049 [US1] Add profile editing and update functionality
+- [X] T042 [P] Create profile data validation schemas in frontend/src/lib/validation/
+- [X] T043 [US1] Build profile management UI components in frontend/src/components/profile/
+- [X] T044 [US1] Create tabbed interface for profile sections in frontend/src/components/profile/ProfileTabs.tsx
+- [X] T045 [US1] Implement editable forms for each profile section
+- [X] T046 [US1] Create profile page in frontend/src/app/profile/page.tsx
+- [X] T047 [US1] Add profile navigation to main layout
+- [X] T048 [US1] Implement profile data persistence to database
+- [X] T049 [US1] Add profile editing and update functionality
+- [ ] T049a [US1] Build CV Upload component (Ant Design Dragger) and integrate with /api/profile/upload-cv and extraction hook
+- [X] T049b [US1] Update MainLayout Header with User Avatar, session state, and Logout dropdown
 
 ## Phase 4: User Story 2 - Job Discovery and Smart Filtering
 
@@ -341,13 +346,13 @@ Implement comprehensive metrics collection and monitoring infrastructure for mea
 
 ## Task Summary
 
-- **Total Tasks**: 119 (113 + T033a + T003a, T031a, T032a, T033b, T109a added)
+- **Total Tasks**: 124 (113 + T033a + T003a, T031a, T032a, T033b, T109a, T033c, T033d, T033e, T049a, T049b added)
 - **Completed Tasks**: 33
-- **Pending Tasks**: 86
+- **Pending Tasks**: 91
 - **Setup Tasks**: 13 (Phase 1, T001-T012, T003a)
-- **Infrastructure Tasks**: 25 (Phase 2, T013-T033, T033a, T031a, T032a, T033b)
+- **Infrastructure Tasks**: 28 (Phase 2, T013-T033, T033a, T031a, T032a, T033b, T033c, T033d, T033e)
   - Includes T033a: Ant Design theme configuration per UI Theming Strategy
-- **User Story 1 Tasks**: 16 (Phase 3, T034-T049)
+- **User Story 1 Tasks**: 18 (Phase 3, T034-T049, T049a, T049b)
 - **User Story 2 Tasks**: 15 (Phase 4, T050-T064)
 - **User Story 3 Tasks**: 11 (Phase 5, T065-T075)
 - **User Story 4 Tasks**: 11 (Phase 6, T076-T086)

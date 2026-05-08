@@ -21,13 +21,4 @@ db.applications.createIndex({ "userId": 1, "status": 1 });
 db.applications.createIndex({ "jobId": 1 });
 db.notifications.createIndex({ "userId": 1, "read": 1, "createdAt": -1 });
 
-// Create application user with read/write access
-db.createUser({
-  user: "applycopilot_app",
-  pwd: "apppassword",
-  roles: [
-    { role: "readWrite", db: "applycopilot" }
-  ]
-});
-
 print("MongoDB initialization completed successfully");

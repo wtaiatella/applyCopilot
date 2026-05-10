@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { Form, Input, Button, message, Space, Card, DatePicker, Checkbox } from "antd";
+import React, { useEffect, useState } from "react";
+import { Form, Input, Button, App, Space, Card, DatePicker, Checkbox, Tabs } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import type { ExperienceInput } from "@/lib/validation/profile";
 import dayjs from "dayjs";
@@ -20,18 +20,24 @@ export function ExperiencesForm({
   onSubmit,
   loading,
 }: ExperiencesFormProps) {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
+  const [activeKey, setActiveKey] = useState<string>("0");
 
   useEffect(() => {
     if (initialData) {
       // Map string dates to dayjs objects for DatePicker
-      const formattedData = initialData.map((exp: any) => ({
-        ...exp,
-        dates: [
-          exp.startDate ? dayjs(exp.startDate) : undefined,
-          exp.endDate ? dayjs(exp.endDate) : undefined,
-        ],
-      }));
+      const formattedData = initialData.map((exp: any) => {
+        const isPresent = exp.endDate === 'Present' || exp.current;
+        return {
+          ...exp,
+          dates: [
+            exp.startDate ? dayjs(exp.startDate) : undefined,
+            isPresent ? dayjs() : (exp.endDate ? dayjs(exp.endDate) : undefined),
+          ],
+          bulletPoints: exp.bulletPoints || exp.description || [],
+        };
+      });
       form.setFieldsValue({ experiences: formattedData });
     }
   }, [initialData, form]);
@@ -39,13 +45,20 @@ export function ExperiencesForm({
   const onFinish = async (values: any) => {
     try {
       // Map dates back to strings
-      const formattedData = (values.experiences || []).map((exp: any) => ({
-        ...exp,
-        startDate: exp.dates?.[0]?.toISOString() || new Date().toISOString(),
-        endDate: exp.dates?.[1]?.toISOString() || undefined,
-        bulletPoints: exp.bulletPoints || [],
-        aiSuggestions: exp.aiSuggestions || [],
-      }));
+      const formattedData = (values.experiences || []).map((exp: any) => {
+        const startDate = exp.dates?.[0]?.toISOString() || new Date().toISOString();
+        const endDate = exp.dates?.[1];
+        const isCurrent = exp.current || (endDate && dayjs(endDate).isAfter(dayjs().subtract(1, 'day')));
+        
+        return {
+          ...exp,
+          startDate,
+          endDate: isCurrent ? 'Present' : endDate?.toISOString(),
+          current: isCurrent,
+          bulletPoints: exp.bulletPoints || [],
+          aiSuggestions: exp.aiSuggestions || [],
+        };
+      });
       await onSubmit(formattedData);
       message.success("Experiences updated successfully!");
     } catch (error) {
@@ -62,82 +75,121 @@ export function ExperiencesForm({
     >
       <Form.List name="experiences">
         {(fields, { add, remove }) => (
-          <div className="flex flex-col gap-4">
-            {fields.map(({ key, name, ...restField }) => (
-              <Card
-                key={key}
-                size="small"
-                title={`Experience ${name + 1}`}
-                extra={
-                  <Button type="text" danger onClick={() => remove(name)} icon={<DeleteOutlined />}>
-                    Remove
-                  </Button>
+          <div className="rounded-lg">
+            <Tabs
+              type="editable-card"
+              activeKey={activeKey}
+              onChange={setActiveKey}
+              onEdit={(targetKey, action) => {
+                if (action === "add") {
+                  add();
+                  setActiveKey(`${fields.length}`);
+                } else if (action === "remove") {
+                  const index = Number(targetKey);
+                  remove(index);
+                  if (activeKey === targetKey) {
+                    setActiveKey(index > 0 ? `${index - 1}` : "0");
+                  }
                 }
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Form.Item
-                    {...restField}
-                    name={[name, "company"]}
-                    label="Company"
-                    rules={[{ required: true, message: "Missing company name" }]}
-                  >
-                    <Input placeholder="Company Name" />
-                  </Form.Item>
+              }}
+              items={fields.map(({ key, name, ...restField }) => {
+                const experiences = form.getFieldValue("experiences") || [];
+                const companyName = experiences[name]?.company || `Experience ${name + 1}`;
+                
+                return {
+                  label: companyName,
+                  key: `${name}`,
+                  closable: true,
+                  children: (
+                    <div className="pt-4 px-1">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Form.Item
+                          {...restField}
+                          name={[name, "company"]}
+                          label="Company"
+                          rules={[{ required: true, message: "Missing company name" }]}
+                        >
+                          <Input 
+                            placeholder="Company Name" 
+                            onChange={() => form.setFieldsValue({ _update: Date.now() })}
+                          />
+                        </Form.Item>
 
-                  <Form.Item
-                    {...restField}
-                    name={[name, "position"]}
-                    label="Position"
-                    rules={[{ required: true, message: "Missing position" }]}
-                  >
-                    <Input placeholder="Job Title" />
-                  </Form.Item>
-                </div>
+                        <Form.Item
+                          {...restField}
+                          name={[name, "position"]}
+                          label="Position"
+                          rules={[{ required: true, message: "Missing position" }]}
+                        >
+                          <Input placeholder="Job Title" />
+                        </Form.Item>
+                      </div>
 
-                <Form.Item
-                  {...restField}
-                  name={[name, "dates"]}
-                  label="Dates"
-                  rules={[{ required: true, message: "Missing dates" }]}
-                >
-                  <RangePicker style={{ width: '100%' }} />
-                </Form.Item>
+                      <Form.Item
+                        {...restField}
+                        name={[name, "dates"]}
+                        label="Dates"
+                        rules={[{ required: true, message: "Missing dates" }]}
+                      >
+                        <RangePicker style={{ width: '100%' }} />
+                      </Form.Item>
 
-                <Form.List name={[name, "bulletPoints"]}>
-                  {(bpFields, { add: addBp, remove: removeBp }) => (
-                    <div className="mb-4">
-                      <div className="mb-2 font-medium text-sm text-gray-700">Bullet Points</div>
-                      {bpFields.map((bpField) => (
-                        <Space key={bpField.key} style={{ display: "flex", marginBottom: 8 }} align="start">
-                          <Form.Item
-                            {...bpField}
-                            rules={[{ required: true, message: "Missing content" }]}
-                            className="mb-0"
-                          >
-                            <TextArea autoSize={{ minRows: 2, maxRows: 6 }} style={{ width: '100%', minWidth: '400px' }} />
-                          </Form.Item>
-                          <Button type="text" danger onClick={() => removeBp(bpField.name)} icon={<DeleteOutlined />} />
-                        </Space>
-                      ))}
-                      <Button type="dashed" onClick={() => addBp()} block icon={<PlusOutlined />}>
-                        Add Bullet Point
-                      </Button>
+                      <Form.List name={[name, "bulletPoints"]}>
+                        {(bpFields, { add: addBp, remove: removeBp }) => (
+                          <div className="mb-4">
+                            <div className="mb-2 font-medium text-sm text-gray-400">Bullet Points</div>
+                            {bpFields.map(({ key: bpKey, ...bpField }) => {
+                               const { key: bpFieldKey, ...restBpField } = bpField;
+                               return (
+                                <div key={bpFieldKey} className="flex items-start gap-2 mb-2 w-full">
+                                  <Form.Item
+                                    {...restBpField}
+                                    rules={[{ required: true, message: "Missing content" }]}
+                                    className="mb-0 flex-grow"
+                                  >
+                                    <TextArea 
+                                      autoSize={{ minRows: 2, maxRows: 6 }} 
+                                      placeholder="Describe an achievement or responsibility..."
+                                      className="w-full"
+                                    />
+                                  </Form.Item>
+                                  <Button 
+                                    type="text" 
+                                    danger 
+                                    onClick={() => removeBp(bpField.name)} 
+                                    icon={<DeleteOutlined />} 
+                                    className="mt-1"
+                                  />
+                                </div>
+                               );
+                            })}
+                            <Button type="dashed" onClick={() => addBp()} block icon={<PlusOutlined />}>
+                              Add Bullet Point
+                            </Button>
+                          </div>
+                        )}
+                      </Form.List>
+
+                      <Form.Item
+                        {...restField}
+                        name={[name, "freeFormContext"]}
+                        label="Context / Additional Details"
+                      >
+                        <TextArea autoSize={{ minRows: 3, maxRows: 6 }} placeholder="Any extra information..." />
+                      </Form.Item>
                     </div>
-                  )}
-                </Form.List>
-
-                <Form.Item
-                  {...restField}
-                  name={[name, "freeFormContext"]}
-                  label="Context / Additional Details"
-                >
-                  <TextArea autoSize={{ minRows: 3, maxRows: 6 }} placeholder="Any extra information..." />
-                </Form.Item>
-              </Card>
-            ))}
-            <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} size="large">
-              Add New Experience
-            </Button>
+                  ),
+                };
+              })}
+            />
+            {fields.length === 0 && (
+              <div className="text-center py-12 bg-[#141414] rounded-lg border-2 border-dashed border-[#303030]">
+                <p className="text-gray-500 mb-4">No experiences added yet.</p>
+                <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />}>
+                  Add Your First Experience
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Form.List>

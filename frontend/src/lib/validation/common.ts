@@ -1,8 +1,11 @@
 // Common validation schemas and utilities
 import { z } from 'zod';
 
-// UUID validation
-export const uuidSchema = z.string().uuid('Invalid UUID format');
+// ID validation (Supports both UUID and MongoDB ObjectId)
+export const uuidSchema = z.string().refine(
+  (val) => /^[0-9a-fA-F]{24}$/.test(val) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(val),
+  { message: 'Invalid ID format' }
+);
 
 // Email validation with stricter rules
 export const emailSchema = z

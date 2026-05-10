@@ -43,11 +43,14 @@ model UserProfile {
   updatedAt       DateTime  @updatedAt
 
   // Basic Information
+  firstName       String?
+  lastName        String?
   title           String?
   summary         String?
   location        String?
   phone           String?
   website         String?
+  github          String?
 
   // Relations
   experiences     Experience[]
@@ -76,6 +79,7 @@ model Experience {
   current         Boolean   @default(false)
   description     String[]
   technologies    String[]
+  freeFormContext String?
   
   profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   
@@ -93,6 +97,8 @@ model Education {
   current         Boolean   @default(false)
   gpa             String?
   achievements    String[]
+  description     String[]
+  freeFormContext String?
   
   profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   
@@ -104,10 +110,12 @@ model Project {
   profileId       String    @db.ObjectId
   name            String
   description     String[]
+  bulletPoints    String[]
   technologies    String[]
   startDate       DateTime
   endDate         DateTime?
   url             String?
+  freeFormContext String?
   
   profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   
@@ -132,11 +140,13 @@ model Reference {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   profileId       String    @db.ObjectId
   name            String
-  position        String
-  company         String
+  position        String?
+  company         String?
   email           String?
   phone           String?
   relationship    String
+  canContact      Boolean   @default(false)
+  notes           String?
 
   profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 

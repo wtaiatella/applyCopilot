@@ -1,6 +1,6 @@
 'use client'
 
-import { ConfigProvider } from 'antd'
+import { ConfigProvider, App } from 'antd'
 import React from 'react'
 import { AuthProvider } from '@/components/auth'
 import { antdTheme } from '@/lib/theme'
@@ -11,7 +11,9 @@ export default function Registry({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <ConfigProvider theme={antdTheme}>
-        {children}
+        <App>
+          {children}
+        </App>
       </ConfigProvider>
     </AuthProvider>
   )

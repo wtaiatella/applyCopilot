@@ -48,11 +48,13 @@ export type PasswordChangeInput = z.infer<typeof passwordChangeSchema>;
 
 // User basic data update
 export const userBasicDataSchema = z.object({
-  firstName: nameSchema,
-  lastName: nameSchema,
+  firstName: z.string().max(100).optional().or(z.literal('')),
+  lastName: z.string().max(100).optional().or(z.literal('')),
   phone: phoneSchema,
   location: locationSchema,
-  portfolioLinks: portfolioLinksSchema,
+  website: z.string().max(2048).optional().or(z.literal('')),
+  github: z.string().max(2048).optional().or(z.literal('')),
+  portfolioLinks: portfolioLinksSchema.optional(),
 });
 
 export type UserBasicDataInput = z.infer<typeof userBasicDataSchema>;

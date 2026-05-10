@@ -2,11 +2,13 @@
 
 import React, { useEffect, useState } from "react";
 import { ProfileTabs } from "@/components/profile/ProfileTabs";
-import { message, Spin, Alert, Typography } from "antd";
+import { CVUploader } from "@/components/profile/CVUploader";
+import { App, Spin, Alert, Typography } from "antd";
 
 const { Title, Paragraph } = Typography;
 
 export default function ProfilePage() {
+  const { message } = App.useApp();
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +42,13 @@ export default function ProfilePage() {
           location: rawData.location,
           phone: rawData.phone,
           website: rawData.website,
-        }
+          github: rawData.github,
+        },
+        skills: (rawData.skills || []).map((s: any) => ({
+          ...s,
+          level: s.proficiency || s.level || 'INTERMEDIATE',
+          yearsOfExperience: s.yearsExperience || s.yearsOfExperience || 0
+        }))
       };
       
       setProfileData(formattedData);
@@ -76,6 +84,79 @@ export default function ProfilePage() {
     }
   };
 
+  const handleCVExtractedData = (extractedData: any) => {
+    console.log("handleCVExtractedData received:", extractedData);
+    if (!extractedData) return;
+
+    // Fix for Gemma model hallucinating the schema wrapper around the data
+    let dataToUse = extractedData;
+    if (dataToUse.properties) {
+      dataToUse = {
+        basicData: dataToUse.properties.basicData?.properties || dataToUse.properties.basicData,
+        experiences: dataToUse.properties.experiences,
+        education: dataToUse.properties.education,
+        skills: dataToUse.properties.skills,
+        projects: dataToUse.properties.projects,
+      };
+    }
+    
+    // Merge the AI extracted data with our current profile data
+    setProfileData((prev: any) => {
+      // Basic Data merging (if AI found something, use it, otherwise keep prev)
+      const basicData = { ...prev?.basicData };
+      if (dataToUse.basicData) {
+        const aiInfo = dataToUse.basicData;
+        const normalizeUrl = (url?: string) => {
+          if (!url) return undefined;
+          if (url.startsWith('http')) return url;
+          return `https://${url}`;
+        };
+
+        if (aiInfo.firstName && !basicData.firstName) basicData.firstName = aiInfo.firstName;
+        if (aiInfo.lastName && !basicData.lastName) basicData.lastName = aiInfo.lastName;
+        if (aiInfo.title && !basicData.title) basicData.title = aiInfo.title;
+        if (aiInfo.location && !basicData.location) basicData.location = aiInfo.location;
+        if (aiInfo.phone && !basicData.phone) basicData.phone = aiInfo.phone;
+        
+        const website = normalizeUrl(aiInfo.website);
+        if (website && !basicData.website) basicData.website = website;
+        
+        const github = normalizeUrl(aiInfo.github);
+        if (github && !basicData.github) basicData.github = github;
+      }
+      
+      // Ensure bulletPoints are mapped from description for compatibility
+      const experiences = (dataToUse.experiences || []).map((exp: any) => ({
+        ...exp,
+        bulletPoints: exp.bulletPoints || exp.description || [],
+      }));
+
+      const education = (dataToUse.education || []).map((edu: any) => ({
+        ...edu,
+        bulletPoints: edu.bulletPoints || edu.description || [],
+      }));
+
+      const projects = (dataToUse.projects || []).map((proj: any) => ({
+        ...proj,
+        bulletPoints: proj.bulletPoints || proj.description || [],
+        description: proj.description && typeof proj.description === 'string' ? proj.description : (proj.name || 'Project'),
+      }));
+
+      return {
+        basicData,
+        summaries: prev?.summaries || [],
+        experiences: experiences.length > 0 ? experiences : prev?.experiences || [],
+        education: education.length > 0 ? education : prev?.education || [],
+        projects: projects.length > 0 ? projects : prev?.projects || [],
+        skills: dataToUse.skills && dataToUse.skills.length > 0 ? dataToUse.skills : prev?.skills || [],
+        references: dataToUse.references && dataToUse.references.length > 0 ? dataToUse.references : prev?.references || [],
+        summary: dataToUse.summary || prev?.summary || "",
+      };
+    });
+    
+    message.success("Profile updated with CV data! Please review and save each section.");
+  };
+
   if (loading && !profileData) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -92,6 +173,8 @@ export default function ProfilePage() {
           Manage your professional details. This information will be used by our AI to match you with jobs and generate personalized applications.
         </Paragraph>
       </div>
+
+      <CVUploader onUploadSuccess={handleCVExtractedData} />
 
       {error && (
         <Alert

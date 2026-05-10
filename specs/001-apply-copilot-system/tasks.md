@@ -112,7 +112,7 @@ Enable users to upload CVs and automatically extract/organize professional infor
 - [X] T047 [US1] Add profile navigation to main layout
 - [X] T048 [US1] Implement profile data persistence to database
 - [X] T049 [US1] Add profile editing and update functionality
-- [ ] T049a [US1] Build CV Upload component (Ant Design Dragger) and integrate with /api/profile/upload-cv and extraction hook
+- [X] T049a [US1] Build CV Upload component (Ant Design Dragger) and integrate with /api/profile/upload-cv and extraction hook
 - [X] T049b [US1] Update MainLayout Header with User Avatar, session state, and Logout dropdown
 
 ## Phase 4: User Story 2 - Job Discovery and Smart Filtering

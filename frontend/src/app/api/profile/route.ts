@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
         ...(body.basicData?.location !== undefined && { location: body.basicData.location }),
         ...(body.basicData?.phone !== undefined && { phone: body.basicData.phone }),
         ...(body.basicData?.website !== undefined && { website: body.basicData.website }),
+        ...(body.basicData?.github !== undefined && { github: body.basicData.github }),
         ...(body.basicData?.firstName !== undefined && { firstName: body.basicData.firstName }),
         ...(body.basicData?.lastName !== undefined && { lastName: body.basicData.lastName }),
         processingStatus: 'COMPLETED',
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
         location: body.basicData?.location || null,
         phone: body.basicData?.phone || null,
         website: body.basicData?.website || null,
+        github: body.basicData?.github || null,
         processingStatus: 'COMPLETED',
       },
     });
@@ -119,10 +121,11 @@ export async function POST(request: NextRequest) {
         await prisma.experience.createMany({
           data: body.experiences.map((exp: any) => ({
             profileId: profile.id,
-            company: exp.company,
-            position: exp.position,
-            startDate: new Date(exp.startDate),
-            endDate: exp.endDate ? new Date(exp.endDate) : null,
+            company: exp.company || 'Unknown Company',
+            position: exp.position || 'Unknown Position',
+            startDate: exp.startDate ? new Date(exp.startDate) : new Date(),
+            endDate: exp.endDate && exp.endDate !== 'Present' ? new Date(exp.endDate) : null,
+            current: exp.current || exp.endDate === 'Present' || false,
             description: exp.bulletPoints || [],
             freeFormContext: exp.freeFormContext || '',
           })),
@@ -136,11 +139,12 @@ export async function POST(request: NextRequest) {
         await prisma.education.createMany({
           data: body.education.map((edu: any) => ({
             profileId: profile.id,
-            institution: edu.institution,
-            degree: edu.degree,
-            field: edu.field,
-            startDate: new Date(edu.startDate),
-            endDate: edu.endDate ? new Date(edu.endDate) : null,
+            institution: edu.institution || 'Unknown Institution',
+            degree: edu.degree || '',
+            field: edu.field || '',
+            startDate: edu.startDate ? new Date(edu.startDate) : new Date(),
+            endDate: edu.endDate && edu.endDate !== 'Present' ? new Date(edu.endDate) : null,
+            current: edu.current || edu.endDate === 'Present' || false,
             description: edu.bulletPoints || [],
             freeFormContext: edu.freeFormContext || '',
           })),
@@ -155,11 +159,11 @@ export async function POST(request: NextRequest) {
           data: body.projects.map((proj: any) => ({
             profileId: profile.id,
             name: proj.name,
-            description: proj.description || '',
-            startDate: new Date(proj.startDate),
-            endDate: proj.endDate ? new Date(proj.endDate) : null,
-            technologies: proj.technologies || [],
+            description: proj.bulletPoints || [],
             bulletPoints: proj.bulletPoints || [],
+            startDate: new Date(proj.startDate),
+            endDate: proj.endDate && proj.endDate !== 'Present' ? new Date(proj.endDate) : null,
+            technologies: proj.technologies || [],
             freeFormContext: proj.freeFormContext || '',
           })),
         });
@@ -167,14 +171,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.skills) {
+      console.log(`Saving ${body.skills.length} skills for profile ${profile.id}`);
       await prisma.skill.deleteMany({ where: { profileId: profile.id } });
       if (body.skills.length > 0) {
         await prisma.skill.createMany({
           data: body.skills.map((skill: any) => ({
             profileId: profile.id,
-            name: skill.name,
-            level: skill.level || 'INTERMEDIATE',
-            yearsOfExperience: skill.yearsOfExperience || null,
+            name: skill.name || 'Unknown Skill',
+            category: skill.category || 'TECHNICAL',
+            proficiency: skill.level || skill.proficiency || 'INTERMEDIATE',
+            yearsExperience: typeof skill.yearsOfExperience === 'number' ? skill.yearsOfExperience : 
+                            (typeof skill.yearsExperience === 'number' ? skill.yearsExperience : null),
           })),
         });
       }
@@ -192,6 +199,7 @@ export async function POST(request: NextRequest) {
             phone: ref.phone || null,
             company: ref.company || null,
             notes: ref.notes || null,
+            canContact: ref.canContact || false,
           })),
         });
       }

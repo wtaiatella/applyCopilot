@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { Form, Input, Button, message, Card, Checkbox } from "antd";
+import { Form, Input, Button, App, Card, Checkbox } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import type { ReferenceInput } from "@/lib/validation/profile";
 
@@ -18,6 +18,7 @@ export function ReferencesForm({
   onSubmit,
   loading,
 }: ReferencesFormProps) {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
 
   useEffect(() => {

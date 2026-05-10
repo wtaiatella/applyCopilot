@@ -185,6 +185,8 @@ ${JSON.stringify(schema, null, 2)}
       email?: string
       phone?: string
       location?: string
+      website?: string
+      github?: string
     }
     experiences: Array<{
       company: string
@@ -192,7 +194,7 @@ ${JSON.stringify(schema, null, 2)}
       startDate: string
       endDate?: string
       current: boolean
-      description: string[]
+      bulletPoints: string[]
     }>
     education: Array<{
       institution: string
@@ -204,7 +206,7 @@ ${JSON.stringify(schema, null, 2)}
     }>
     projects: Array<{
       name: string
-      description: string[]
+      bulletPoints: string[]
       technologies: string[]
     }>
     skills: Array<{
@@ -224,16 +226,18 @@ Return ONLY a JSON object with the extracted data in this exact format:
     "lastName": "extracted last name",
     "email": "extracted email",
     "phone": "extracted phone",
-    "location": "extracted location"
+    "location": "extracted location",
+    "website": "extracted portfolio/website URL",
+    "github": "extracted github profile URL"
   },
   "experiences": [
     {
       "company": "company name",
       "position": "job title",
-      "startDate": "start date",
-      "endDate": "end date or null",
+      "startDate": "start date (e.g., Sep 2024)",
+      "endDate": "end date or 'Present'",
       "current": true/false,
-      "description": ["description line 1", "description line 2"]
+      "bulletPoints": ["description line 1", "description line 2"]
     }
   ],
   "education": [
@@ -248,14 +252,14 @@ Return ONLY a JSON object with the extracted data in this exact format:
   ],
   "projects": [
     {
-      "name": "project name (extract from experience descriptions if no separate project section)",
-      "description": ["description"],
+      "name": "project name",
+      "bulletPoints": ["description"],
       "technologies": ["tech1", "tech2"]
     }
   ],
   "skills": [
     {
-      "name": "skill name (extract from Summary and experience descriptions)",
+      "name": "skill name",
       "category": "category (e.g., Frontend, Backend, DevOps, Database, Cloud)",
       "proficiency": "level (e.g., Beginner, Intermediate, Advanced)"
     }
@@ -263,9 +267,10 @@ Return ONLY a JSON object with the extracted data in this exact format:
 }
 
 IMPORTANT:
-- Extract skills from the Summary section and experience descriptions if no separate skills section exists
-- Extract projects from experience descriptions if no separate projects section exists
-- Extract REAL data from the CV. Do NOT include type definitions or schema.
+- If a person is currently working somewhere, set "endDate" to "Present" and "current" to true.
+- Extract portfolio/personal website URL into "website".
+- Extract GitHub profile URL into "github".
+- Extract skills from the Summary section and experience descriptions if no separate skills section exists.
 - Return ONLY the JSON object with actual data.`
 
     const schema = {
@@ -278,7 +283,9 @@ IMPORTANT:
             lastName: { type: "string" },
             email: { type: "string" },
             phone: { type: "string" },
-            location: { type: "string" }
+            location: { type: "string" },
+            website: { type: "string" },
+            github: { type: "string" }
           }
         },
         experiences: {
@@ -291,9 +298,9 @@ IMPORTANT:
               startDate: { type: "string" },
               endDate: { type: "string" },
               current: { type: "boolean" },
-              description: { type: "array", items: { type: "string" } }
+              bulletPoints: { type: "array", items: { type: "string" } }
             },
-            required: ["company", "position", "startDate", "current", "description"]
+            required: ["company", "position", "startDate", "current", "bulletPoints"]
           }
         },
         education: {
@@ -317,10 +324,10 @@ IMPORTANT:
             type: "object",
             properties: {
               name: { type: "string" },
-              description: { type: "array", items: { type: "string" } },
+              bulletPoints: { type: "array", items: { type: "string" } },
               technologies: { type: "array", items: { type: "string" } }
             },
-            required: ["name", "description", "technologies"]
+            required: ["name", "bulletPoints", "technologies"]
           }
         },
         skills: {

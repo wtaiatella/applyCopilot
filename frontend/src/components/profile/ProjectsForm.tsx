@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { Form, Input, Button, message, Space, Card, DatePicker, Select } from "antd";
+import React, { useEffect, useState } from "react";
+import { Form, Input, Button, App, Space, Card, DatePicker, Select, Tabs } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import type { ProjectInput } from "@/lib/validation/profile";
 import dayjs from "dayjs";
@@ -20,31 +20,44 @@ export function ProjectsForm({
   onSubmit,
   loading,
 }: ProjectsFormProps) {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
+  const [activeKey, setActiveKey] = useState<string>("0");
 
   useEffect(() => {
     if (initialData) {
-      const formattedData = initialData.map((proj: any) => ({
-        ...proj,
-        dates: [
-          proj.startDate ? dayjs(proj.startDate) : undefined,
-          proj.endDate ? dayjs(proj.endDate) : undefined,
-        ],
-      }));
+      const formattedData = initialData.map((proj: any) => {
+        const isPresent = proj.endDate === 'Present' || proj.current;
+        return {
+          ...proj,
+          dates: [
+            proj.startDate ? dayjs(proj.startDate) : undefined,
+            isPresent ? dayjs() : (proj.endDate ? dayjs(proj.endDate) : undefined),
+          ],
+          bulletPoints: proj.bulletPoints || proj.description || [],
+        };
+      });
       form.setFieldsValue({ projects: formattedData });
     }
   }, [initialData, form]);
 
   const onFinish = async (values: any) => {
     try {
-      const formattedData = (values.projects || []).map((proj: any) => ({
-        ...proj,
-        startDate: proj.dates?.[0]?.toISOString() || new Date().toISOString(),
-        endDate: proj.dates?.[1]?.toISOString() || undefined,
-        bulletPoints: proj.bulletPoints || [],
-        aiSuggestions: proj.aiSuggestions || [],
-        technologies: proj.technologies || [],
-      }));
+      const formattedData = (values.projects || []).map((proj: any) => {
+        const startDate = proj.dates?.[0]?.toISOString() || new Date().toISOString();
+        const endDate = proj.dates?.[1];
+        const isCurrent = proj.current || (endDate && dayjs(endDate).isAfter(dayjs().subtract(1, 'day')));
+        
+        return {
+          ...proj,
+          startDate,
+          endDate: isCurrent ? 'Present' : endDate?.toISOString(),
+          current: isCurrent,
+          bulletPoints: proj.bulletPoints || [],
+          aiSuggestions: proj.aiSuggestions || [],
+          technologies: proj.technologies || [],
+        };
+      });
       await onSubmit(formattedData);
       message.success("Projects updated successfully!");
     } catch (error) {
@@ -61,94 +74,123 @@ export function ProjectsForm({
     >
       <Form.List name="projects">
         {(fields, { add, remove }) => (
-          <div className="flex flex-col gap-4">
-            {fields.map(({ key, name, ...restField }) => (
-              <Card
-                key={key}
-                size="small"
-                title={`Project ${name + 1}`}
-                extra={
-                  <Button type="text" danger onClick={() => remove(name)} icon={<DeleteOutlined />}>
-                    Remove
-                  </Button>
+          <div className="rounded-lg">
+            <Tabs
+              type="editable-card"
+              activeKey={activeKey}
+              onChange={setActiveKey}
+              onEdit={(targetKey, action) => {
+                if (action === "add") {
+                  add();
+                  setActiveKey(`${fields.length}`);
+                } else if (action === "remove") {
+                  const index = Number(targetKey);
+                  remove(index);
+                  if (activeKey === targetKey) {
+                    setActiveKey(index > 0 ? `${index - 1}` : "0");
+                  }
                 }
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Form.Item
-                    {...restField}
-                    name={[name, "name"]}
-                    label="Project Name"
-                    rules={[{ required: true, message: "Missing project name" }]}
-                  >
-                    <Input placeholder="ApplyCopilot" />
-                  </Form.Item>
+              }}
+              items={fields.map(({ key, name, ...restField }) => {
+                const projects = form.getFieldValue("projects") || [];
+                const projectName = projects[name]?.name || `Project ${name + 1}`;
+                
+                return {
+                  label: projectName,
+                  key: `${name}`,
+                  closable: true,
+                  children: (
+                    <div className="pt-4 px-1">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Form.Item
+                          {...restField}
+                          name={[name, "name"]}
+                          label="Project Name"
+                          rules={[{ required: true, message: "Missing project name" }]}
+                        >
+                          <Input 
+                            placeholder="ApplyCopilot" 
+                            onChange={() => form.setFieldsValue({ _update: Date.now() })}
+                          />
+                        </Form.Item>
 
-                  <Form.Item
-                    {...restField}
-                    name={[name, "dates"]}
-                    label="Dates"
-                    rules={[{ required: true, message: "Missing dates" }]}
-                  >
-                    <RangePicker style={{ width: '100%' }} />
-                  </Form.Item>
-                </div>
+                        <Form.Item
+                          {...restField}
+                          name={[name, "dates"]}
+                          label="Dates"
+                          rules={[{ required: true, message: "Missing dates" }]}
+                        >
+                          <RangePicker style={{ width: '100%' }} />
+                        </Form.Item>
+                      </div>
 
-                <Form.Item
-                  {...restField}
-                  name={[name, "technologies"]}
-                  label="Technologies"
-                >
-                  <Select
-                    mode="tags"
-                    style={{ width: '100%' }}
-                    placeholder="Typescript, React, Node.js"
-                  />
-                </Form.Item>
+                      <Form.Item
+                        {...restField}
+                        name={[name, "technologies"]}
+                        label="Technologies"
+                      >
+                        <Select
+                          mode="tags"
+                          style={{ width: '100%' }}
+                          placeholder="Typescript, React, Node.js"
+                        />
+                      </Form.Item>
 
-                <Form.Item
-                  {...restField}
-                  name={[name, "description"]}
-                  label="Description"
-                  rules={[{ required: true, message: "Missing description" }]}
-                >
-                  <TextArea autoSize={{ minRows: 2, maxRows: 6 }} placeholder="Project description..." />
-                </Form.Item>
+                      <Form.Item
+                        {...restField}
+                        name={[name, "description"]}
+                        label="Description"
+                        rules={[{ required: true, message: "Missing description" }]}
+                      >
+                        <TextArea autoSize={{ minRows: 2, maxRows: 6 }} placeholder="Project description..." />
+                      </Form.Item>
 
-                <Form.List name={[name, "bulletPoints"]}>
-                  {(bpFields, { add: addBp, remove: removeBp }) => (
-                    <div className="mb-4">
-                      <div className="mb-2 font-medium text-sm text-gray-700">Bullet Points</div>
-                      {bpFields.map((bpField) => (
-                        <Space key={bpField.key} style={{ display: "flex", marginBottom: 8 }} align="start">
-                          <Form.Item
-                            {...bpField}
-                            rules={[{ required: true, message: "Missing content" }]}
-                            className="mb-0"
-                          >
-                            <TextArea autoSize={{ minRows: 2, maxRows: 6 }} style={{ width: '100%', minWidth: '400px' }} />
-                          </Form.Item>
-                          <Button type="text" danger onClick={() => removeBp(bpField.name)} icon={<DeleteOutlined />} />
-                        </Space>
-                      ))}
-                      <Button type="dashed" onClick={() => addBp()} block icon={<PlusOutlined />}>
-                        Add Bullet Point
-                      </Button>
+                      <Form.List name={[name, "bulletPoints"]}>
+                        {(bpFields, { add: addBp, remove: removeBp }) => (
+                          <div className="mb-4">
+                            <div className="mb-2 font-medium text-sm text-gray-400">Bullet Points</div>
+                            {bpFields.map(({ key: bpKey, ...bpField }) => {
+                              const { key: bpFieldKey, ...restBpField } = bpField;
+                              return (
+                                <div key={bpFieldKey} className="flex items-start gap-2 mb-2 w-full">
+                                  <Form.Item
+                                    {...restBpField}
+                                    rules={[{ required: true, message: "Missing content" }]}
+                                    className="mb-0 flex-grow"
+                                  >
+                                    <TextArea autoSize={{ minRows: 2, maxRows: 6 }} placeholder="Describe a project feature or achievement..." />
+                                  </Form.Item>
+                                  <Button type="text" danger onClick={() => removeBp(bpField.name)} icon={<DeleteOutlined />} className="mt-1" />
+                                </div>
+                              );
+                            })}
+                            <Button type="dashed" onClick={() => addBp()} block icon={<PlusOutlined />}>
+                              Add Bullet Point
+                            </Button>
+                          </div>
+                        )}
+                      </Form.List>
+
+                      <Form.Item
+                        {...restField}
+                        name={[name, "freeFormContext"]}
+                        label="Context / Additional Details"
+                      >
+                        <TextArea autoSize={{ minRows: 3, maxRows: 6 }} placeholder="Role, impact..." />
+                      </Form.Item>
                     </div>
-                  )}
-                </Form.List>
-
-                <Form.Item
-                  {...restField}
-                  name={[name, "freeFormContext"]}
-                  label="Context / Additional Details"
-                >
-                  <TextArea autoSize={{ minRows: 3, maxRows: 6 }} placeholder="Role, impact..." />
-                </Form.Item>
-              </Card>
-            ))}
-            <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} size="large">
-              Add New Project
-            </Button>
+                  ),
+                };
+              })}
+            />
+            {fields.length === 0 && (
+              <div className="text-center py-12 bg-[#141414] rounded-lg border-2 border-dashed border-[#303030]">
+                <p className="text-gray-500 mb-4">No projects added yet.</p>
+                <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />}>
+                  Add Your First Project
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Form.List>

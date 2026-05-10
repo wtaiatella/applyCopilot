@@ -23,7 +23,7 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        {fallback || <Spin size="large" tip="Loading..." />}
+        {fallback || <Spin size="large" description="Loading..." />}
       </div>
     )
   }

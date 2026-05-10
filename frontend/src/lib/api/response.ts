@@ -40,6 +40,7 @@ export function errorResponse(
 
 // Handle ApiError and convert to response
 export function handleApiError(error: unknown): NextResponse<ErrorResponse> {
+  console.error('API Error:', error);
   if (error instanceof ApiError) {
     return errorResponse(error.message, error.statusCode, error.code, error.details);
   }

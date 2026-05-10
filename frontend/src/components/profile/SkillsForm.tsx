@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { Form, Input, Button, message, Space, Select, InputNumber } from "antd";
+import { Form, Input, Button, App, Space, Select, InputNumber } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import type { SkillInput } from "@/lib/validation/profile";
 
@@ -16,6 +16,7 @@ export function SkillsForm({
   onSubmit,
   loading,
 }: SkillsFormProps) {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
 
   useEffect(() => {

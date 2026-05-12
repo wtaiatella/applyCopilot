@@ -32,8 +32,11 @@ As a job seeker, I want to search for remote jobs across multiple portals and se
 
 **Acceptance Scenarios**:
 
-1. **Given** I have configured job search portals, **When** I initiate a job search, **Then** the system scrapes jobs from selected portals and processes them through the AI filtering pipeline
-2. **Given** jobs have been processed, **When** I view results, **Then** I see job cards with compatibility scores, key requirements, and can favorite or filter positions
+1. **Given** I have configured job search portals, **When** I initiate a job search, **Then** the system automatically constructs search URLs via `UrlBuilder`, scrapes jobs from selected portals (handling pagination for known providers), and initiates the AI filtering pipeline.
+2. **Given** I encounter a new job portal, **When** the system analyzes its DOM, **Then** it uses local AI (Ollama) to discover and persist the necessary CSS selectors for future automated extraction.
+3. **Given** I want to refine my search, **When** I configure my search profile (Titles, Hard Skills, Soft Skills with weights), **Then** the system uses these as the reference for the 4-level matching funnel.
+4. **Given** a search is initiated, **When** the funnel pipeline runs, **Then** it performs a preliminary TensorFlow match, executes a "Deep Scrape" for top candidates, and calculates a final fidelity score against the full description.
+5. **Given** jobs have been processed, **When** I view results, **Then** I see job cards ranked by compatibility score, showing matched skills and match reasoning.
 
 ---
 
@@ -106,9 +109,16 @@ As a registered user, I want to receive timely notifications about important eve
 - **FR-002**: System MUST automatically extract and categorize CV data into six main sections (basic data, experiences, education, projects, skills, references)
 - **FR-003**: System MUST provide tabbed interface for managing multiple items within each profile section
 - **FR-004**: System MUST allow users to edit extracted data and add free-form context descriptions
-- **FR-005**: System MUST support job portal configuration including pre-configured options (WeWorkRemotely, LinkedIn) and custom URLs
-- **FR-006**: System MUST implement dual-layer scraping with generic and provider-specific extractors
-- **FR-007**: System MUST process scraped jobs through AI pipeline (local parsing, pre-filtering, premium analysis)
+- **FR-005**: System MUST support job portal configuration including pre-configured options (WeWorkRemotely, LinkedIn) and custom URLs with automated selector discovery.
+- **FR-005a**: System MUST allow users to configure job search criteria using a tabbed interface (Titles, Hard Skills, Soft Skills) with weight-based importance levels.
+- **FR-006**: System MUST implement a dual-layer scraping architecture: a `GenericScraper` driven by AI-discovered selectors (Ollama) and `ProviderScrapers` (LinkedIn, WeWorkRemotely) for complex portals.
+- **FR-006a**: System MUST implement a 4-level filtering funnel: 
+    1. Level 1: Preliminary TF-IDF match (Title/Tags).
+    2. Level 2: Deep Scrape of full descriptions for top-ranked candidates.
+    3. Level 3: Fine-grained TensorFlow matching (Full Profile vs. Full Description).
+    4. Level 4: AI Analysis (Ollama) for match reasoning and detailed insights.
+- **FR-006b**: System MUST support AI-powered selector auto-discovery, using local LLM (Ollama) to analyze DOM structures and generate configuration metadata for unknown portals.
+- **FR-007**: System MUST process scraped jobs through AI pipeline (local parsing, pre-filtering, premium analysis) and support multi-page results via offset-based or button-based pagination.
 - **FR-008**: System MUST display job results with compatibility scores and key information
 - **FR-009**: System MUST allow users to favorite jobs and request personalized suggestions
 - **FR-010**: System MUST generate CV improvement suggestions based on job requirements
@@ -132,7 +142,13 @@ As a registered user, I want to receive timely notifications about important eve
 - **Job Listing**: External job opportunity data scraped from portals, including title, company, requirements, location, and application details
 - **Job Match**: Relationship entity storing compatibility scores, analysis results, and AI-generated insights between user profile and job listings
 - **Application**: Tracking entity representing user's job application status and history for specific positions
-- **Portal Configuration**: User preferences for job sources, scraping settings, and search criteria
+- **Portal Configuration**: User preferences for job sources, including scraping metadata: `selectors` (JSON), `headers`, `rateLimit`, and `type` (WEREMOTE, LINKEDIN, CUSTOM).
+- **SearchQuery**: Stores user search criteria, including:
+    - `keywords`: Primary search terms for scraping.
+    - `targetTitles`: Weighted job titles for ranking.
+    - `hardSkills`: List of technical skills with weight/importance.
+    - `softSkills`: List of behavioral skills with weight/importance.
+    - `status`: Current progress of the search funnel.
 - **EmailTemplate**: Stores HTML/text templates for different notification types (welcome, password reset, job matches) with variables and branding
 - **NotificationLog**: Audit trail of all sent notifications with delivery status, timestamps, retry attempts, and error tracking
 - **UserNotificationPreferences**: User settings for notification channels (email, WhatsApp), frequency (immediate, digest), and types (matches, status updates)
@@ -159,10 +175,10 @@ As a registered user, I want to receive timely notifications about important eve
 
 ### AI Processing Strategy
 **Decision**: Hybrid approach with local processing for basic tasks and premium APIs for high-value content generation
-- Local AI (Ollama) handles: CV parsing, job data extraction, basic compatibility scoring
-- Premium APIs handle: Cover letter generation, advanced CV improvement suggestions, nuanced job matching
-- Fallback: Local processing when premium APIs are unavailable
-- Use Case: Convert scraped markdown files to structured JSON for consistent job listings
+- Local AI (Ollama) handles: CV parsing, job data extraction (DOM to JSON), and **Selector Auto-Discovery** (analyzing HTML to identify extraction patterns).
+- Premium APIs handle: Cover letter generation, advanced CV improvement suggestions, and nuanced job matching.
+- Fallback: Local processing when premium APIs are unavailable.
+- Selector Discovery Workflow: For unknown portals, the system fetches the raw HTML, sends a cleaned snippet to Ollama, and receives a `ScraperSelectors` object which is then persisted in the `PortalConfig`.
 
 ### User Authentication & Data Persistence
 **Decision**: Email/password authentication with MongoDB for relational data, AWS S3 for file storage
@@ -173,9 +189,10 @@ As a registered user, I want to receive timely notifications about important eve
 
 ### Job Portal Scraping Frequency
 **Decision**: On-demand scraping with user-initiated searches
-- Scraping triggered only when user explicitly initiates job search
-- No background or scheduled scraping to avoid unnecessary API calls
-- Users control when and which portals to search
+- Scraping triggered only when user explicitly initiates job search.
+- **Dynamic URL Construction**: For known providers, the system automatically builds search URLs by injecting keywords and filters (e.g., `remoteOnly`, `location`) into portal-specific patterns via a `UrlBuilder` utility.
+- **Parallel Execution**: Multiple portals are searched concurrently using a singleton `BrowserManager` to optimize resource usage and speed.
+- Users control when and which portals to search.
 
 ### Compatibility Scoring Algorithm
 **Decision**: TensorFlow.js cosine similarity with TF-IDF vectorization

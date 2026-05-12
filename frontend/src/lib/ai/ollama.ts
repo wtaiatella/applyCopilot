@@ -153,24 +153,33 @@ export class OllamaClient {
    * Build prompt for structured data generation
    */
   private buildStructuredPrompt(prompt: string, schema?: Record<string, unknown>): string {
-    let fullPrompt = `You are a helpful AI assistant that responds with valid JSON only.
-
+    let fullPrompt = `You are a specialized AI that extracts structured data and returns it in valid JSON format.
+    
 ${prompt}
 
 `
 
     if (schema) {
-      fullPrompt += `Respond with a JSON object that follows this schema:
+      fullPrompt += `CRITICAL: You must respond ONLY with a JSON object that matches the structure below. 
+Do NOT include the schema definitions, types, or descriptions in your response. 
+Return ONLY the actual values for each key.
+
+Example of expected format:
+{
+  "key1": "value1",
+  "key2": ["item1", "item2"]
+}
+
+Target Structure:
 ${JSON.stringify(schema, null, 2)}
 
 `
     }
 
-    fullPrompt += `Important: 
+    fullPrompt += `Final Instructions:
 - Respond ONLY with valid JSON
-- Do not include any explanations or text outside the JSON
-- Ensure all required fields are included
-- Use proper JSON syntax`
+- No conversational text, no explanations, no markdown blocks (unless requested)
+- Ensure all required keys are present with their discovered values.`
 
     return fullPrompt
   }

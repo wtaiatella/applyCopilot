@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, url, type = 'GENERIC', enabled = true } = body;
+    const { name, url, type = 'GENERIC', enabled = true, selectors, headers, rateLimit } = body;
 
     if (!name) {
       throw new ValidationError('Name is required');
@@ -61,6 +61,9 @@ export async function POST(request: NextRequest) {
         type,
         enabled,
         userId,
+        selectors,
+        headers,
+        rateLimit,
       },
     });
 

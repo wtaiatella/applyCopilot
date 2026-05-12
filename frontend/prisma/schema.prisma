@@ -400,10 +400,16 @@ model SearchQuery {
   userId          String    @db.ObjectId
 
   // Search Criteria
-  title           String
-  keywords        String[]
-  technologies    String[]
+  title           String    // Name of the search profile (e.g., "Frontend Senior Remote")
+  keywords        String[]  // Keywords for the search engines
+  
+  // Weighted Profile (stored as JSON arrays of { name: string, weight: number })
+  targetTitles    Json?     // Preferred job titles with weights
+  hardSkills      Json?     // Technical skills with weights
+  softSkills      Json?     // Soft skills with weights
+  
   experienceLevel ExperienceLevel
+  technologies    String[]  // Legacy/Basic tags
 
   // Filters
   remoteOnly      Boolean   @default(false)
@@ -418,6 +424,13 @@ model SearchQuery {
   isActive        Boolean   @default(true)
   lastRun         DateTime?
   frequency       SearchFrequency
+
+  // Search Status and Progress
+  status          ProcessingStatus @default(PENDING)
+  funnelStage     Int              @default(0) // 0: None, 1: Preliminary, 2: Deep Scrape, 3: Fine Match, 4: AI Analysis
+  totalFound      Int              @default(0)
+  processedCount  Int              @default(0)
+  error           String?
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt

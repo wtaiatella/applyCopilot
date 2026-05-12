@@ -80,6 +80,14 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
         collapsed={collapsed} 
         onCollapse={(value) => setCollapsed(value)}
         theme="dark"
+        style={{
+          overflow: 'auto',
+          height: '100vh',
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          bottom: 0,
+        }}
       >
         <div className="h-16 flex items-center justify-center font-bold text-white text-lg tracking-wide border-b border-gray-800">
           {collapsed ? 'AC' : 'ApplyCopilot'}
@@ -92,7 +100,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
           onClick={({ key }) => router.push(key)}
         />
       </Sider>
-      <Layout>
+      <Layout style={{ marginLeft: collapsed ? 80 : 200, transition: 'all 0.2s' }}>
         <Header className="px-4 flex items-center shadow-sm z-10" style={{ padding: 0, background: colorBgContainer }}>
           <div className="flex items-center justify-between px-4 w-full">
             <h1 className="text-lg font-semibold m-0 capitalize" style={{ color: colorText }}>

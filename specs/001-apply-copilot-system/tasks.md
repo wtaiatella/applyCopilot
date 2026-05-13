@@ -46,6 +46,7 @@ Implement core infrastructure components required by all user stories.
 ### Implementation Tasks
 
 - [X] T013 Create Prisma schema for all entities (User, UserProfile, JobListing, etc.)
+- [ ] T013a [P] Extend Prisma schema with `PortalMonitor` (global URLs/intervals) and `JobMatch` (user-specific cached scores)
 - [X] T014 Implement database connection and client configuration
 - [X] T015 Create authentication middleware and session management
 - [X] T016 Implement API error handling and response formatting
@@ -131,19 +132,23 @@ Enable users to search remote jobs across portals with AI-powered filtering.
 
 - [X] T050 [P] Create job portal configuration models and API in frontend/src/app/api/portals/
 - [X] T051 [P] Implement web scraping service with Playwright in frontend/src/lib/scraping/
+- [ ] T051b [P] Implement Global Worker (24/7) - **Stage A**: Continuous List Ingestion (Level 0)
+- [ ] T051c [P] Implement Enrichment Worker - **Stage B**: Asynchronous Background Fetch for full descriptions and search vectors
 - [X] T052 [P] Create generic job scraper in frontend/src/lib/scraping/generic-scraper.ts
 - [X] T052a [P] Implement AI Selector Auto-Discovery service (Ollama DOM Analysis) in frontend/src/lib/scraping/discovery.ts
 - [X] T053 [P] Implement provider-specific scrapers (WeWorkRemotely, LinkedIn) in frontend/src/lib/scraping/providers/
 - [X] T054 [US2] Create job search API endpoints in frontend/src/app/api/search/
 - [X] T054b [P] Update Prisma schema and models to support weighted search profiles (Titles, Hard/Soft Skills weights)
-- [ ] T055 [P] Implement Level 1 & Level 3 TensorFlow.js compatibility scoring using cosine similarity and weighted vectors in frontend/src/lib/ai/tensorflow-matcher.ts
-- [ ] T055a [P] Implement Deep Scraper to fetch full job descriptions for top-ranked candidates (Level 2 of funnel)
-- [ ] T056 [P] Create AI processing pipeline orchestration (funnel Levels 1-4) in frontend/src/lib/ai/pipeline.ts
+- [X] T054c [US2] Restructure `MainLayout` to include Job Search submenus: Discovery, Config, Admin
+- [X] T054d [US2] Implement Admin Panel restricted to `USER_ADMIN_EMAIL` for global portal management
+- [ ] T055 [P] Implement Level 1 TensorFlow.js scoring (Fast Cosine Similarity) for real-time ranking in the UI
+- [ ] T055a [P] Implement Level 2 Deep Scraper for full-text extraction (Manual/On-Demand trigger)
+- [ ] T056 [P] Create AI Analysis pipeline (Level 4) for match reasoning and insights (Manual/On-Demand trigger)
 - [ ] T057 [P] Set up job data storage and caching with Redis
-- [ ] T058 [US2] Build job results UI components in frontend/src/components/jobs/
-- [ ] T059 [US2] Create job listing cards with compatibility scores and match reasoning in frontend/src/components/jobs/JobCard.tsx
-- [X] T060 [US2] Implement Job Search UI with tabbed configuration (Filters, Hard Skills, Soft Skills) in frontend/src/components/jobs/JobSearch.tsx
-- [ ] T061 [US2] Create job results page in frontend/src/app/jobs/page.tsx
+- [X] T058 [US2] Build Job Discovery List view with "Suggested" toggle and fast score display
+- [X] T059 [US2] Create job listing cards with match status and "Analyze Deeper" action button
+- [X] T060 [US2] Implement Job Search Config UI with weighted tabs in frontend/src/components/jobs/JobSearch.tsx
+- [ ] T061 [US2] Create job results page with filtered views (Location, Role, Type)
 - [ ] T062 [US2] Add job favoriting and manual score override functionality
 - [ ] T063 [US2] Implement real-time search progress tracking (Funnel status)
 - [ ] T064 [US2] Add job detail view and external link handling

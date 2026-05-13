@@ -189,6 +189,30 @@ model PortalConfig {
   @@map("portal_configs")
 }
 
+// Global System Monitoring (Admin Only)
+model PortalMonitor {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  name            String    // Portal Name (e.g. "WWR Global", "LinkedIn Dev")
+  url             String    // Base monitoring URL
+  type            PortalType
+  intervalHours   Int       @default(24)
+  lastRun         DateTime?
+  nextRun         DateTime?
+  enabled         Boolean   @default(true)
+  
+  // Scraper Config (same as PortalConfig but for the system)
+  selectors       Json?
+  
+  // Metrics
+  totalJobsFound  Int       @default(0)
+  lastError       String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("portal_monitors")
+}
+
 model JobListing {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   portalId        String    @db.ObjectId

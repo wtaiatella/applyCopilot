@@ -34,9 +34,22 @@ As a job seeker, I want to search for remote jobs across multiple portals and se
 
 1. **Given** I have configured job search portals, **When** I initiate a job search, **Then** the system automatically constructs search URLs via `UrlBuilder`, scrapes jobs from selected portals (handling pagination for known providers), and initiates the AI filtering pipeline.
 2. **Given** I encounter a new job portal, **When** the system analyzes its DOM, **Then** it uses local AI (Ollama) to discover and persist the necessary CSS selectors for future automated extraction.
-3. **Given** I want to refine my search, **When** I configure my search profile (Titles, Hard Skills, Soft Skills with weights), **Then** the system uses these as the reference for the 4-level matching funnel.
-4. **Given** a search is initiated, **When** the funnel pipeline runs, **Then** it performs a preliminary TensorFlow match, executes a "Deep Scrape" for top candidates, and calculates a final fidelity score against the full description.
-5. **Given** jobs have been processed, **When** I view results, **Then** I see job cards ranked by compatibility score, showing matched skills and match reasoning.
+3. **Given** I want to refine my search, **When** I configure my search profile (Titles, Hard Skills, Soft Skills with weights), **Then** the system uses these as the reference for the 3-stage hybrid matching funnel.
+4. **Given** the system is running, **When** the Global Worker monitors portals, **Then** it ingests new jobs into the "Job Bank" and pre-calculates title/keyword vectors for fast retrieval.
+5. **Given** jobs have been processed, **When** I view results, **Then** I see job cards ranked by a preliminary compatibility score, and I can manually trigger a "Deep AI Analysis" for high-fidelity insights on top candidates.
+
+---
+
+### User Story 2a - Global Monitoring & Administration (Priority: P1 - Admin Only)
+
+As a system administrator, I want to configure global portal monitoring and scraping intervals so that the "Job Bank" is always populated with the latest opportunities without requiring individual user searches.
+
+**Why this priority**: Efficient data ingestion is the fuel for the intelligent filtering system. A central job bank enables instant results for users.
+
+**Acceptance Scenarios**:
+
+1. **Given** I am logged in as an administrator (matching `USER_ADMIN_EMAIL`), **When** I access the Admin Panel, **Then** I can add portal URLs, configure provider-specific parameters, and monitor scraping metrics.
+2. **Given** the global worker is active, **When** it discovers new jobs, **Then** it avoids duplicates and stores them with initial metadata for fast SQL-based filtering.
 
 ---
 
@@ -135,6 +148,15 @@ As a registered user, I want to receive timely notifications about important eve
 - **FR-021**: System MUST implement rate limiting on notification endpoints (max 3 password resets/hour, max 5 emails/minute per user)
 - **FR-022**: System MUST render HTML email templates with ApplyCopilot branding and responsive design
 - **FR-023**: System MUST provide unsubscribe links in all non-transactional emails with 24-hour processing guarantee
+- **FR-024**: System MUST implement a Global Worker for 24/7 portal monitoring and job bank ingestion.
+- **FR-025**: System MUST provide an Admin Interface restricted to `USER_ADMIN_EMAIL` for managing global scrapers and portal metrics.
+- **FR-026**: System MUST implement a 3-stage Hybrid Funnel with **Two-Stage Enrichment**:
+    1. **Level 0 (Auto/Worker)**: 
+        - *Stage A (List)*: Initial crawl of portal listing pages to capture basic metadata (Title, Company, Tags).
+        - *Stage B (Enrichment)*: Asynchronous background process to fetch full job descriptions from individual URLs to complete the search vector.
+    2. **Level 1 (Auto/UI)**: Fast TensorFlow Cosine Similarity. **The user's weighted configuration (Titles, Hard/Soft Skills) MUST be the base for generating the comparison vector.**
+    3. **Level 2 (Manual/On-Demand)**: AI Analysis (Full description insights and match justification).
+- **FR-027**: System MUST support sub-menus under "Job Search" for: Search Discovery (List), Search Profile (Config), and Admin (Management). **The Admin submenu MUST be hidden from the UI for non-authorized users.**
 
 ### Key Entities *(include if feature involves data)*
 
@@ -188,11 +210,12 @@ As a registered user, I want to receive timely notifications about important eve
 - Authentication system for user account management and data security
 
 ### Job Portal Scraping Frequency
-**Decision**: On-demand scraping with user-initiated searches
-- Scraping triggered only when user explicitly initiates job search.
+**Decision**: Hybrid approach with 24/7 Global Worker and On-Demand User Searches
+- **Global Monitoring**: A system-wide worker monitors 30-40+ portals/URLs continuously, filling the central "Job Bank".
+- **Initial Window**: New portal additions fetch the last 15 days of data; incremental updates run every 24-48h.
+- **User Searches**: Users can trigger manual refreshes for specific portals or personal search URLs.
 - **Dynamic URL Construction**: For known providers, the system automatically builds search URLs by injecting keywords and filters (e.g., `remoteOnly`, `location`) into portal-specific patterns via a `UrlBuilder` utility.
 - **Parallel Execution**: Multiple portals are searched concurrently using a singleton `BrowserManager` to optimize resource usage and speed.
-- Users control when and which portals to search.
 
 ### Compatibility Scoring Algorithm
 **Decision**: TensorFlow.js cosine similarity with TF-IDF vectorization

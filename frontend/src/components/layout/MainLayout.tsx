@@ -24,6 +24,8 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
     token: { colorBgContainer, colorBgLayout, colorText },
   } = theme.useToken();
 
+  const isAdmin = session?.user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL;
+
   const menuItems = [
     {
       key: '/dashboard',
@@ -36,9 +38,23 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
       label: 'My Profile',
     },
     {
-      key: '/jobs',
+      key: 'jobs-parent',
       icon: <SearchOutlined />,
       label: 'Job Search',
+      children: [
+        {
+          key: '/jobs',
+          label: 'Job Discovery',
+        },
+        {
+          key: '/jobs/config',
+          label: 'Search Profiles',
+        },
+        isAdmin && {
+          key: '/jobs/admin',
+          label: 'Admin Monitor',
+        },
+      ].filter(Boolean),
     },
     {
       key: '/settings',
@@ -95,7 +111,8 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
         <Menu 
           theme="dark" 
           mode="inline" 
-          selectedKeys={[activeKey]} 
+          selectedKeys={[pathname]} 
+          defaultOpenKeys={pathname.startsWith('/jobs') ? ['/jobs'] : []}
           items={menuItems}
           onClick={({ key }) => router.push(key)}
         />

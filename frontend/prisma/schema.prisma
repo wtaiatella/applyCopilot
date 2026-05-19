@@ -210,12 +210,15 @@ model PortalMonitor {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  jobListings     JobListing[]
+
   @@map("portal_monitors")
 }
 
 model JobListing {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  portalId        String    @db.ObjectId
+  portalId        String?   @db.ObjectId
+  portalMonitorId String?   @db.ObjectId
   externalId      String    // Portal-specific job ID
   
   // Basic Job Information
@@ -238,11 +241,13 @@ model JobListing {
   processingStatus ProcessingStatus @default(PENDING)
   
   // Relations
-  portal          PortalConfig @relation(fields: [portalId], references: [id], onDelete: Cascade)
+  portal          PortalConfig? @relation(fields: [portalId], references: [id], onDelete: Cascade)
+  portalMonitor   PortalMonitor? @relation(fields: [portalMonitorId], references: [id], onDelete: SetNull)
   matches         JobMatch[]
   applications    Application[]
   
   @@unique([portalId, externalId])
+  @@unique([portalMonitorId, externalId])
   @@map("job_listings")
 }
 

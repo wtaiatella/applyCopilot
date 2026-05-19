@@ -8,6 +8,7 @@ import { ScraperFactory } from '@/lib/scraping/factory';
 import { ScraperSelectors } from '@/lib/scraping/types';
 import { UrlBuilder } from '@/lib/scraping/url-builder';
 import { ProcessingStatus, ExperienceLevel, SearchFrequency, PortalType } from '@prisma/client';
+import { calculateLevel1Score } from '@/lib/ai/scoring-service';
 
 // POST - Start a new job search
 export async function POST(request: NextRequest) {
@@ -178,6 +179,9 @@ async function triggerScraping(searchId: string, userId: string) {
             },
           });
 
+          // Calculate Level 1 score
+          const score = await calculateLevel1Score(searchQuery, job);
+
           // Create placeholder match
           await prisma.jobMatch.upsert({
             where: {
@@ -189,10 +193,18 @@ async function triggerScraping(searchId: string, userId: string) {
             create: {
               userId,
               jobListingId: job.id,
-              overallScore: 0, // Will be updated by AI pipeline
-              algorithm: 'placeholder',
+              overallScore: score.overall || 0,
+              skillsScore: score.skills,
+              experienceScore: score.experience,
+              educationScore: score.education,
+              algorithm: 'tensorflow-cosine',
             },
-            update: {},
+            update: {
+              overallScore: score.overall || 0,
+              skillsScore: score.skills,
+              experienceScore: score.experience,
+              educationScore: score.education,
+            },
           });
         }
 

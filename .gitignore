@@ -46,3 +46,6 @@ mydocs/
 test_scripts/
 **/uploads/
 noCodeSite/
+
+# --- speckit ---
+.specify/sync

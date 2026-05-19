@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/tests_scripts
 
 # next.js
 /.next/
@@ -44,3 +45,7 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+
+# speckit
+.specify/sync

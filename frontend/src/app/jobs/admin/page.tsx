@@ -135,10 +135,10 @@ export default function JobAdminPage() {
       dataIndex: "name",
       key: "name",
       render: (text: string, record: PortalMonitor) => (
-        <Space direction="vertical" size={0}>
+        <Flex vertical gap={0}>
           <Text strong>{text}</Text>
           <Text type="secondary" className="text-xs">{record.url}</Text>
-        </Space>
+        </Flex>
       ),
     },
     {

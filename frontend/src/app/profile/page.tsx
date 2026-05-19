@@ -178,7 +178,7 @@ export default function ProfilePage() {
 
       {error && (
         <Alert
-          message="Error loading profile"
+          title="Error loading profile"
           description={error}
           type="error"
           showIcon

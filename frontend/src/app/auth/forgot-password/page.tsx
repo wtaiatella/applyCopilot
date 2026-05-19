@@ -45,11 +45,11 @@ export default function ForgotPasswordPage() {
         {success ? (
           <div className="text-center">
             <Alert
-              message="Check your email"
-              description="If an account exists, a reset link has been sent to your email address."
+              title="Check your email"
+              description="If an account exists for that email, we've sent a password reset link."
               type="success"
               showIcon
-              className="mb-6 text-left"
+              className="mb-6"
             />
             <Link href="/auth/login">
               <Button type="primary" className="w-full">

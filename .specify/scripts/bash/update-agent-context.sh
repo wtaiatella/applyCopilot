@@ -254,14 +254,9 @@ format_technology_stack() {
 #==============================================================================
 
 get_project_structure() {
-    local project_type="$1"
-    
-    if [[ "$project_type" == *"web"* ]]; then
-        echo "backend/\\nfrontend/\\ntests/"
-    else
-        echo "src/\\ntests/"
-    fi
+    echo ".agent/\\n.specify/\\n.windsurf/\\ncv/\\nfrontend/\\nmydocs/\\nspecs/\\ntests_scripts/"
 }
+
 
 get_commands_for_language() {
     local lang="$1"

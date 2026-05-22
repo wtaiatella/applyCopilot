@@ -146,11 +146,10 @@ export function EducationForm({
                           <div className="mb-4">
                             <div className="mb-2 font-medium text-sm text-gray-400">Bullet Points / Achievements</div>
                             {bpFields.map(({ key: bpKey, ...bpField }) => {
-                              const { key: bpFieldKey, ...restBpField } = bpField;
                               return (
-                                <div key={bpFieldKey} className="flex items-start gap-2 mb-2 w-full">
+                                <div key={bpKey} className="flex items-start gap-2 mb-2 w-full">
                                   <Form.Item
-                                    {...restBpField}
+                                    {...bpField}
                                     rules={[{ required: true, message: "Missing content" }]}
                                     className="mb-0 flex-grow"
                                   >

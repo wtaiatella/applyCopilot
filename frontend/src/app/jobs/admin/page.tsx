@@ -273,7 +273,7 @@ export default function JobAdminPage() {
         </Col>
         <Col span={6}>
           <Card>
-            <Statistic title="Worker Status" value="Healthy" valueStyle={{ color: '#3f8600' }} />
+            <Statistic title="Worker Status" value="Healthy" styles={{ content: { color: '#3f8600' } }} />
           </Card>
         </Col>
         <Col span={6}>

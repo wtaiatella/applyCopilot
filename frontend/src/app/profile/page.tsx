@@ -20,7 +20,7 @@ export default function ProfilePage() {
   const fetchProfile = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/profile");
+      const res = await fetch("/api/profile", { cache: "no-store" });
       if (!res.ok) {
         if (res.status === 404) {
           // No profile yet, that's fine
@@ -142,7 +142,7 @@ export default function ProfilePage() {
         description: proj.description && typeof proj.description === 'string' ? proj.description : (proj.name || 'Project'),
       }));
 
-      return {
+      const mergedData = {
         basicData,
         summaries: prev?.summaries || [],
         experiences: experiences.length > 0 ? experiences : prev?.experiences || [],
@@ -152,9 +152,18 @@ export default function ProfilePage() {
         references: dataToUse.references && dataToUse.references.length > 0 ? dataToUse.references : prev?.references || [],
         summary: dataToUse.summary || prev?.summary || "",
       };
+
+      // Automatically save the extracted data so it's not lost on refresh
+      fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(mergedData),
+      }).catch(err => console.error("Failed to auto-save profile:", err));
+
+      return mergedData;
     });
     
-    message.success("Profile updated with CV data! Please review and save each section.");
+    message.success("Profile updated and automatically saved with CV data! Please review the details.");
   };
 
   if (loading && !profileData) {

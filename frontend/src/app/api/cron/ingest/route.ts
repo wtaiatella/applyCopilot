@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { ScraperFactory } from '@/lib/scraping/factory';
-import { logger } from '@/lib/logger';
+import { loggers } from '@/lib/logging';
 import { PortalType } from '@prisma/client';
 
 export const maxDuration = 300; // 5 minutes max duration for cron
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    logger.info('Starting Global Worker Stage A: Continuous List Ingestion');
+    loggers.api.info('Starting Global Worker Stage A: Continuous List Ingestion');
 
     // 1. Fetch enabled monitors that are due for a run
     const now = new Date();
@@ -29,14 +29,14 @@ export async function GET(request: Request) {
       }
     });
 
-    logger.info(`Found ${monitors.length} monitors due for processing.`);
+    loggers.api.info(`Found ${monitors.length} monitors due for processing.`);
 
     const results = [];
 
     // 2. Process each monitor sequentially to avoid overwhelming the system
     for (const monitor of monitors) {
       try {
-        logger.info(`Processing monitor: ${monitor.name} (${monitor.url})`);
+        loggers.api.info(`Processing monitor: ${monitor.name} (${monitor.url})`);
         
         // 3. Initialize scraper
         const scraper = ScraperFactory.getScraper(monitor.type);
@@ -47,15 +47,8 @@ export async function GET(request: Request) {
         }
 
         // 4. Scrape the list of jobs
-        // We simulate passing the URL as search params to the scraper
-        const scrapedJobs = await scraper.scrape({
-          titles: [monitor.name],
-          locations: [],
-          remoteOnly: false
-        }); // The generic scraper currently expects search parameters, we might need to adjust this
-        
-        // Note: The above might need adaptation depending on how ScraperFactory is implemented. 
-        // For now, we assume it returns an array of JobListing-like objects.
+        const result = await scraper.scrape(monitor.url, { timeout: 30000 });
+        const scrapedJobs = result.jobs;
         
         let newJobsCount = 0;
 
@@ -66,7 +59,7 @@ export async function GET(request: Request) {
             where: {
               portalMonitorId_externalId: {
                 portalMonitorId: monitor.id,
-                externalId: jobData.id || jobData.url
+                externalId: jobData.externalId || jobData.url
               }
             },
             update: {
@@ -77,7 +70,7 @@ export async function GET(request: Request) {
             },
             create: {
               portalMonitorId: monitor.id,
-              externalId: jobData.id || jobData.url,
+              externalId: jobData.externalId || jobData.url,
               title: jobData.title,
               company: jobData.company,
               location: jobData.location,
@@ -108,7 +101,7 @@ export async function GET(request: Request) {
         results.push({ monitor: monitor.name, status: 'success', jobsAdded: newJobsCount });
 
       } catch (err: any) {
-        logger.error(`Error processing monitor ${monitor.name}:`, err);
+        loggers.api.error(`Error processing monitor ${monitor.name}:`, err);
         
         await prisma.portalMonitor.update({
           where: { id: monitor.id },
@@ -124,7 +117,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, processed: monitors.length, results });
 
   } catch (error: any) {
-    logger.error('Fatal error in Global Worker Ingestion:', error);
+    loggers.api.error('Fatal error in Global Worker Ingestion:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

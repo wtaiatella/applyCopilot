@@ -43,7 +43,7 @@
 # --- Project Specific ---
 logs/
 mydocs/
-test_scripts/
+tests_scripts/
 **/uploads/
 noCodeSite/
 

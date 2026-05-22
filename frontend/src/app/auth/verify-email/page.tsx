@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Button, Card, Typography, message, Spin, Result } from "antd";
+import { Button, Card, Typography, Spin, Result, App } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -14,6 +14,7 @@ export default function VerifyEmailPage() {
   
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
+  const { message } = App.useApp();
 
   useEffect(() => {
     if (token) {

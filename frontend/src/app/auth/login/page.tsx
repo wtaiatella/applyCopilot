@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Form, Input, Button, Card, Typography, message, Divider } from "antd";
+import { Form, Input, Button, Card, Typography, Divider, App } from "antd";
 import { UserOutlined, LockOutlined } from "@ant-design/icons";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -12,6 +12,7 @@ const { Title, Text } = Typography;
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { message } = App.useApp();
 
   const onFinish = async (values: any) => {
     setLoading(true);

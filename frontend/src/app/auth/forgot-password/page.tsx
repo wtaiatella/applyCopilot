@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Form, Input, Button, Card, Typography, message, Alert } from "antd";
+import { Form, Input, Button, Card, Typography, Alert, App } from "antd";
 import { MailOutlined } from "@ant-design/icons";
 import Link from "next/link";
 
@@ -10,6 +10,7 @@ const { Title, Text } = Typography;
 export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const { message } = App.useApp();
 
   const onFinish = async (values: { email: string }) => {
     setLoading(true);

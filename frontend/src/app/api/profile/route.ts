@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
           orderBy: { name: 'asc' },
         },
         summaries: {
-          where: { isActive: true },
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
@@ -113,6 +113,33 @@ export async function POST(request: NextRequest) {
         processingStatus: 'COMPLETED',
       },
     });
+
+    // Sync and save summaries if provided
+    const summariesList = body.summaries || body.basicData?.summaries;
+    if (summariesList) {
+      await prisma.profileSummary.deleteMany({ where: { profileId: profile.id } });
+      if (summariesList.length > 0) {
+        await prisma.profileSummary.createMany({
+          data: summariesList.map((sum: any) => ({
+            profileId: profile.id,
+            title: sum.title || 'Summary',
+            content: sum.content || '',
+            isAIGenerated: sum.isAIGenerated || false,
+            isActive: sum.isActive || false,
+          })),
+        });
+      }
+
+      // Sync active summary content and title to UserProfile
+      const activeSummary = summariesList.find((s: any) => s.isActive);
+      await prisma.userProfile.update({
+        where: { id: profile.id },
+        data: {
+          summary: activeSummary ? activeSummary.content : null,
+          title: activeSummary ? activeSummary.title : (body.basicData?.title || profile.title),
+        },
+      });
+    }
 
     // Update related collections if provided in the body
     if (body.experiences) {

@@ -43,6 +43,7 @@ export default function ProfilePage() {
           phone: rawData.phone,
           website: rawData.website,
           github: rawData.github,
+          summaries: rawData.summaries || [],
         },
         skills: (rawData.skills || []).map((s: any) => ({
           ...s,
@@ -60,11 +61,9 @@ export default function ProfilePage() {
   };
 
   const handleUpdateSection = async (section: string, data: any) => {
-    // Basic implementation: send to a specific endpoint or general update endpoint
-    // Assuming /api/profile handles a general update or we map to specific ones
     try {
       const res = await fetch("/api/profile", {
-        method: "POST", // In a real app we might use PATCH /api/profile/basic-data etc
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [section]: data }),
       });
@@ -73,13 +72,11 @@ export default function ProfilePage() {
         throw new Error(`Failed to update ${section}`);
       }
       
-      // Update local state
-      setProfileData((prev: any) => ({
-        ...prev,
-        [section]: data
-      }));
+      message.success(`${section === "basicData" ? "Basic data" : section.charAt(0).toUpperCase() + section.slice(1)} saved successfully!`);
+      await fetchProfile(); // Reload complete profile from server
     } catch (err: any) {
       console.error(err);
+      message.error(err.message || `Failed to update ${section}`);
       throw err;
     }
   };
@@ -103,7 +100,11 @@ export default function ProfilePage() {
     // Merge the AI extracted data with our current profile data
     setProfileData((prev: any) => {
       // Basic Data merging (if AI found something, use it, otherwise keep prev)
-      const basicData = { ...prev?.basicData };
+      const basicData = { 
+        ...prev?.basicData,
+        summaries: prev?.basicData?.summaries || prev?.summaries || []
+      };
+
       if (dataToUse.basicData) {
         const aiInfo = dataToUse.basicData;
         const normalizeUrl = (url?: string) => {
@@ -144,13 +145,11 @@ export default function ProfilePage() {
 
       const mergedData = {
         basicData,
-        summaries: prev?.summaries || [],
         experiences: experiences.length > 0 ? experiences : prev?.experiences || [],
         education: education.length > 0 ? education : prev?.education || [],
         projects: projects.length > 0 ? projects : prev?.projects || [],
         skills: dataToUse.skills && dataToUse.skills.length > 0 ? dataToUse.skills : prev?.skills || [],
         references: dataToUse.references && dataToUse.references.length > 0 ? dataToUse.references : prev?.references || [],
-        summary: dataToUse.summary || prev?.summary || "",
       };
 
       // Automatically save the extracted data so it's not lost on refresh
@@ -158,7 +157,9 @@ export default function ProfilePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(mergedData),
-      }).catch(err => console.error("Failed to auto-save profile:", err));
+      })
+        .then(() => fetchProfile())
+        .catch(err => console.error("Failed to auto-save profile:", err));
 
       return mergedData;
     });

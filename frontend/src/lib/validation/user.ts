@@ -50,11 +50,13 @@ export type PasswordChangeInput = z.infer<typeof passwordChangeSchema>;
 export const userBasicDataSchema = z.object({
   firstName: z.string().max(100).optional().or(z.literal('')),
   lastName: z.string().max(100).optional().or(z.literal('')),
+  title: z.string().max(200).optional().or(z.literal('')),
   phone: phoneSchema,
   location: locationSchema,
   website: z.string().max(2048).optional().or(z.literal('')),
   github: z.string().max(2048).optional().or(z.literal('')),
   portfolioLinks: portfolioLinksSchema.optional(),
+  summaries: z.array(z.any()).optional(),
 });
 
 export type UserBasicDataInput = z.infer<typeof userBasicDataSchema>;

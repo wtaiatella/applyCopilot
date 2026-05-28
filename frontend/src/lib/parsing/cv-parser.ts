@@ -85,7 +85,44 @@ export class CVParser {
   static async parseCVData(cvText: string): Promise<ParsedCVData> {
     try {
       const extractedData = await AIService.parseCV(cvText);
-      return extractedData;
+      
+      const parsedData: ParsedCVData = {
+        basicData: {
+          firstName: extractedData.basicData?.firstName,
+          lastName: extractedData.basicData?.lastName,
+          email: extractedData.basicData?.email,
+          phone: extractedData.basicData?.phone,
+          location: extractedData.basicData?.location,
+        },
+        experiences: (extractedData.experiences || []).map(exp => ({
+          company: exp.company,
+          position: exp.position,
+          startDate: exp.startDate,
+          endDate: exp.endDate,
+          current: exp.current,
+          description: exp.bulletPoints || (exp as any).description || [],
+        })),
+        education: (extractedData.education || []).map(edu => ({
+          institution: edu.institution,
+          degree: edu.degree,
+          field: edu.field,
+          startDate: edu.startDate,
+          endDate: edu.endDate,
+          current: edu.current,
+        })),
+        projects: (extractedData.projects || []).map(proj => ({
+          name: proj.name,
+          description: proj.bulletPoints || (proj as any).description || [],
+          technologies: proj.technologies || [],
+        })),
+        skills: (extractedData.skills || []).map(skill => ({
+          name: skill.name,
+          category: skill.category,
+          proficiency: skill.proficiency,
+        })),
+      };
+
+      return parsedData;
     } catch (error) {
       console.error('CV parsing failed:', error);
       throw new Error(`Failed to parse CV data: ${(error as Error).message}`);

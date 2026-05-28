@@ -97,72 +97,72 @@ export default function ProfilePage() {
       };
     }
     
-    // Merge the AI extracted data with our current profile data
-    setProfileData((prev: any) => {
-      // Basic Data merging (if AI found something, use it, otherwise keep prev)
-      const basicData = { 
-        ...prev?.basicData,
-        summaries: prev?.basicData?.summaries || prev?.summaries || []
+    const prev = profileData || {};
+    
+    // Basic Data merging (if AI found something, use it, otherwise keep prev)
+    const basicData = { 
+      ...prev?.basicData,
+      summaries: prev?.basicData?.summaries || prev?.summaries || []
+    };
+
+    if (dataToUse.basicData) {
+      const aiInfo = dataToUse.basicData;
+      const normalizeUrl = (url?: string) => {
+        if (!url) return undefined;
+        if (url.startsWith('http')) return url;
+        return `https://${url}`;
       };
 
-      if (dataToUse.basicData) {
-        const aiInfo = dataToUse.basicData;
-        const normalizeUrl = (url?: string) => {
-          if (!url) return undefined;
-          if (url.startsWith('http')) return url;
-          return `https://${url}`;
-        };
-
-        if (aiInfo.firstName && !basicData.firstName) basicData.firstName = aiInfo.firstName;
-        if (aiInfo.lastName && !basicData.lastName) basicData.lastName = aiInfo.lastName;
-        if (aiInfo.title && !basicData.title) basicData.title = aiInfo.title;
-        if (aiInfo.location && !basicData.location) basicData.location = aiInfo.location;
-        if (aiInfo.phone && !basicData.phone) basicData.phone = aiInfo.phone;
-        
-        const website = normalizeUrl(aiInfo.website);
-        if (website && !basicData.website) basicData.website = website;
-        
-        const github = normalizeUrl(aiInfo.github);
-        if (github && !basicData.github) basicData.github = github;
-      }
+      if (aiInfo.firstName && !basicData.firstName) basicData.firstName = aiInfo.firstName;
+      if (aiInfo.lastName && !basicData.lastName) basicData.lastName = aiInfo.lastName;
+      if (aiInfo.title && !basicData.title) basicData.title = aiInfo.title;
+      if (aiInfo.location && !basicData.location) basicData.location = aiInfo.location;
+      if (aiInfo.phone && !basicData.phone) basicData.phone = aiInfo.phone;
       
-      // Ensure bulletPoints are mapped from description for compatibility
-      const experiences = (dataToUse.experiences || []).map((exp: any) => ({
-        ...exp,
-        bulletPoints: exp.bulletPoints || exp.description || [],
-      }));
+      const website = normalizeUrl(aiInfo.website);
+      if (website && !basicData.website) basicData.website = website;
+      
+      const github = normalizeUrl(aiInfo.github);
+      if (github && !basicData.github) basicData.github = github;
+    }
+    
+    // Ensure bulletPoints are mapped from description for compatibility
+    const experiences = (dataToUse.experiences || []).map((exp: any) => ({
+      ...exp,
+      bulletPoints: exp.bulletPoints || exp.description || [],
+    }));
 
-      const education = (dataToUse.education || []).map((edu: any) => ({
-        ...edu,
-        bulletPoints: edu.bulletPoints || edu.description || [],
-      }));
+    const education = (dataToUse.education || []).map((edu: any) => ({
+      ...edu,
+      bulletPoints: edu.bulletPoints || edu.description || edu.achievements || [],
+    }));
 
-      const projects = (dataToUse.projects || []).map((proj: any) => ({
-        ...proj,
-        bulletPoints: proj.bulletPoints || proj.description || [],
-        description: proj.description && typeof proj.description === 'string' ? proj.description : (proj.name || 'Project'),
-      }));
+    const projects = (dataToUse.projects || []).map((proj: any) => ({
+      ...proj,
+      bulletPoints: proj.bulletPoints || proj.description || [],
+      description: proj.description && typeof proj.description === 'string' ? proj.description : (proj.name || 'Project'),
+    }));
 
-      const mergedData = {
-        basicData,
-        experiences: experiences.length > 0 ? experiences : prev?.experiences || [],
-        education: education.length > 0 ? education : prev?.education || [],
-        projects: projects.length > 0 ? projects : prev?.projects || [],
-        skills: dataToUse.skills && dataToUse.skills.length > 0 ? dataToUse.skills : prev?.skills || [],
-        references: dataToUse.references && dataToUse.references.length > 0 ? dataToUse.references : prev?.references || [],
-      };
+    const mergedData = {
+      basicData,
+      experiences: experiences.length > 0 ? experiences : prev?.experiences || [],
+      education: education.length > 0 ? education : prev?.education || [],
+      projects: projects.length > 0 ? projects : prev?.projects || [],
+      skills: dataToUse.skills && dataToUse.skills.length > 0 ? dataToUse.skills : prev?.skills || [],
+      references: dataToUse.references && dataToUse.references.length > 0 ? dataToUse.references : prev?.references || [],
+    };
 
-      // Automatically save the extracted data so it's not lost on refresh
-      fetch("/api/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mergedData),
-      })
-        .then(() => fetchProfile())
-        .catch(err => console.error("Failed to auto-save profile:", err));
+    // Update the state immediately
+    setProfileData(mergedData);
 
-      return mergedData;
-    });
+    // Automatically save the extracted data so it's not lost on refresh
+    fetch("/api/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...mergedData, isImport: true }),
+    })
+      .then(() => fetchProfile())
+      .catch(err => console.error("Failed to auto-save profile:", err));
     
     message.success("Profile updated and automatically saved with CV data! Please review the details.");
   };

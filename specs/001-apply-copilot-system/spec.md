@@ -19,6 +19,8 @@ As a job seeker, I want to upload my CV and have the system automatically extrac
 
 1. **Given** I am a new user with a PDF CV, **When** I upload my CV file, **Then** the system extracts and organizes my data into six main sections with editable fields
 2. **Given** my CV has been processed, **When** I review any section (experiences, education, etc.), **Then** I see tabbed interface with individual items and can edit bullet points or add free-form context
+3. **Given** my CV file is being uploaded, **When** the parsing starts, **Then** the frontend UI displays real-time progress updates matching distinct processing steps (e.g. 20% Text Extracted, 40% Contact Info, 60% Experiences, 80% Projects, 100% Complete) instead of a direct jump from 20% to 100%.
+4. **Given** I upload a new CV or update my profile sequentially, **When** the system saves the extracted data, **Then** the backend matches and merges rather than duplicating the entities: it preserves existing MongoDB record IDs for matched Experiences (by company/position), Projects (by name), and Bullets (by text similarity), appending only new items/bullets and preserving relations with historical CV records.
 
 ---
 
@@ -119,9 +121,27 @@ As a registered user, I want to receive timely notifications about important eve
 ### Functional Requirements
 
 - **FR-001**: System MUST allow users to upload CV files in PDF or DOCX format and store them securely in an AWS S3 bucket
-- **FR-002**: System MUST automatically extract and categorize CV data into six main sections (basic data, experiences, education, projects, skills, references)
+- **FR-002**: System MUST automatically extract and categorize CV data into six main sections (basic data, experiences, education, projects, skills, references) using the multi-step sequential parsing method described in **FR-002b**.
+- **FR-002a**: **Sequential Import Merging & Duplication Avoidance**: When a user imports a new CV or saves profile data sequentially, the system MUST match and merge incoming data with existing profile records instead of duplicating them:
+  - Match `Experiences` by normalized `company` and `position` fields to preserve their Prisma/MongoDB IDs.
+  - Match `Projects` by normalized `name` to preserve their IDs.
+  - Match and merge `ExperienceBullet` and `ProjectBullet` items using **exact matching** (case-insensitive and trimmed whitespace comparison), preserving their active database IDs, and appending only brand new bullets to the existing entities.
+  - Keep historical experiences and bullets intact in the database to prevent relational failures for existing CVs.
+- **FR-002b**: **Multi-Step Focused Parser & Progress Tracking**: To ensure maximum AI accuracy and prevent API timeouts, the CV parsing pipeline MUST be client-orchestrated or sequential:
+  - The UI MUST orchestrate individual, highly focused AI prompts sequentially, each using the **full** CV text context to extract a specific section (Basic Info/Summary, Experiences, Projects, Education/Skills).
+  - The frontend MUST track and display real-time actual progress (e.g. 20% Extracted, 40% Basic Info, 60% Experiences, 80% Projects, 100% Complete) corresponding to each completed step.
+  - The temporary CV file uploaded for processing is processed in memory or on dev server storage and does not require permanent AWS S3 storage (AWS S3 is only used for generated CV tailored versions).
 - **FR-003**: System MUST provide tabbed interface for managing multiple items within each profile section
 - **FR-004**: System MUST allow users to edit extracted data and add free-form context descriptions
+- **FR-004a**: System MUST allow users to manage multiple named versions of their professional summaries (`summaries`) with title, content, isAIGenerated, and isActive flags.
+- **FR-004b**: System MUST synchronize the active summary's content and title to the main user profile fields (`summary` and `title`) whenever a summary version is marked active or updated.
+- **FR-004c**: System MUST allow users to delete summary versions, refine existing summaries, or generate new summary introductions of 3 to 5 lines using AI instructions provided in a popup modal.
+- **FR-004d**: System MUST support structuring job experience and project descriptions into discrete **ExperienceBullet** and **ProjectBullet** items instead of flat string arrays.
+- **FR-004e**: Each ExperienceBullet and ProjectBullet MUST support: `text`, `isActive` (active/inactive state), `isArchived` (soft-delete flag), `cvIds` (tracking which generated CVs utilize the bullet), and a `type` indicator (bullet vs paragraph text).
+- **FR-004f**: System MUST allow soft-deleting profile bullet points. If a bullet point is archived (soft-deleted), it MUST be hidden from the active profile edit screen, but preserved in the database to prevent errors in historical CVs and applications.
+- **FR-004g**: System MUST support a dedicated **CV (Resume Version)** model to track generated CV history, S3 PDF paths, creation dates, target applications, and the specific `ExperienceBullet` and `ProjectBullet` IDs used during generation.
+- **FR-004h**: The Experiences and Projects frontend forms MUST render bullet items with a leading dot symbol (`•`) when classified as bullets, and display a count badge representing the number of CVs using each bullet.
+- **FR-004i**: The frontend count badge MUST support interactive hover/click displaying a list of CV names as links to custom CV views.
 - **FR-005**: System MUST support job portal configuration including pre-configured options (WeWorkRemotely, LinkedIn) and custom URLs with automated selector discovery.
 - **FR-005a**: System MUST allow users to configure job search criteria using a tabbed interface (Titles, Hard Skills, Soft Skills) with weight-based importance levels.
 - **FR-006**: System MUST implement a dual-layer scraping architecture: a `GenericScraper` driven by AI-discovered selectors (Ollama) and `ProviderScrapers` (LinkedIn, WeWorkRemotely) for complex portals.
@@ -161,6 +181,9 @@ As a registered user, I want to receive timely notifications about important eve
 ### Key Entities *(include if feature involves data)*
 
 - **User Profile**: Central entity containing all professional information extracted from CV, including basic data, experiences, education, projects, skills, and references
+- **ExperienceBullet**: Individual bullet point description representing a highlight of a work experience, tracking text, active/inactive state, type (bullet vs paragraph), archived status for soft deletion, and CV link associations.
+- **ProjectBullet**: Individual bullet point description representing a highlight of a project, tracking similar metadata as ExperienceBullet.
+- **CV (Resume Version)**: Historical record of a generated resume PDF version, containing its S3 key, target application, creation timestamp, and the specific Experience/Project bullet IDs included in its generation.
 - **Job Listing**: External job opportunity data scraped from portals, including title, company, requirements, location, and application details
 - **Job Match**: Relationship entity storing compatibility scores, analysis results, and AI-generated insights between user profile and job listings
 - **Application**: Tracking entity representing user's job application status and history for specific positions

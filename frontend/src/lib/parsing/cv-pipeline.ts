@@ -176,7 +176,15 @@ export class CVPipeline {
           startDate: new Date(exp.startDate),
           endDate: exp.endDate ? new Date(exp.endDate) : null,
           current: exp.current,
-          description: exp.description,
+          description: {
+            create: (exp.description || []).map((text) => ({
+              text,
+              isActive: true,
+              type: 'bullet',
+              isArchived: false,
+              cvIds: [],
+            })),
+          },
           technologies: [],
         },
       });
@@ -230,7 +238,16 @@ export class CVPipeline {
         data: {
           profileId,
           name: proj.name,
-          description: proj.description,
+          description: proj.description || [],
+          bulletPoints: {
+            create: (proj.description || []).map((text) => ({
+              text,
+              isActive: true,
+              type: 'bullet',
+              isArchived: false,
+              cvIds: [],
+            })),
+          },
           technologies: proj.technologies,
           startDate: new Date(), // CV parsing may not have project dates
           endDate: null,

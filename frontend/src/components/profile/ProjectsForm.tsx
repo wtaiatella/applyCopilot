@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Form, Input, Button, App, Space, Card, DatePicker, Select, Tabs } from "antd";
+import { Form, Input, Button, App, Space, DatePicker, Select, Tabs, Checkbox, Popover, Badge } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import type { ProjectInput } from "@/lib/validation/profile";
 import dayjs from "dayjs";
@@ -11,12 +11,14 @@ const { RangePicker } = DatePicker;
 
 interface ProjectsFormProps {
   initialData?: ProjectInput[];
-  onSubmit: (data: ProjectInput[]) => Promise<void>;
+  cvs?: any[];
+  onSubmit: (data: any[]) => Promise<void>;
   loading?: boolean;
 }
 
 export function ProjectsForm({
   initialData,
+  cvs = [],
   onSubmit,
   loading,
 }: ProjectsFormProps) {
@@ -28,13 +30,36 @@ export function ProjectsForm({
     if (initialData) {
       const formattedData = initialData.map((proj: any) => {
         const isPresent = proj.endDate === 'Present' || proj.current;
+        
+        // Normalize bullet points to structured object format
+        const rawBullets = proj.bulletPoints || proj.description || [];
+        const formattedBullets = rawBullets.map((bp: any) => {
+          if (typeof bp === 'string') {
+            return {
+              text: bp,
+              isActive: true,
+              isArchived: false,
+              type: 'bullet',
+              cvIds: [],
+            };
+          }
+          return {
+            id: bp.id,
+            text: bp.text || '',
+            isActive: bp.isActive !== undefined ? bp.isActive : true,
+            isArchived: bp.isArchived || false,
+            type: bp.type || 'bullet',
+            cvIds: bp.cvIds || [],
+          };
+        });
+
         return {
           ...proj,
           dates: [
             proj.startDate ? dayjs(proj.startDate) : undefined,
             isPresent ? dayjs() : (proj.endDate ? dayjs(proj.endDate) : undefined),
           ],
-          bulletPoints: proj.bulletPoints || proj.description || [],
+          bulletPoints: formattedBullets,
         };
       });
       form.setFieldsValue({ projects: formattedData });
@@ -48,21 +73,37 @@ export function ProjectsForm({
         const endDate = proj.dates?.[1];
         const isCurrent = proj.current || (endDate && dayjs(endDate).isAfter(dayjs().subtract(1, 'day')));
         
+        // Clean up and structured bullets formatting
+        const bulletPoints = (proj.bulletPoints || []).map((bp: any) => ({
+          id: bp.id,
+          text: bp.text || '',
+          isActive: bp.isActive !== undefined ? bp.isActive : true,
+          type: bp.type || 'bullet',
+          cvIds: bp.cvIds || [],
+        }));
+
         return {
-          ...proj,
+          id: proj.id,
+          name: proj.name || 'Unknown Project',
           startDate,
           endDate: isCurrent ? 'Present' : endDate?.toISOString(),
           current: isCurrent,
-          bulletPoints: proj.bulletPoints || [],
-          aiSuggestions: proj.aiSuggestions || [],
+          bulletPoints,
           technologies: proj.technologies || [],
+          freeFormContext: proj.freeFormContext || '',
         };
       });
+
       await onSubmit(formattedData);
       message.success("Projects updated successfully!");
     } catch (error) {
       message.error("Failed to update projects");
     }
+  };
+
+  const getCvNames = (cvIds: string[] = []) => {
+    if (!cvs || cvs.length === 0) return [];
+    return cvIds.map(id => cvs.find(c => c.id === id)?.name || "Resume Version");
   };
 
   return (
@@ -81,7 +122,14 @@ export function ProjectsForm({
               onChange={setActiveKey}
               onEdit={(targetKey, action) => {
                 if (action === "add") {
-                  add();
+                  add({
+                    name: "",
+                    dates: [],
+                    current: false,
+                    technologies: [],
+                    bulletPoints: [{ text: "", isActive: true, type: "bullet", cvIds: [] }],
+                    freeFormContext: "",
+                  });
                   setActiveKey(`${fields.length}`);
                 } else if (action === "remove") {
                   const index = Number(targetKey);
@@ -101,6 +149,16 @@ export function ProjectsForm({
                   closable: true,
                   children: (
                     <div className="pt-4 px-1">
+                      {/* Hidden field for project ID */}
+                      <Form.Item
+                        {...restField}
+                        name={[name, "id"]}
+                        className="hidden"
+                        style={{ display: 'none' }}
+                      >
+                        <Input type="hidden" />
+                      </Form.Item>
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Form.Item
                           {...restField}
@@ -136,39 +194,141 @@ export function ProjectsForm({
                         />
                       </Form.Item>
 
-                      <Form.Item
-                        {...restField}
-                        name={[name, "description"]}
-                        label="Description"
-                        rules={[{ required: true, message: "Missing description" }]}
-                      >
-                        <TextArea autoSize={{ minRows: 2, maxRows: 6 }} placeholder="Project description..." />
-                      </Form.Item>
+                      <div className="mb-4">
+                        <div className="mb-2 font-medium text-sm text-gray-400">Highlights & Features</div>
+                        <Form.List name={[name, "bulletPoints"]}>
+                          {(bpFields, { add: addBp, remove: removeBp }) => (
+                            <div>
+                              {bpFields.map(({ key: bpKey, name: bpName, ...bpField }) => {
+                                const bulletData = form.getFieldValue(["projects", name, "bulletPoints", bpName]) || {};
+                                const isBullet = bulletData.type !== "paragraph";
+                                const cvList = getCvNames(bulletData.cvIds);
 
-                      <Form.List name={[name, "bulletPoints"]}>
-                        {(bpFields, { add: addBp, remove: removeBp }) => (
-                          <div className="mb-4">
-                            <div className="mb-2 font-medium text-sm text-gray-400">Bullet Points</div>
-                            {bpFields.map(({ key: bpKey, ...bpField }) => {
-                              return (
-                                <div key={bpKey} className="flex items-start gap-2 mb-2 w-full">
-                                  <Form.Item
-                                    {...bpField}
-                                    rules={[{ required: true, message: "Missing content" }]}
-                                    className="mb-0 flex-grow"
-                                  >
-                                    <TextArea autoSize={{ minRows: 2, maxRows: 6 }} placeholder="Describe a project feature or achievement..." />
-                                  </Form.Item>
-                                  <Button type="text" danger onClick={() => removeBp(bpField.name)} icon={<DeleteOutlined />} className="mt-1" />
-                                </div>
-                              );
-                            })}
-                            <Button type="dashed" onClick={() => addBp()} block icon={<PlusOutlined />}>
-                              Add Bullet Point
-                            </Button>
-                          </div>
-                        )}
-                      </Form.List>
+                                return (
+                                  <div key={bpKey} className="flex items-center gap-2 mb-3 w-full bg-gray-900/10 p-2 rounded-lg border border-gray-800/40 hover:border-gray-850 transition-all">
+                                    {/* Visual prefix symbol */}
+                                    {isBullet && (
+                                      <div className="text-lg font-bold w-6 text-center text-gray-500 flex items-center justify-center">
+                                        •
+                                      </div>
+                                    )}
+
+                                    {/* Hidden fields to preserve id and cvIds */}
+                                    <Form.Item
+                                      {...bpField}
+                                      name={[bpName, "id"]}
+                                      className="hidden"
+                                      style={{ display: 'none' }}
+                                    >
+                                      <Input type="hidden" />
+                                    </Form.Item>
+                                    <Form.Item
+                                      {...bpField}
+                                      name={[bpName, "cvIds"]}
+                                      className="hidden"
+                                      style={{ display: 'none' }}
+                                    >
+                                      <Select mode="multiple" style={{ display: 'none' }} />
+                                    </Form.Item>
+
+                                    {/* Text Content */}
+                                    <Form.Item
+                                      {...bpField}
+                                      name={[bpName, "text"]}
+                                      rules={[{ required: true, message: "Missing content" }]}
+                                      className="mb-0 flex-grow"
+                                      style={{ marginBottom: 0 }}
+                                    >
+                                      <TextArea 
+                                        autoSize={{ minRows: 1, maxRows: 4 }} 
+                                        placeholder="Describe a project feature or achievement..."
+                                        className="w-full bg-transparent border-none focus:bg-gray-800/20 mb-0 py-1"
+                                      />
+                                    </Form.Item>
+
+                                    {/* Right Actions */}
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                      {/* Type selector */}
+                                      <Form.Item
+                                        {...bpField}
+                                        name={[bpName, "type"]}
+                                        className="mb-0"
+                                        style={{ marginBottom: 0 }}
+                                      >
+                                        <Select
+                                          size="small"
+                                          style={{ width: 110 }}
+                                          options={[
+                                            { value: "bullet", label: "Bullet" },
+                                            { value: "paragraph", label: "Paragraph" }
+                                          ]}
+                                          onChange={() => form.setFieldsValue({ _update: Date.now() })}
+                                        />
+                                      </Form.Item>
+
+                                      {/* Active checkbox */}
+                                      <Form.Item
+                                        {...bpField}
+                                        name={[bpName, "isActive"]}
+                                        valuePropName="checked"
+                                        className="mb-0"
+                                        style={{ marginBottom: 0 }}
+                                      >
+                                        <Checkbox>Active</Checkbox>
+                                      </Form.Item>
+
+                                      {/* CV Count Badge with Popover */}
+                                      {cvList.length > 0 && (
+                                        <Popover
+                                          title="Used in Resume Versions"
+                                          content={
+                                            <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+                                              {cvList.map((cvName, idx) => (
+                                                <a 
+                                                  key={idx} 
+                                                  href="#"
+                                                  className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1 py-1 px-2 hover:bg-gray-800/40 rounded transition-all"
+                                                  onClick={(e) => {
+                                                    e.preventDefault();
+                                                    message.info(`Navigating to customize CV "${cvName}" (future feature).`);
+                                                  }}
+                                                >
+                                                  📄 {cvName}
+                                                </a>
+                                              ))}
+                                            </div>
+                                          }
+                                          trigger="hover"
+                                        >
+                                          <Badge 
+                                            count={cvList.length} 
+                                            style={{ backgroundColor: '#722ed1', cursor: 'pointer' }} 
+                                            title=""
+                                            className="flex items-center"
+                                          />
+                                        </Popover>
+                                      )}
+
+                                      {/* Delete Button */}
+                                      <Button 
+                                        type="text" 
+                                        danger 
+                                        size="small"
+                                        onClick={() => removeBp(bpName)} 
+                                        icon={<DeleteOutlined />} 
+                                        className="flex items-center justify-center self-center"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              <Button type="dashed" onClick={() => addBp({ text: "", isActive: true, type: "bullet", cvIds: [] })} block icon={<PlusOutlined />}>
+                                Add Highlight
+                              </Button>
+                            </div>
+                          )}
+                        </Form.List>
+                      </div>
 
                       <Form.Item
                         {...restField}

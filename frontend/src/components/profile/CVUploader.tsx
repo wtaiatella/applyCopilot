@@ -16,9 +16,10 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
   const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState('Uploading CV...');
 
   const props: UploadProps = {
-    name: 'file', // Changed to match API expectation formData.get('file')
+    name: 'file',
     multiple: false,
     accept: '.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     action: '/api/profile/upload-cv',
@@ -29,44 +30,115 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
       
       if (status === 'uploading') {
         setLoading(true);
-        // Simulate progress for UX
-        setProgress(prev => {
-          if (prev >= 90) return 90;
-          return prev + 10;
-        });
+        setStatusMessage('Uploading CV and extracting raw text...');
+        setProgress(15);
       }
       
       if (status === 'done') {
-        setProgress(100);
-        message.success(`${info.file.name} file uploaded successfully.`);
+        setProgress(25);
+        setStatusMessage('Text extracted. Launching focused AI parsing pipeline...');
         
-        // The API returns the extracted data inside info.file.response.data.extractedData
         if (info.file.response && info.file.response.data) {
-          const { extractedData, error } = info.file.response.data;
+          const { cvText, fileId, error } = info.file.response.data;
           
-          console.log("Upload response data:", info.file.response.data);
-          
-          if (error || !extractedData) {
-            message.error(`AI Parsing Error: ${error || "No data extracted."}`);
+          if (error || !cvText) {
+            message.error(`Extraction Error: ${error || "No text extracted from CV."}`);
+            setLoading(false);
+            setProgress(0);
             return;
           }
           
-          modal.success({
-            title: 'CV Processed Successfully',
-            content: 'Your CV has been parsed. The AI is now filling out your profile sections based on your resume.',
-            onOk() {
-              onUploadSuccess(extractedData);
+          // Sequential parsing chain to avoid timeouts and optimize local LLM assertiveness
+          (async () => {
+            try {
+              // Step 1: Parse Basic (40%)
+              setProgress(40);
+              setStatusMessage('AI Parsing [1/4]: Extracting basic contact info and summaries...');
+              const basicRes = await fetch('/api/profile/parse/basic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cvText })
+              });
+              if (!basicRes.ok) throw new Error('Failed to parse basic contact details');
+              const basicResult = await basicRes.json();
+              const basicData = basicResult.data;
+
+              // Step 2: Parse Experiences (60%)
+              setProgress(60);
+              setStatusMessage('AI Parsing [2/4]: Extracting structured job experiences...');
+              const expRes = await fetch('/api/profile/parse/experiences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cvText })
+              });
+              if (!expRes.ok) throw new Error('Failed to parse work experience list');
+              const expResult = await expRes.json();
+              const experiences = expResult.data?.experiences || [];
+
+              // Step 3: Parse Projects (80%)
+              setProgress(80);
+              setStatusMessage('AI Parsing [3/4]: Extracting project details and technologies...');
+              const projRes = await fetch('/api/profile/parse/projects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cvText })
+              });
+              if (!projRes.ok) throw new Error('Failed to parse project history');
+              const projResult = await projRes.json();
+              const projects = projResult.data?.projects || [];
+
+              // Step 4: Parse Education & Skills (95%)
+              setProgress(95);
+              setStatusMessage('AI Parsing [4/4]: Extracting education history and categorized skills...');
+              const eduSkillsRes = await fetch('/api/profile/parse/education-skills', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cvText })
+              });
+              if (!eduSkillsRes.ok) throw new Error('Failed to parse education and skills sets');
+              const eduSkillsResult = await eduSkillsRes.json();
+              const education = eduSkillsResult.data?.education || [];
+              const skills = eduSkillsResult.data?.skills || [];
+
+              // Step 5: Complete (100%)
+              setProgress(100);
+              setStatusMessage('CV parsed completely. Ready to merge!');
+              
+              message.success(`${info.file.name} CV parsed completely.`);
+
+              const completeParsedData = {
+                basicData,
+                experiences,
+                projects,
+                education,
+                skills,
+                fileId
+              };
+
+              modal.success({
+                title: 'CV Parsing Complete',
+                content: 'All profile sections have been parsed successfully using dedicated Ollama prompts. Click OK to merge with your active profile.',
+                okText: 'Merge & Save Profile',
+                onOk() {
+                  onUploadSuccess(completeParsedData);
+                }
+              });
+            } catch (err: any) {
+              console.error('Client-side sequential CV parsing failed', err);
+              message.error(`AI Parsing failed: ${err.message || 'Unknown processing error'}`);
+            } finally {
+              setTimeout(() => {
+                setLoading(false);
+                setProgress(0);
+                setStatusMessage('');
+              }, 1200);
             }
-          });
+          })();
         }
-        
-        setTimeout(() => {
-          setLoading(false);
-          setProgress(0);
-        }, 1000);
       } else if (status === 'error') {
         setLoading(false);
         setProgress(0);
+        setStatusMessage('');
         message.error(`${info.file.name} file upload failed. ${info.file.response?.error || 'Unknown error'}`);
       }
     },
@@ -101,7 +173,7 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
             {loading ? (
               <div className="p-4 flex flex-col items-center justify-center min-h-[120px]">
                 <Progress type="circle" percent={progress} size="small" />
-                <Text className="mt-4 text-blue-400 font-medium">Processing your CV...</Text>
+                <Text className="mt-4 text-blue-400 font-medium text-center px-4">{statusMessage}</Text>
               </div>
             ) : (
               <div className="p-4">
@@ -110,8 +182,7 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
                 </p>
                 <p className="ant-upload-text text-white font-medium">Click or drag CV file to this area</p>
                 <p className="ant-upload-hint text-gray-400 text-xs mt-2">
-                  Support for a single or bulk upload. Strictly prohibited from uploading company data or other
-                  banned files.
+                  Support for PDF and DOCX files. Files are processed locally.
                 </p>
               </div>
             )}

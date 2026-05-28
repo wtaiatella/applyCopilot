@@ -94,7 +94,26 @@ export async function POST(request: NextRequest) {
         position: data.position,
         startDate: new Date(data.startDate),
         endDate: data.endDate ? new Date(data.endDate) : null,
-        description: data.bulletPoints || [],
+        description: {
+          create: (data.bulletPoints || []).map((bp: any) => {
+            if (typeof bp === 'string') {
+              return {
+                text: bp,
+                isActive: true,
+                type: 'bullet',
+                isArchived: false,
+                cvIds: [],
+              };
+            }
+            return {
+              text: bp.text || '',
+              isActive: bp.isActive !== undefined ? bp.isActive : true,
+              type: bp.type || 'bullet',
+              isArchived: bp.isArchived !== undefined ? bp.isArchived : false,
+              cvIds: bp.cvIds || [],
+            };
+          }),
+        },
         technologies: [],
       },
     });

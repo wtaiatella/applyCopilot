@@ -135,7 +135,7 @@ export class OllamaClient {
         options: {
           temperature: options?.temperature || 0.1, // Lower temperature for structured data
           top_p: options?.top_p || 0.9,
-          num_predict: options?.num_predict || 2000,
+          num_predict: options?.num_predict || 8192, // Increased from 2000 to prevent truncated JSON on long verbatim extractions
           ...options
         }
       })
@@ -275,6 +275,11 @@ Return ONLY a JSON object with the extracted data in this exact format:
   ]
 }
 
+CRITICAL VERBATIM EXTRACTION RULES:
+- For "bulletPoints" in both "experiences" and "projects": You MUST extract each bullet point and description EXACTLY as it is written in the original CV text. Do NOT summarize, rewrite, simplify, paraphrase, correct grammar, or change a single word.
+- Do NOT strip bold prefixes or inline categories (e.g., if a bullet point says "AI-Driven Application Development: Contributed to...", you MUST include "AI-Driven Application Development: Contributed to..." verbatim. Do NOT remove "AI-Driven Application Development:").
+- Keep all original terminology, dates, numbers, and bullet list item contents identical.
+
 IMPORTANT:
 - If a person is currently working somewhere, set "endDate" to "Present" and "current" to true.
 - Extract portfolio/personal website URL into "website".
@@ -353,6 +358,256 @@ IMPORTANT:
         }
       },
       required: ["basicData", "experiences", "education", "projects", "skills"]
+    }
+
+    return this.generateStructuredData(prompt, schema)
+  }
+
+  /**
+   * Extract basic info and summary from CV
+   */
+  async extractBasicData(cvText: string): Promise<{
+    firstName: string
+    lastName: string
+    email: string
+    phone: string
+    location: string
+    website: string
+    github: string
+    summary: string
+  }> {
+    const prompt = `Extract basic personal contact details and a professional summary of 3-5 lines from this CV text:
+
+${cvText}
+
+Return ONLY a JSON object with this exact structure:`
+
+    const schema = {
+      type: "object",
+      properties: {
+        firstName: { type: "string" },
+        lastName: { type: "string" },
+        email: { type: "string" },
+        phone: { type: "string" },
+        location: { type: "string" },
+        website: { type: "string" },
+        github: { type: "string" },
+        summary: { type: "string" }
+      },
+      required: ["firstName", "lastName", "email", "phone", "location", "website", "github", "summary"]
+    }
+
+    return this.generateStructuredData(prompt, schema)
+  }
+
+  /**
+   * Extract professional experiences from CV
+   */
+  async extractExperiences(cvText: string): Promise<{
+    experiences: Array<{
+      company: string
+      position: string
+      startDate: string
+      endDate?: string
+      current: boolean
+      technologies: string[]
+      bulletPoints: Array<{
+        text: string
+        type: 'bullet' | 'paragraph'
+        isActive: boolean
+      }>
+    }>
+  }> {
+    const prompt = `Extract all professional work experiences from this CV text:
+
+${cvText}
+
+For each job, extract company name, position, dates, technologies used, and split the description into structured bullet points or paragraphs.
+
+CRITICAL VERBATIM EXTRACTION RULES:
+1. For each item in "bulletPoints" (both bullets and paragraphs): You MUST extract the text EXACTLY as written in the original CV. Do NOT paraphrase, summarize, simplify, correct grammar, or rewrite.
+2. Keep all category prefixes, bold headings, and introductory phrases (e.g., if a bullet point starts with a category like "UI Development: Developed screens...", you MUST include the full text "UI Development: Developed screens..." verbatim. Do NOT remove "UI Development:").
+3. Do NOT rewrite or reword any bullet point. Every single word must match the input CV text exactly.
+
+Return ONLY a JSON object with this exact structure:`
+
+    const schema = {
+      type: "object",
+      properties: {
+        experiences: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              company: { type: "string" },
+              position: { type: "string" },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              current: { type: "boolean" },
+              technologies: { type: "array", items: { type: "string" } },
+              bulletPoints: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    text: { type: "string" },
+                    type: { type: "string", enum: ["bullet", "paragraph"] },
+                    isActive: { type: "boolean" }
+                  },
+                  required: ["text", "type", "isActive"]
+                }
+              }
+            },
+            required: ["company", "position", "startDate", "current", "technologies", "bulletPoints"]
+          }
+        }
+      },
+      required: ["experiences"]
+    }
+
+    return this.generateStructuredData(prompt, schema)
+  }
+
+  /**
+   * Extract project history from CV
+   */
+  async extractProjects(cvText: string): Promise<{
+    projects: Array<{
+      name: string
+      startDate: string
+      endDate?: string
+      url?: string
+      technologies: string[]
+      bulletPoints: Array<{
+        text: string
+        type: 'bullet' | 'paragraph'
+        isActive: boolean
+      }>
+    }>
+  }> {
+    const prompt = `Extract all personal or professional projects from this CV text:
+
+${cvText}
+
+For each project, extract the name, dates, url (if any), technologies used, and split descriptions into structured bullets or paragraphs.
+
+CRITICAL VERBATIM EXTRACTION RULES:
+1. For each item in "bulletPoints" (both bullets and paragraphs): You MUST extract the text EXACTLY as written in the original CV. Do NOT paraphrase, summarize, simplify, correct grammar, or rewrite.
+2. Keep all category prefixes, bold headings, and introductory phrases verbatim (e.g., if a bullet point starts with a category like "DevOps & Cloud Infrastructure: Established...", you MUST include the full text "DevOps & Cloud Infrastructure: Established..." verbatim. Do NOT remove "DevOps & Cloud Infrastructure:").
+3. Do NOT rewrite or reword any bullet point. Every single word must match the input CV text exactly.
+
+Return ONLY a JSON object with this exact structure:`
+
+    const schema = {
+      type: "object",
+      properties: {
+        projects: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              url: { type: "string" },
+              technologies: { type: "array", items: { type: "string" } },
+              bulletPoints: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    text: { type: "string" },
+                    type: { type: "string", enum: ["bullet", "paragraph"] },
+                    isActive: { type: "boolean" }
+                  },
+                  required: ["text", "type", "isActive"]
+                }
+              }
+            },
+            required: ["name", "startDate", "technologies", "bulletPoints"]
+          }
+        }
+      },
+      required: ["projects"]
+    }
+
+    return this.generateStructuredData(prompt, schema)
+  }
+
+  /**
+   * Extract education and skills lists from CV
+   */
+  async extractEducationSkills(cvText: string): Promise<{
+    education: Array<{
+      institution: string
+      degree: string
+      field?: string
+      startDate: string
+      endDate?: string
+      current: boolean
+      achievements: string[]
+    }>
+    skills: Array<{
+      name: string
+      category: 'TECHNICAL' | 'SOFT_SKILL' | 'LANGUAGE' | 'FRAMEWORK' | 'TOOL' | 'DOMAIN'
+      proficiency: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT'
+      yearsExperience?: number
+    }>
+  }> {
+    const prompt = `Extract education history, credentials, and skills from this CV text:
+
+${cvText}
+
+For skills, map them strictly to these categories:
+- TECHNICAL: programming languages, databases, raw tech skills (e.g. JavaScript, MongoDB, Python, SQL)
+- FRAMEWORK: frameworks and libraries (e.g. React, Next.js, Express, Angular, Vue)
+- TOOL: developer tools and platforms (e.g. Git, Docker, AWS, JIRA, Figma)
+- SOFT_SKILL: communication, teamwork, leadership
+- LANGUAGE: spoken/written languages (e.g. English, Portuguese, Spanish)
+- DOMAIN: business areas or fields of expertise (e.g. E-commerce, FinTech, Web3)
+
+Map skills proficiency strictly to:
+- BEGINNER
+- INTERMEDIATE
+- ADVANCED
+- EXPERT
+
+Return ONLY a JSON object with this exact structure:`
+
+    const schema = {
+      type: "object",
+      properties: {
+        education: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              institution: { type: "string" },
+              degree: { type: "string" },
+              field: { type: "string" },
+              startDate: { type: "string" },
+              endDate: { type: "string" },
+              current: { type: "boolean" },
+              achievements: { type: "array", items: { type: "string" } }
+            },
+            required: ["institution", "degree", "startDate", "current", "achievements"]
+          }
+        },
+        skills: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              category: { type: "string", enum: ["TECHNICAL", "SOFT_SKILL", "LANGUAGE", "FRAMEWORK", "TOOL", "DOMAIN"] },
+              proficiency: { type: "string", enum: ["BEGINNER", "INTERMEDIATE", "ADVANCED", "EXPERT"] },
+              yearsExperience: { type: "number" }
+            },
+            required: ["name", "category", "proficiency"]
+          }
+        }
+      },
+      required: ["education", "skills"]
     }
 
     return this.generateStructuredData(prompt, schema)

@@ -20,7 +20,7 @@ Initialize Next.js 16 project with required dependencies, configuration, and dev
 - [X] T001 Initialize Next.js 16 project with TypeScript
 - [X] T002 Install and configure core dependencies (React 19, Ant Design 6, Tailwind CSS 4)
 - [X] T003 Install and configure database dependencies (Prisma, MongoDB)
-- [ ] T003a Install and configure AWS SDK for S3 file storage (ApplyCopilot bucket)
+- [ ] T003a Install and configure AWS SDK for S3 file storage (Tailored CV versions bucket - not needed for temporary uploads)
 - [X] T004 Install and configure AI dependencies (TensorFlow.js, Ollama SDK)
 - [X] T005 Install testing dependencies (Jest, Playwright, Testing Library)
 - [X] T006 Configure environment variables and .env files
@@ -53,7 +53,7 @@ Implement core infrastructure components required by all user stories.
 - [X] T017 Set up logging with Winston
 - [X] T018 Configure rate limiting middleware
 - [X] T019 Create input validation schemas with Zod
-- [ ] T020 Implement file upload handling and AWS S3 integration for CV files
+- [ ] T020 Implement AWS S3 integration for Tailored CV files (temporary uploads are processed locally without S3)
 - [X] T021 Set up AI service clients (Ollama, Gemini)
 - [X] T022 Configure TensorFlow.js for compatibility scoring
 - [X] T023 Create base API route structure
@@ -115,6 +115,24 @@ Enable users to upload CVs and automatically extract/organize professional infor
 - [X] T049 [US1] Add profile editing and update functionality
 - [X] T049a [US1] Build CV Upload component (Ant Design Dragger) and integrate with /api/profile/upload-cv and extraction hook
 - [X] T049b [US1] Update MainLayout Header with User Avatar, session state, and Logout dropdown
+- [X] T049c [US1] Create backend API for AI summary generation: `/api/profile/summaries/generate` with Gemini and Ollama fallback
+- [X] T049d [US1] Update profile API (`/api/profile` GET/POST) to retrieve all summaries and save/delete them, syncing the active summary's content and title to `UserProfile`
+- [X] T049e [US1] Add `generateProfileSummary` static method to `AIService` routing to Gemini/Ollama
+- [X] T049f [US1] Modify `BasicDataForm.tsx` to render the `title` field and summaries manager (card list with activate, delete, and AI refinement popup modal)
+- [X] T049g [US1] Update `ProfilePage` (`page.tsx`) state handling and formatting to include and save basic data and summaries list
+- [X] T049h [US1] Update `schema.prisma` with `ExperienceBullet`, `ProjectBullet`, `CV` models and relations to `Experience`, `Project`, `Application` and `User`
+- [X] T049i [US1] Run database push to apply updated models in local MongoDB environment
+- [X] T049j [US1] Update `/api/profile` GET/POST routes to handle structured ExperienceBullet and ProjectBullet upserts and soft-delete archiving logic
+- [X] T049k [US1] Modify `ExperiencesForm.tsx` to edit structured bullet points, toggle bullet/paragraph type, toggle active state, and display hoverable CV count badges
+- [X] T049l [US1] Modify `ProjectsForm.tsx` to replicate identical structured bullet point editing, types, and CV count badges
+- [ ] T049m [US1] (Deferred) Add unit/integration tests to verify bullet soft-deletion (isArchived) and active filtering in database upserts
+- [X] T049n [US1] Implement focused parsing API routes in Next.js backend (`/api/profile/parse/basic`, `/experiences`, `/projects`, `/education-skills`) utilizing dedicated LLM prompts
+- [X] T049o [US1] Implement Sequential Import Merging & Duplication Avoidance inside `/api/profile` POST route using EXACT match logic (matching by company/position/name/text, keeping bullet union, and avoiding duplicate items)
+- [X] T049p [US1] Update `CVUploader.tsx` to orchestrate client-side multi-step focused parsing and display real-time actual progress percentages (20% -> 40% -> 60% -> 80% -> 90% -> 100%)
+- [X] T049q [US1] Update `ProfilePage` (`page.tsx`)'s `handleCVExtractedData` to cleanly trigger this multi-step client orchestrator and merge results smoothly without duplicating data
+- [X] T049r [US1] Verify sequential CV imports on clean and existing DB instances to guarantee zero duplicated bullets or experiences
+
+
 
 ## Phase 4: User Story 2 - Job Discovery and Smart Filtering
 
@@ -354,13 +372,13 @@ Implement comprehensive metrics collection and monitoring infrastructure for mea
 
 ## Task Summary
 
-- **Total Tasks**: 124 (113 + T033a + T003a, T031a, T032a, T033b, T109a, T033c, T033d, T033e, T049a, T049b added)
+- **Total Tasks**: 135 (129 + T049h-T049m added)
 - **Completed Tasks**: 33
-- **Pending Tasks**: 91
+- **Pending Tasks**: 102
 - **Setup Tasks**: 13 (Phase 1, T001-T012, T003a)
 - **Infrastructure Tasks**: 28 (Phase 2, T013-T033, T033a, T031a, T032a, T033b, T033c, T033d, T033e)
   - Includes T033a: Ant Design theme configuration per UI Theming Strategy
-- **User Story 1 Tasks**: 18 (Phase 3, T034-T049, T049a, T049b)
+- **User Story 1 Tasks**: 29 (23 + T049a-T049m)
 - **User Story 2 Tasks**: 15 (Phase 4, T050-T064)
 - **User Story 3 Tasks**: 11 (Phase 5, T065-T075)
 - **User Story 4 Tasks**: 11 (Phase 6, T076-T086)

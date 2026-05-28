@@ -45,6 +45,7 @@ interface Job {
     currency?: string;
   };
   score?: number;
+  url: string;
 }
 
 export function JobList() {

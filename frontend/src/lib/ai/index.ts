@@ -45,6 +45,22 @@ export class AIService {
     return ollamaClient.extractCVData(cvText);
   }
 
+  static async extractBasicData(cvText: string) {
+    return ollamaClient.extractBasicData(cvText);
+  }
+
+  static async extractExperiences(cvText: string) {
+    return ollamaClient.extractExperiences(cvText);
+  }
+
+  static async extractProjects(cvText: string) {
+    return ollamaClient.extractProjects(cvText);
+  }
+
+  static async extractEducationSkills(cvText: string) {
+    return ollamaClient.extractEducationSkills(cvText);
+  }
+
   /**
    * Parse job listing and extract structured data
    * Uses Ollama (local) - cost efficient

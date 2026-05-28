@@ -1,5 +1,5 @@
 import Redis from 'ioredis';
-import { logger } from './logger';
+import { loggers } from '@/lib/logging';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
@@ -19,11 +19,11 @@ export const redis =
 if (process.env.NODE_ENV !== 'production') globalForRedis.redis = redis;
 
 redis.on('connect', () => {
-  logger.info('Redis client connected');
+  loggers.app.info('Redis client connected');
 });
 
 redis.on('error', (err) => {
-  logger.error('Redis client error', { error: err.message });
+  loggers.app.error('Redis client error', { error: err.message });
 });
 
 /**
@@ -35,7 +35,7 @@ export async function getCached<T>(key: string): Promise<T | null> {
     if (!data) return null;
     return JSON.parse(data) as T;
   } catch (error) {
-    logger.error('Error reading from cache', { key, error });
+    loggers.app.error('Error reading from cache', { key, error });
     return null;
   }
 }
@@ -45,7 +45,7 @@ export async function setCached(key: string, value: any, ttlSeconds: number = 36
     const data = JSON.stringify(value);
     await redis.set(key, data, 'EX', ttlSeconds);
   } catch (error) {
-    logger.error('Error writing to cache', { key, error });
+    loggers.app.error('Error writing to cache', { key, error });
   }
 }
 
@@ -56,6 +56,6 @@ export async function clearCache(keyPattern: string): Promise<void> {
       await redis.del(...keys);
     }
   } catch (error) {
-    logger.error('Error clearing cache', { keyPattern, error });
+    loggers.app.error('Error clearing cache', { keyPattern, error });
   }
 }

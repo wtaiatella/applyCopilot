@@ -50,6 +50,7 @@ export function ProfileTabs({
       children: (
         <ExperiencesForm 
           initialData={profileData?.experiences} 
+          cvs={profileData?.cvs}
           onSubmit={onUpdateExperiences} 
           loading={loading} 
         />
@@ -61,8 +62,8 @@ export function ProfileTabs({
       children: (
         <EducationForm 
           initialData={profileData?.education} 
-          onSubmit={onUpdateEducation} 
           loading={loading} 
+          onSubmit={onUpdateEducation} 
         />
       ),
     },
@@ -72,6 +73,7 @@ export function ProfileTabs({
       children: (
         <ProjectsForm 
           initialData={profileData?.projects} 
+          cvs={profileData?.cvs}
           onSubmit={onUpdateProjects} 
           loading={loading} 
         />

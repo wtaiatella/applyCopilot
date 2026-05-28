@@ -19,16 +19,13 @@ export async function POST(request: NextRequest) {
     const statusMap: Record<string, string> = {
       'email.sent': 'SENT',
       'email.delivered': 'DELIVERED',
-      'email.bounced': 'FAILED',
-      'email.complained': 'FAILED',
+      'email.bounced': 'BOUNCED',
+      'email.complained': 'COMPLAINED',
     };
 
     const status = statusMap[type];
 
     if (status) {
-      // Create a notification log entry since we might not have a direct link to the user
-      // without looking up the email, or we can just log it if NotificationLog schema supports it.
-      // Since NotificationLog in Prisma schema might require a userId, we'll try to find the user.
       const user = await prisma.user.findUnique({
         where: { email: data.to[0] }
       });
@@ -37,14 +34,13 @@ export async function POST(request: NextRequest) {
         await prisma.notificationLog.create({
           data: {
             userId: user.id,
-            type: 'EMAIL',
+            type: 'WELCOME', // Fallback default NotificationType
             channel: 'EMAIL',
             status: status as any,
-            metadata: {
-              messageId: data.email_id,
-              event: type,
-              reason: data.reason || null,
-            }
+            recipient: data.to[0] || user.email,
+            bodyPreview: `Webhook status update: ${type}`,
+            providerMessageId: data.email_id || null,
+            providerResponse: data as any,
           }
         });
       } else {

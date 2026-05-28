@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { Button, Card, Typography, Spin, Result, App } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 const { Title, Text } = Typography;
 
-export default function VerifyEmailPage() {
+function VerifyEmailForm() {
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,5 +95,17 @@ export default function VerifyEmailPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
+        <div className="text-center text-white">Loading email verification...</div>
+      </div>
+    }>
+      <VerifyEmailForm />
+    </Suspense>
   );
 }

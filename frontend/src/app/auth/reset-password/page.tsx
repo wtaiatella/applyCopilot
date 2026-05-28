@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { Form, Input, Button, Card, Typography, Alert, App } from "antd";
 import { LockOutlined } from "@ant-design/icons";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -8,7 +8,7 @@ import Link from "next/link";
 
 const { Title, Text } = Typography;
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -148,5 +148,17 @@ export default function ResetPasswordPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
+        <div className="text-center text-white">Loading password reset...</div>
+      </div>
+    }>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }

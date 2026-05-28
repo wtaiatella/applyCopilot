@@ -23,6 +23,23 @@ export const profileSummarySchema = z.object({
 
 export type ProfileSummaryInput = z.infer<typeof profileSummarySchema>;
 
+// Relational/Structured Bullet Point Object schema
+export const bulletPointObjectSchema = z.object({
+  id: uuidSchema.optional(),
+  text: z.string().min(1).max(1000),
+  isActive: z.boolean().default(true),
+  isArchived: z.boolean().default(false),
+  type: z.enum(['bullet', 'paragraph']).default('bullet'),
+  cvIds: z.array(uuidSchema).default([]),
+});
+
+export type BulletPointObjectInput = z.infer<typeof bulletPointObjectSchema>;
+
+// Flexible bullet points array supporting strings (legacy) and objects (relational)
+export const flexibleBulletPointsSchema = z.array(
+  z.union([z.string().min(1).max(1000), bulletPointObjectSchema])
+).max(100);
+
 // Experience entry
 export const experienceSchema = z.object({
   id: uuidSchema.optional(),
@@ -30,7 +47,7 @@ export const experienceSchema = z.object({
   position: nameSchema,
   startDate: dateSchema,
   endDate: optionalDateSchema,
-  bulletPoints: bulletPointsSchema,
+  bulletPoints: flexibleBulletPointsSchema,
   freeFormContext: textSchema(0, 2000).optional().or(z.literal('')),
   aiSuggestions: aiSuggestionsSchema,
 }).refine(
@@ -83,7 +100,7 @@ export const projectSchema = z.object({
   technologies: stringArraySchema,
   startDate: dateSchema,
   endDate: optionalDateSchema,
-  bulletPoints: bulletPointsSchema,
+  bulletPoints: flexibleBulletPointsSchema,
   freeFormContext: textSchema(0, 2000).optional().or(z.literal('')),
   aiSuggestions: aiSuggestionsSchema,
 }).refine(

@@ -166,7 +166,7 @@ async function triggerScraping(searchId: string, userId: string) {
               url: jobData.url,
               description: jobData.description || '',
               technologies: jobData.technologies || [],
-              postedAt: jobData.postedAt,
+              postedAt: jobData.postedAt || new Date(),
               type: 'FULL_TIME', // Default
             },
             update: {
@@ -175,7 +175,7 @@ async function triggerScraping(searchId: string, userId: string) {
               location: jobData.location,
               remote: jobData.remote,
               url: jobData.url,
-              postedAt: jobData.postedAt,
+              postedAt: jobData.postedAt || new Date(),
             },
           });
 

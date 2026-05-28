@@ -168,37 +168,13 @@ export async function POST(request: NextRequest) {
       throw new AIProcessingError('Failed to extract text from CV file: ' + (error as Error).message);
     }
 
-    loggers.app.debug(`[${requestId}] Step 8: Processing CV with AI (Ollama)`);
+    loggers.app.debug(`[${requestId}] Step 8: Skipping monolithic AI CV parser. Returning full extracted text.`);
 
     // Save extracted text to file in debug mode
     await saveExtractedText(saveResult.fileId, cvText);
 
-    // Process CV with AI (Ollama)
-    let extractedData;
-    try {
-      loggers.app.debug(`[${requestId}] Calling AIService.parseCV`, { textLength: cvText.length });
-      extractedData = await AIService.parseCV(cvText);
-      loggers.ai.info('CV parsed successfully', { requestId, fileId: saveResult.fileId });
-      loggers.app.debug(`[${requestId}] Step 8: AI processing completed`);
-    } catch (error) {
-      loggers.ai.error(`[${requestId}] CV AI processing failed`, {
-        fileId: saveResult.fileId,
-        error: (error as Error).message,
-        stack: (error as Error).stack,
-      });
-      // Return partial success with extracted text even if AI parsing fails
-      loggers.app.warn(`[${requestId}] Returning partial success (AI failed)`);
-      return createdResponse({
-        fileId: saveResult.fileId,
-        extractedText: cvText.substring(0, 1000),
-        fullTextLength: cvText.length,
-        pages: pageCount,
-        error: 'AI parsing failed: ' + (error as Error).message,
-      });
-    }
-
     const duration = Date.now() - startTime;
-    loggers.app.info('Profile CV upload completed', {
+    loggers.app.info('Profile CV upload and text extraction completed', {
       requestId,
       fileId: saveResult.fileId,
       originalName: file.name,
@@ -206,11 +182,10 @@ export async function POST(request: NextRequest) {
     });
     loggers.app.debug(`[${requestId}] === UPLOAD CV REQUEST COMPLETED ===`);
 
-    // Return response per API contract
+    // Return response containing full extracted text for client-side orchestration
     return createdResponse({
-      profileId: saveResult.fileId,
-      extractedData,
-      extractedText: cvText.substring(0, 500), // Preview for debugging
+      fileId: saveResult.fileId,
+      cvText,
       fullTextLength: cvText.length,
       pages: pageCount,
     });

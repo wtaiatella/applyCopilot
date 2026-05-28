@@ -59,6 +59,7 @@ model UserProfile {
   skills          Skill[]
   references      Reference[]
   summaries       ProfileSummary[]
+  cvs             CV[]
 
   // AI Processing
   vectorEmbedding Json?      // TensorFlow.js compatibility vectors
@@ -70,14 +71,14 @@ model UserProfile {
 }
 
 model Experience {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  profileId       String    @db.ObjectId
+  id              String             @id @default(auto()) @map("_id") @db.ObjectId
+  profileId       String             @db.ObjectId
   company         String
   position        String
   startDate       DateTime
   endDate         DateTime?
-  current         Boolean   @default(false)
-  description     String[]
+  current         Boolean            @default(false)
+  description     ExperienceBullet[]
   technologies    String[]
   freeFormContext String?
   
@@ -106,11 +107,11 @@ model Education {
 }
 
 model Project {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  profileId       String    @db.ObjectId
+  id              String          @id @default(auto()) @map("_id") @db.ObjectId
+  profileId       String          @db.ObjectId
   name            String
   description     String[]
-  bulletPoints    String[]
+  bulletPoints    ProjectBullet[]
   technologies    String[]
   startDate       DateTime
   endDate         DateTime?
@@ -165,6 +166,51 @@ model ProfileSummary {
   profile         UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@map("profile_summaries")
+}
+
+model ExperienceBullet {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  experienceId String     @db.ObjectId
+  text         String
+  isActive     Boolean    @default(true)
+  isArchived   Boolean    @default(false)
+  type         String     @default("bullet") // "bullet" or "paragraph"
+  cvIds        String[]   @db.ObjectId
+  
+  experience   Experience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  
+  @@map("experience_bullets")
+}
+
+model ProjectBullet {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  projectId    String   @db.ObjectId
+  text         String
+  isActive     Boolean  @default(true)
+  isArchived   Boolean  @default(false)
+  type         String   @default("bullet") // "bullet" or "paragraph"
+  cvIds        String[] @db.ObjectId
+  
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@map("project_bullets")
+}
+
+model CV {
+  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  profileId       String         @db.ObjectId
+  name            String         // e.g. "React Specialist CV"
+  s3Path          String?        // PDF path on AWS S3
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  // The specific bullets used in this CV
+  activeBulletIds String[]       // Array of ExperienceBullet and ProjectBullet IDs
+  
+  profile         UserProfile    @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  applications    Application[]
+  
+  @@map("cvs")
 }
 
 // Job Portal and Listings
@@ -285,6 +331,7 @@ model Application {
   status          ApplicationStatus @default(SAVED)
   notes           String?
   cvVersion       Json?      // CV version used for application
+  cvId            String?   @db.ObjectId
   coverLetter     String?    // AI-generated cover letter
   appliedAt       DateTime?
   createdAt       DateTime  @default(now())
@@ -295,6 +342,7 @@ model Application {
   // Relations
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   jobListing      JobListing @relation(fields: [jobListingId], references: [id], onDelete: Cascade)
+  cv              CV?       @relation(fields: [cvId], references: [id])
   interviewStages InterviewStage[]
   statusHistory   StatusChange[]
 

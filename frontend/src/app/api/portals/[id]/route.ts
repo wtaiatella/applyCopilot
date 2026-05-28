@@ -4,7 +4,7 @@
 // DELETE /api/portals/[id] - Remove job portal configuration
 
 import { NextRequest } from 'next/server';
-import { successResponse, handleApiError, ValidationError, notFoundResponse, noContentResponse } from '@/lib/api';
+import { successResponse, handleApiError, ValidationError, NotFoundError } from '@/lib/api';
 import { loggers } from '@/lib/logging';
 import { checkRateLimit } from '@/lib/rate-limit';
 import prisma from '@/lib/prisma';
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!portal) {
-      return notFoundResponse('Job portal not found');
+      throw new NotFoundError('Job portal');
     }
 
     return successResponse(portal);
@@ -58,7 +58,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!existing) {
-      return notFoundResponse('Job portal not found');
+      throw new NotFoundError('Job portal');
     }
 
     // Update portal configuration
@@ -100,7 +100,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     });
 
     if (!existing) {
-      return notFoundResponse('Job portal not found');
+      throw new NotFoundError('Job portal');
     }
 
     await prisma.portalConfig.delete({
@@ -109,7 +109,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     loggers.api.info('Job portal deleted', { portalId: id });
 
-    return noContentResponse();
+    return new Response(null, { status: 204 });
   } catch (error) {
     return handleApiError(error);
   }

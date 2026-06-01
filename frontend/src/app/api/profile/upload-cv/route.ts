@@ -28,7 +28,17 @@ async function saveExtractedText(fileId: string, text: string): Promise<void> {
   try {
     const debugDir = path.join(process.cwd(), 'uploads', 'debug');
     await fs.mkdir(debugDir, { recursive: true });
-    const textPath = path.join(debugDir, `${fileId}.txt`);
+
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const seconds = date.getSeconds();
+
+    const fileName = `cv-uploaded_${year}-${month}-${day}_${hours}-${minutes}-${seconds}.txt`;
+    const textPath = path.join(debugDir, fileName);
     await fs.writeFile(textPath, text, 'utf-8');
     loggers.app.debug(`[${fileId}] Extracted text saved to ${textPath}`);
   } catch (error) {

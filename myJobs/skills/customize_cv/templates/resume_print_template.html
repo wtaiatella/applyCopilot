@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resume - Wagner Taiatella</title>
+  <!-- Modern clean typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    /* Premium Modern Resume Styling - Print Optimized */
+    :root {
+      --primary-color: #0f172a;    /* Deep slate navy */
+      --secondary-color: #2563eb;  /* Premium blue */
+      --text-color: #334155;       /* Dark slate gray */
+      --light-text: #64748b;       /* Muted slate gray */
+      --border-color: #cbd5e1;     /* Light borders */
+      --bg-color: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text-color);
+      background-color: var(--bg-color);
+      line-height: 1.5;
+      font-size: 10pt; /* Optimized for standard print */
+      -webkit-font-smoothing: antialiased;
+      padding: 2cm 2.5cm; /* Standard margins */
+      max-width: 21cm; /* Standard A4 Width */
+      margin: 0 auto;
+    }
+
+    /* Header styling */
+    header {
+      border-bottom: 2px solid var(--primary-color);
+      padding-bottom: 15px;
+      margin-bottom: 20px;
+    }
+
+    .header-main {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+
+    h1 {
+      font-size: 24pt;
+      font-weight: 700;
+      color: var(--primary-color);
+      letter-spacing: -0.025em;
+      text-transform: uppercase;
+    }
+
+    .title-subtitle {
+      font-size: 11pt;
+      font-weight: 600;
+      color: var(--secondary-color);
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .contact-info {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 15px;
+      margin-top: 12px;
+      font-size: 8.5pt;
+      color: var(--light-text);
+    }
+
+    .contact-info span {
+      display: flex;
+      align-items: center;
+    }
+
+    .contact-info a {
+      color: var(--light-text);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--border-color);
+    }
+
+    .contact-info a:hover {
+      color: var(--secondary-color);
+    }
+
+    /* Section Styling */
+    section {
+      margin-bottom: 22px;
+    }
+
+    h2 {
+      font-size: 12pt;
+      font-weight: 700;
+      color: var(--primary-color);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 3px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+    }
+
+    /* Summary section */
+    .summary-p {
+      text-align: justify;
+      margin-bottom: 8px;
+    }
+
+    .summary-bullets {
+      list-style-type: square;
+      padding-left: 18px;
+      font-size: 9.5pt;
+      color: var(--text-color);
+    }
+
+    .summary-bullets li {
+      margin-bottom: 4px;
+    }
+
+    /* Experience section */
+    .experience-item {
+      margin-bottom: 18px;
+      page-break-inside: avoid; /* Prevents awkward breaks in PDF */
+    }
+
+    .experience-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .exp-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 4px;
+    }
+
+    .exp-title-company {
+      font-size: 10.5pt;
+      font-weight: 700;
+      color: var(--primary-color);
+    }
+
+    .exp-company {
+      font-weight: 500;
+      color: var(--secondary-color);
+    }
+
+    .exp-meta {
+      font-size: 9pt;
+      font-weight: 600;
+      color: var(--light-text);
+      text-align: right;
+    }
+
+    .exp-description {
+      font-size: 8.5pt;
+      font-style: italic;
+      color: var(--light-text);
+      margin-bottom: 6px;
+    }
+
+    .exp-bullets {
+      list-style-type: disc;
+      padding-left: 18px;
+      font-size: 9.2pt;
+    }
+
+    .exp-bullets li {
+      margin-bottom: 4px;
+      text-align: justify;
+    }
+
+    .bullet-bold {
+      font-weight: 600;
+      color: var(--primary-color);
+    }
+
+    /* Education Section */
+    .education-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 20px;
+    }
+
+    .education-item {
+      page-break-inside: avoid;
+    }
+
+    .edu-school {
+      font-weight: 700;
+      color: var(--primary-color);
+    }
+
+    .edu-degree {
+      color: var(--secondary-color);
+      font-weight: 500;
+      font-size: 9.5pt;
+    }
+
+    .edu-meta {
+      font-size: 8.5pt;
+      color: var(--light-text);
+    }
+
+    /* Additional Info Section */
+    .additional-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 8px 15px;
+      font-size: 9.5pt;
+    }
+
+    .add-label {
+      font-weight: 700;
+      color: var(--primary-color);
+      min-width: 100px;
+    }
+
+    /* Print Specific Overrides */
+    @media print {
+      body {
+        padding: 1.5cm 1.8cm; /* Optimal printing margins */
+        font-size: 9.5pt;
+      }
+      a {
+        text-decoration: none;
+        color: var(--text-color) !important;
+      }
+      .contact-info a {
+        border-bottom: none;
+      }
+      /* Ensure colors print crisply */
+      :root {
+        --primary-color: #000000;
+        --secondary-color: #1e3a8a;
+        --text-color: #222222;
+        --light-text: #555555;
+      }
+      header {
+        border-bottom-width: 1.5px;
+      }
+      h2 {
+        border-bottom-width: 1px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-main">
+      <div>
+        <h1>Wagner Taiatella</h1>
+        <div class="title-subtitle">Full Stack Software Engineer | AI & Cloud Infrastructure</div>
+      </div>
+    </div>
+    <div class="contact-info">
+      <span>📍 Florianópolis, SC - Brazil</span>
+      <span>📞 <a href="tel:+5541992292443">+55 (41) 99229-2443</a></span>
+      <span>✉️ <a href="mailto:wtaiatella@gmail.com">wtaiatella@gmail.com</a></span>
+      <span>🔗 <a href="https://linkedin.com/in/wagner-taiatella" target="_blank">linkedin.com/in/wagner-taiatella</a></span>
+      <span>🌐 <a href="https://wtaiatella.com.br" target="_blank">wtaiatella.com.br</a></span>
+      <span>🐙 <a href="https://github.com/wtaiatella" target="_blank">github.com/wtaiatella</a></span>
+    </div>
+  </header>
+
+  <section id="summary">
+    <h2>Summary</h2>
+    <p class="summary-p">
+      Full Stack Software Engineer specializing in modern JavaScript frameworks with over 4 years of hands-on experience designing, developing, and deploying robust applications using React, Next.js, TypeScript, and Node.js. Currently driving AI-powered engineering solutions at Avalara. Combines cutting-edge web technologies with a distinguished 20-year background in critical systems automation, bringing an unparalleled perspective on system reliability, rigorous engineering, and operational excellence to remote, high-scale technology teams.
+    </p>
+  </section>
+
+  <section id="experience">
+    <h2>Professional Experience</h2>
+    
+    <!-- Experience Item 1 -->
+    <div class="experience-item">
+      <div class="exp-header">
+        <div class="exp-title-company">
+          <span class="exp-title">Full Stack Software Engineer | AI & Cloud Infrastructure</span> - 
+          <span class="exp-company">Avalara</span>
+        </div>
+        <div class="exp-meta">Remote<br>Sep 2024 – Present</div>
+      </div>
+      <div class="exp-description">Leading US tax compliance platform, delivering scalable transaction & compliance solutions.</div>
+      <ul class="exp-bullets">
+        <li><span class="bullet-bold">AI-Driven Application Development:</span> Contributed to the development of an AI-powered log analysis application, achieving a 50% reduction in system response time.</li>
+        <li><span class="bullet-bold">Backend Services Enhancement:</span> Improved backend services using Java, Python, Kubernetes, and Docker within a cloud infrastructure environment.</li>
+        <li><span class="bullet-bold">Real-Time Data Processing:</span> Maintained and optimized real-time data processing systems utilizing MQTT and Kafka for transaction services.</li>
+        <li><span class="bullet-bold">Production-Ready Code Delivery:</span> Delivered high-quality Java and Python code by leveraging AI-assisted development tools, demonstrating quick adaptability to new programming languages.</li>
+        <li><span class="bullet-bold">Cross-Functional Collaboration:</span> Worked closely with diverse teams to debug, optimize, and enhance features of services supporting millions of transactions daily.</li>
+      </ul>
+    </div>
+
+    <!-- Experience Item 2 -->
+    <div class="experience-item">
+      <div class="exp-header">
+        <div class="exp-title-company">
+          <span class="exp-title">Full Stack Software Engineer | Contract Projects</span> - 
+          <span class="exp-company">Self-Employed</span>
+        </div>
+        <div class="exp-meta">Remote<br>Nov 2022 - Sep 2024</div>
+      </div>
+      <div class="exp-description">Providing end-to-end full-stack development and cloud integration services for diverse clients.</div>
+      <ul class="exp-bullets">
+        <li><span class="bullet-bold">Full-Stack Architecture:</span> Architected and developed web applications from concept to deployment, managing the full development lifecycle for both front-end and back-end systems.</li>
+        <li><span class="bullet-bold">Back-End & Databases:</span> Built back-end systems using Node.js, PostgreSQL, and Prisma, creating a scalable RESTful API interface that ensured seamless integration with front-end applications.</li>
+        <li><span class="bullet-bold">Front-End & E-Commerce:</span> Engineered responsive front-end e-commerce platforms using JavaScript (ES6), React.js, Next.js, and TypeScript, featuring product catalogs, shopping carts, and integrated payment processing.</li>
+        <li><span class="bullet-bold">Integrations:</span> Designed and implemented seamless integrations with critical third-party services including payment gateways (Stripe) and email sender APIs (Resend), enhancing application functionality and user experience.</li>
+        <li><span class="bullet-bold">DevOps & AWS:</span> Established a CI/CD pipeline using Git, GitHub Actions, and AWS CodeDeploy, reducing deployment time by 80%. Implemented cloud solutions with AWS S3 for optimized media storage and file upload workflows.</li>
+        <li><span class="bullet-bold">UI/UX & Testing:</span> Created intuitive, responsive, and mobile-first user interfaces using Tailwind CSS and Ant Design, achieving 100% cross-device compatibility. Maintained code integrity through debugging, testing, and version control with Git/GitHub.</li>
+      </ul>
+    </div>
+
+    <!-- Experience Item 3 -->
+    <div class="experience-item">
+      <div class="exp-header">
+        <div class="exp-title-company">
+          <span class="exp-title">Frontend Software Engineer</span> - 
+          <span class="exp-company">Siemens Brazil</span>
+        </div>
+        <div class="exp-meta">Remote<br>Dec 2021 – Oct 2022</div>
+      </div>
+      <div class="exp-description">Developed high-reliability user interfaces for high-scale energy supervision and transmission systems.</div>
+      <ul class="exp-bullets">
+        <li><span class="bullet-bold">UI Development:</span> Developed screens for the energy transmission operation system using React, ensuring a seamless user experience and system reliability.</li>
+        <li><span class="bullet-bold">Process Optimization:</span> Designed and implemented an application to automate the adaptation of 700 operational screens during a major system version upgrade, reducing adjustment time by 30%.</li>
+        <li><span class="bullet-bold">Scalable Solutions:</span> Created modular and reusable React components, improving development efficiency and maintaining UI consistency across the platform.</li>
+        <li><span class="bullet-bold">Collaboration:</span> Worked closely with cross-functional teams to ensure alignment between technical requirements and user needs, delivering high-quality solutions on time.</li>
+      </ul>
+    </div>
+
+    <!-- Experience Item 4 -->
+    <div class="experience-item">
+      <div class="exp-header">
+        <div class="exp-title-company">
+          <span class="exp-title">Substation Automation Engineer</span> - 
+          <span class="exp-company">Energisa Rondonia S.A</span>
+        </div>
+        <div class="exp-meta">Porto Velho, Brazil<br>Sep 2019 – Nov 2021</div>
+      </div>
+      <div class="exp-description">Major energy distribution company, managing critical grid and automation engineering.</div>
+      <ul class="exp-bullets">
+        <li><span class="bullet-bold">Strategic Transition:</span> Spearheaded the transition of 13 isolated regions from fossil fuel generators to sustainable energy solutions, connecting these areas to the national grid, benefiting over 400,000 consumers.</li>
+        <li><span class="bullet-bold">Grid Commissioning:</span> Successfully activated more than 20 substations over two years through strategic planning and cross-functional collaboration.</li>
+        <li><span class="bullet-bold">Troubleshooting & Quality:</span> Conducted troubleshooting, debugging, and testing of software applications to ensure system reliability and performance.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="education">
+    <h2>Education</h2>
+    <div class="education-grid">
+      <div class="education-item">
+        <div class="edu-school">UTFPR (Federal University of Technology - Paraná)</div>
+        <div class="edu-degree">B.S. in Automation & Control Engineering</div>
+        <div class="edu-meta">Curitiba, Brazil | Jun 2004 – Jul 2009</div>
+      </div>
+      <div class="education-item">
+        <div class="edu-school">Awari Software Development School</div>
+        <div class="edu-degree">Full Stack Developer Bootcamp</div>
+        <div class="edu-meta">São Paulo, Brazil | Jun 2021 – Jul 2022</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="additional">
+    <h2>Languages & Additional Info</h2>
+    <div class="additional-grid">
+      <div class="add-label">Languages:</div>
+      <div>Fluent Portuguese; Conversational English & Spanish.</div>
+      
+      <div class="add-label">Volunteering:</div>
+      <div>Scoutmaster (2023-Present) - youth leadership and community engagement.</div>
+    </div>
+  </section>
+
+</body>
+</html>

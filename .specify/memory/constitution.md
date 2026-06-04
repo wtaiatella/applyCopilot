@@ -110,19 +110,32 @@ Always ensure `.gitignore` contains:
 - No staging or production environment until explicitly defined
 
 ### Folder Structure (Enforced)
-```
+```text
 /
+├── .agent/                    ← Agent rules and custom skills
+├── .specify/                  ← Spec-Driven Development (speckit) configurations, templates, and memory
+├── .windsurf/                 ← Windsurf agent configurations (NO SECRETS)
+├── cv/                        ← Resumes/CVs for testing and parsing configuration
 ├── frontend/                  ← Unified Next.js 16 project
 │   ├── src/
 │   │   ├── app/               ← Pages, API Routes, Server Actions
 │   │   ├── components/        ← Ant Design/Tailwind UI Components
-│   │   ├── lib/               ← TensorFlow, Ollama, Prisma configs
+│   │   ├── lib/               ← TensorFlow, Ollama, Prisma configs, central UI theme, proxy
 │   │   ├── services/          ← External API integrations
 │   │   └── types/             ← Zod/TypeScript definitions
-│   └── prisma/                ← MongoDB Schema
-├── docs/                      ← Technical documentation
-└── .windsurf/                 ← Windsurf agent configurations (NO SECRETS)
+│   ├── prisma/                ← MongoDB Schema and Prisma ORM
+│   ├── tests/                 ← Automated tests (Jest for unit/integration, Playwright for e2e)
+│   └── tests_scripts/         ← Frontend-specific development & helper scripts
+├── mydocs/                    ← Backlog, product description, project documentation, and old versions
+├── specs/                     ← SpecKit folder for feature specifications (WHAT & WHY)
+└── tests_scripts/             ← Root-level development & helper scripts
 ```
+
+### Script Placement Policy
+During development, any scripts generated to test, seed, debug, or assist with a specific feature or functionality must be placed in one of the designated script folders:
+- **Root scripts:** Global, docker entrypoint, or backend/database seeding/scraping helper scripts go into `/tests_scripts/`.
+- **Frontend scripts:** Scripts specifically assisting with React, Next.js, UI, or local client-side functions go into `/frontend/tests_scripts/`.
+- **Standard:** Always give scripts descriptive names and add comments detailing their purpose. Never leave auxiliary or temporary scripts in the root directory or in general source code folders (`src/`, etc.).
 
 ### Documentation Separation of Concerns
 - **`spec.md` — Product Perspective (What & Why)**
@@ -145,4 +158,4 @@ Always ensure `.gitignore` contains:
 - Complexity must be justified — prefer simple solutions (YAGNI)
 - Use `.specify/memory/` for runtime development guidance and project context
 
-**Version**: 1.0.0 | **Ratified**: 2026-04-13 | **Last Amended**: 2026-04-13
+**Version**: 1.0.1 | **Ratified**: 2026-04-13 | **Last Amended**: 2026-05-22

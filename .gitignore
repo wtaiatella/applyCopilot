@@ -46,3 +46,7 @@ mydocs/
 test_scripts/
 **/uploads/
 noCodeSite/
+
+
+# SDD Spec-kit
+.specify/sync

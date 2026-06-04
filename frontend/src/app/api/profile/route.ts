@@ -208,18 +208,34 @@ export async function POST(request: NextRequest) {
 
         if (exp.id && exp.id.match(/^[0-9a-fA-F]{24}$/)) {
           incomingExpIds.add(exp.id);
-          dbExp = await prisma.experience.update({
-            where: { id: exp.id },
-            data: {
-              company: exp.company || 'Unknown Company',
-              position: exp.position || 'Unknown Position',
-              startDate: exp.startDate ? new Date(exp.startDate) : new Date(),
-              endDate: exp.endDate && exp.endDate !== 'Present' ? new Date(exp.endDate) : null,
-              current: exp.current || exp.endDate === 'Present' || false,
-              freeFormContext: exp.freeFormContext || '',
-            },
-            include: { description: true }
-          });
+          try {
+            dbExp = await prisma.experience.update({
+              where: { id: exp.id },
+              data: {
+                company: exp.company || 'Unknown Company',
+                position: exp.position || 'Unknown Position',
+                startDate: exp.startDate ? new Date(exp.startDate) : new Date(),
+                endDate: exp.endDate && exp.endDate !== 'Present' ? new Date(exp.endDate) : null,
+                current: exp.current || exp.endDate === 'Present' || false,
+                freeFormContext: exp.freeFormContext || '',
+              },
+              include: { description: true }
+            });
+          } catch (updateError) {
+            dbExp = await prisma.experience.create({
+              data: {
+                id: exp.id,
+                profileId: profile.id,
+                company: exp.company || 'Unknown Company',
+                position: exp.position || 'Unknown Position',
+                startDate: exp.startDate ? new Date(exp.startDate) : new Date(),
+                endDate: exp.endDate && exp.endDate !== 'Present' ? new Date(exp.endDate) : null,
+                current: exp.current || exp.endDate === 'Present' || false,
+                freeFormContext: exp.freeFormContext || '',
+              },
+              include: { description: true }
+            });
+          }
         } else {
           dbExp = await prisma.experience.create({
             data: {
@@ -264,14 +280,29 @@ export async function POST(request: NextRequest) {
 
           if (bp.id && bp.id.match(/^[0-9a-fA-F]{24}$/)) {
             incomingBulletIds.add(bp.id);
-            await prisma.experienceBullet.update({
-              where: { id: bp.id },
-              data: {
-                text: bp.text || '',
-                isActive: bp.isActive !== undefined ? bp.isActive : true,
-                type: bp.type || 'bullet',
-              }
-            });
+            try {
+              await prisma.experienceBullet.update({
+                where: { id: bp.id },
+                data: {
+                  text: bp.text || '',
+                  isActive: bp.isActive !== undefined ? bp.isActive : true,
+                  type: bp.type || 'bullet',
+                }
+              });
+            } catch (bulletError) {
+              const created = await prisma.experienceBullet.create({
+                data: {
+                  id: bp.id,
+                  experienceId: dbExp.id,
+                  text: bp.text || '',
+                  isActive: bp.isActive !== undefined ? bp.isActive : true,
+                  type: bp.type || 'bullet',
+                  isArchived: false,
+                  cvIds: [],
+                }
+              });
+              incomingBulletIds.add(created.id);
+            }
           } else {
             const created = await prisma.experienceBullet.create({
               data: {
@@ -398,17 +429,32 @@ export async function POST(request: NextRequest) {
 
         if (proj.id && proj.id.match(/^[0-9a-fA-F]{24}$/)) {
           incomingProjIds.add(proj.id);
-          dbProj = await prisma.project.update({
-            where: { id: proj.id },
-            data: {
-              name: proj.name || 'Unknown Project',
-              startDate: proj.startDate ? new Date(proj.startDate) : new Date(),
-              endDate: proj.endDate && proj.endDate !== 'Present' ? new Date(proj.endDate) : null,
-              technologies: proj.technologies || [],
-              freeFormContext: proj.freeFormContext || '',
-            },
-            include: { bulletPoints: true }
-          });
+          try {
+            dbProj = await prisma.project.update({
+              where: { id: proj.id },
+              data: {
+                name: proj.name || 'Unknown Project',
+                startDate: proj.startDate ? new Date(proj.startDate) : new Date(),
+                endDate: proj.endDate && proj.endDate !== 'Present' ? new Date(proj.endDate) : null,
+                technologies: proj.technologies || [],
+                freeFormContext: proj.freeFormContext || '',
+              },
+              include: { bulletPoints: true }
+            });
+          } catch (updateError) {
+            dbProj = await prisma.project.create({
+              data: {
+                id: proj.id,
+                profileId: profile.id,
+                name: proj.name || 'Unknown Project',
+                startDate: proj.startDate ? new Date(proj.startDate) : new Date(),
+                endDate: proj.endDate && proj.endDate !== 'Present' ? new Date(proj.endDate) : null,
+                technologies: proj.technologies || [],
+                freeFormContext: proj.freeFormContext || '',
+              },
+              include: { bulletPoints: true }
+            });
+          }
         } else {
           dbProj = await prisma.project.create({
             data: {
@@ -452,14 +498,29 @@ export async function POST(request: NextRequest) {
 
           if (bp.id && bp.id.match(/^[0-9a-fA-F]{24}$/)) {
             incomingBulletIds.add(bp.id);
-            await prisma.projectBullet.update({
-              where: { id: bp.id },
-              data: {
-                text: bp.text || '',
-                isActive: bp.isActive !== undefined ? bp.isActive : true,
-                type: bp.type || 'bullet',
-              }
-            });
+            try {
+              await prisma.projectBullet.update({
+                where: { id: bp.id },
+                data: {
+                  text: bp.text || '',
+                  isActive: bp.isActive !== undefined ? bp.isActive : true,
+                  type: bp.type || 'bullet',
+                }
+              });
+            } catch (bulletError) {
+              const created = await prisma.projectBullet.create({
+                data: {
+                  id: bp.id,
+                  projectId: dbProj.id,
+                  text: bp.text || '',
+                  isActive: bp.isActive !== undefined ? bp.isActive : true,
+                  type: bp.type || 'bullet',
+                  isArchived: false,
+                  cvIds: [],
+                }
+              });
+              incomingBulletIds.add(created.id);
+            }
           } else {
             const created = await prisma.projectBullet.create({
               data: {

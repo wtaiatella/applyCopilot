@@ -185,6 +185,56 @@ ${JSON.stringify(schema, null, 2)}
   }
 
   /**
+   * Identify starting line numbers for each section in the CV
+   */
+  async identifyCVSections(cvText: string): Promise<{
+    basicData: number
+    summary: number
+    experiences: number
+    education: number
+    projects: number
+    skills: number
+  }> {
+    const lines = cvText.split('\n');
+    const numberedLinesText = lines
+      .map((line, index) => `${index + 1}: ${line}`)
+      .join('\n');
+
+    const prompt = `Analyze this CV text which has line numbers at the beginning of each line.
+Identify the starting line number (1-based index) of each of the following sections:
+1. "basicData": Candidate's personal contact details (e.g. name, email, phone, location, links). Usually starts on line 1.
+2. "summary": Professional summary, objectives, about me, or brief profile.
+3. "experiences": Work history, professional experience, employment history.
+4. "education": Degrees, university, courses, certifications, bootcamps.
+5. "projects": Personal/academic projects.
+6. "skills": List of hard skills, soft skills, technologies, tools.
+
+CRITICAL INSTRUCTIONS:
+- You must ONLY return the starting line number where the section content or its title begins.
+- If a section is not present in the CV, return -1.
+- Respond ONLY with a valid JSON object matching the target structure.
+
+CV Text with Line Numbers:
+${numberedLinesText}
+`;
+
+    const schema = {
+      type: "object",
+      properties: {
+        basicData: { type: "number" },
+        summary: { type: "number" },
+        experiences: { type: "number" },
+        education: { type: "number" },
+        projects: { type: "number" },
+        skills: { type: "number" }
+      },
+      required: ["basicData", "summary", "experiences", "education", "projects", "skills"]
+    };
+
+    return this.generateStructuredData(prompt, schema);
+  }
+
+  /**
    * Extract CV data from text
    */
   async extractCVData(cvText: string): Promise<{

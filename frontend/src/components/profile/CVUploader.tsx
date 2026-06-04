@@ -39,7 +39,7 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
         setStatusMessage('Text extracted. Launching focused AI parsing pipeline...');
         
         if (info.file.response && info.file.response.data) {
-          const { cvText, fileId, error } = info.file.response.data;
+          const { cvText, fileId, error, segments } = info.file.response.data;
           
           if (error || !cvText) {
             message.error(`Extraction Error: ${error || "No text extracted from CV."}`);
@@ -54,10 +54,11 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
               // Step 1: Parse Basic (40%)
               setProgress(40);
               setStatusMessage('AI Parsing [1/4]: Extracting basic contact info and summaries...');
+              const basicText = [segments?.basicData, segments?.summary].filter(Boolean).join('\n\n') || cvText;
               const basicRes = await fetch('/api/profile/parse/basic', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cvText })
+                body: JSON.stringify({ cvText: basicText })
               });
               if (!basicRes.ok) throw new Error('Failed to parse basic contact details');
               const basicResult = await basicRes.json();
@@ -66,10 +67,11 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
               // Step 2: Parse Experiences (60%)
               setProgress(60);
               setStatusMessage('AI Parsing [2/4]: Extracting structured job experiences...');
+              const experiencesText = segments?.experiences || cvText;
               const expRes = await fetch('/api/profile/parse/experiences', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cvText })
+                body: JSON.stringify({ cvText: experiencesText })
               });
               if (!expRes.ok) throw new Error('Failed to parse work experience list');
               const expResult = await expRes.json();
@@ -78,10 +80,11 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
               // Step 3: Parse Projects (80%)
               setProgress(80);
               setStatusMessage('AI Parsing [3/4]: Extracting project details and technologies...');
+              const projectsText = segments?.projects || cvText;
               const projRes = await fetch('/api/profile/parse/projects', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cvText })
+                body: JSON.stringify({ cvText: projectsText })
               });
               if (!projRes.ok) throw new Error('Failed to parse project history');
               const projResult = await projRes.json();
@@ -90,10 +93,11 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
               // Step 4: Parse Education & Skills (95%)
               setProgress(95);
               setStatusMessage('AI Parsing [4/4]: Extracting education history and categorized skills...');
+              const eduSkillsText = [segments?.education, segments?.skills].filter(Boolean).join('\n\n') || cvText;
               const eduSkillsRes = await fetch('/api/profile/parse/education-skills', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cvText })
+                body: JSON.stringify({ cvText: eduSkillsText })
               });
               if (!eduSkillsRes.ok) throw new Error('Failed to parse education and skills sets');
               const eduSkillsResult = await eduSkillsRes.json();

@@ -37,6 +37,10 @@ export const geminiClient = new GeminiClient();
 
 // Unified AI service - automatic routing between Ollama and Gemini based on task
 export class AIService {
+  static async identifyCVSections(cvText: string) {
+    return ollamaClient.identifyCVSections(cvText);
+  }
+
   /**
    * Parse CV and extract structured data
    * Uses Ollama (local) - cost efficient

@@ -46,6 +46,53 @@ async function saveExtractedText(fileId: string, text: string): Promise<void> {
   }
 }
 
+interface CVSectionLines {
+  basicData: number;
+  summary: number;
+  experiences: number;
+  education: number;
+  projects: number;
+  skills: number;
+}
+
+function segmentText(cvText: string, sectionLines: CVSectionLines) {
+  const lines = cvText.split('\n');
+  
+  const sections = [
+    { name: 'basicData', line: sectionLines.basicData - 1 },
+    { name: 'summary', line: sectionLines.summary - 1 },
+    { name: 'experiences', line: sectionLines.experiences - 1 },
+    { name: 'education', line: sectionLines.education - 1 },
+    { name: 'projects', line: sectionLines.projects - 1 },
+    { name: 'skills', line: sectionLines.skills - 1 },
+  ]
+    .filter(s => s.line >= 0 && s.line < lines.length)
+    .sort((a, b) => a.line - b.line);
+
+  const segments: Record<string, string> = {
+    basicData: '',
+    summary: '',
+    experiences: '',
+    education: '',
+    projects: '',
+    skills: '',
+  };
+
+  for (let i = 0; i < sections.length; i++) {
+    const current = sections[i];
+    const nextLine = (i + 1 < sections.length) ? sections[i + 1].line : lines.length;
+    
+    const sectionLinesArray = lines.slice(current.line, nextLine);
+    segments[current.name] = sectionLinesArray.join('\n');
+  }
+
+  if (!segments.basicData) {
+    segments.basicData = lines.slice(0, Math.min(25, lines.length)).join('\n');
+  }
+
+  return segments;
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const requestId = Math.random().toString(36).substring(7);
@@ -178,7 +225,17 @@ export async function POST(request: NextRequest) {
       throw new AIProcessingError('Failed to extract text from CV file: ' + (error as Error).message);
     }
 
-    loggers.app.debug(`[${requestId}] Step 8: Skipping monolithic AI CV parser. Returning full extracted text.`);
+    loggers.app.debug(`[${requestId}] Step 8: Classifying CV sections using local LLM.`);
+    let segments = null;
+    try {
+      const sectionLines = await AIService.identifyCVSections(cvText);
+      loggers.app.info(`[${requestId}] Identified CV starting lines:`, sectionLines);
+      segments = segmentText(cvText, sectionLines);
+    } catch (segmentError) {
+      loggers.app.error(`[${requestId}] Failed to segment CV sections, falling back to full text:`, {
+        error: (segmentError as Error).message,
+      });
+    }
 
     // Save extracted text to file in debug mode
     await saveExtractedText(saveResult.fileId, cvText);
@@ -192,12 +249,13 @@ export async function POST(request: NextRequest) {
     });
     loggers.app.debug(`[${requestId}] === UPLOAD CV REQUEST COMPLETED ===`);
 
-    // Return response containing full extracted text for client-side orchestration
+    // Return response containing full extracted text and segments for client-side orchestration
     return createdResponse({
       fileId: saveResult.fileId,
       cvText,
       fullTextLength: cvText.length,
       pages: pageCount,
+      segments,
     });
   } catch (error) {
     loggers.app.error(`[${requestId}] Profile CV upload failed`, {

@@ -5,8 +5,6 @@
 import { NextRequest } from 'next/server';
 import { PDFExtractor } from '@/lib/parsing/pdf-extractor';
 import mammoth from 'mammoth';
-import fs from 'fs/promises';
-import path from 'path';
 import {
   createdResponse,
   handleApiError,
@@ -15,36 +13,10 @@ import {
   InvalidFileTypeError,
   AIProcessingError,
 } from '@/lib/api';
-import { loggers } from '@/lib/logging';
+import { loggers, saveDebugArtifact } from '@/lib/logging';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { saveFile, validateFile, getFile } from '@/lib/storage';
 import { AIService } from '@/lib/ai';
-
-// Debug mode: save extracted text to file
-const DEBUG_SAVE_TEXT = process.env.DEBUG_SAVE_EXTRACTED_TEXT === 'true';
-
-async function saveExtractedText(fileId: string, text: string): Promise<void> {
-  if (!DEBUG_SAVE_TEXT) return;
-  try {
-    const debugDir = path.join(process.cwd(), 'uploads', 'debug');
-    await fs.mkdir(debugDir, { recursive: true });
-
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
-    const seconds = date.getSeconds();
-
-    const fileName = `cv-uploaded_${year}-${month}-${day}_${hours}-${minutes}-${seconds}.txt`;
-    const textPath = path.join(debugDir, fileName);
-    await fs.writeFile(textPath, text, 'utf-8');
-    loggers.app.debug(`[${fileId}] Extracted text saved to ${textPath}`);
-  } catch (error) {
-    loggers.app.warn(`[${fileId}] Failed to save extracted text`, { error: (error as Error).message });
-  }
-}
 
 interface CVSectionLines {
   basicData: number;
@@ -216,6 +188,9 @@ export async function POST(request: NextRequest) {
         throw new AIProcessingError('Could not extract text from CV file');
       }
       loggers.app.debug(`[${requestId}] Step 7: Text extraction completed`, { textLength: cvText.length });
+
+      // DEBUG: Save raw extracted text
+      await saveDebugArtifact(requestId, '01_extractedCV.txt', cvText);
     } catch (error) {
       loggers.app.error(`[${requestId}] CV text extraction failed`, {
         fileId: saveResult.fileId,
@@ -231,14 +206,15 @@ export async function POST(request: NextRequest) {
       const sectionLines = await AIService.identifyCVSections(cvText);
       loggers.app.info(`[${requestId}] Identified CV starting lines:`, sectionLines);
       segments = segmentText(cvText, sectionLines);
+
+      // DEBUG: Save section line numbers and resulting segments
+      await saveDebugArtifact(requestId, '02_sectionLines.json', sectionLines);
+      await saveDebugArtifact(requestId, '02_segments.json', segments);
     } catch (segmentError) {
       loggers.app.error(`[${requestId}] Failed to segment CV sections, falling back to full text:`, {
         error: (segmentError as Error).message,
       });
     }
-
-    // Save extracted text to file in debug mode
-    await saveExtractedText(saveResult.fileId, cvText);
 
     const duration = Date.now() - startTime;
     loggers.app.info('Profile CV upload and text extraction completed', {

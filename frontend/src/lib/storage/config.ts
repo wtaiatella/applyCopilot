@@ -11,7 +11,7 @@ export function getStorageProvider(): StorageProvider {
 
 // Local storage configuration
 export const localStorageConfig = {
-  uploadDir: process.env.UPLOAD_DIR || './uploads',
+  uploadDir: process.env.UPLOAD_DIR || './debug',
   maxFileSize: 10 * 1024 * 1024, // 10MB
   allowedTypes: [
     'application/pdf',

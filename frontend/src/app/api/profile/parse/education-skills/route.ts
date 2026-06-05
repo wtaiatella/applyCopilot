@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
 import { createdResponse, handleApiError, ValidationError } from '@/lib/api';
-import { loggers } from '@/lib/logging';
+import { loggers, saveDebugArtifact } from '@/lib/logging';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { AIService } from '@/lib/ai';
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
-  const requestId = Math.random().toString(36).substring(7);
+  const requestId =
+    request.headers.get('x-request-id') ?? Math.random().toString(36).substring(7);
 
   loggers.app.debug(`[${requestId}] === PARSE EDUCATION AND SKILLS STARTED ===`);
 
@@ -27,7 +28,13 @@ export async function POST(request: NextRequest) {
 
     loggers.app.info('Focused education and skills parsing started', { requestId, textLength: cvText.length });
 
+    // DEBUG: Save input text sent to AI
+    await saveDebugArtifact(requestId, '06_input_educationSkills.txt', cvText);
+
     const extractedData = await AIService.extractEducationSkills(cvText);
+
+    // DEBUG: Save AI response
+    await saveDebugArtifact(requestId, '06_output_educationSkills.json', extractedData);
 
     const duration = Date.now() - startTime;
     loggers.app.info('Focused education and skills parsing completed', {

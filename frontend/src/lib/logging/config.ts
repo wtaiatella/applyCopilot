@@ -51,6 +51,12 @@ const jsonFormat = winston.format.combine(
   winston.format.json()
 );
 
+// Determine if file logging should be active
+const isDebugFileLogging = (): boolean => {
+  const logLevel = process.env.LOG_LEVEL;
+  return logLevel === 'debug' || logLevel === 'verbose' || logLevel === 'silly';
+};
+
 // Create transports array
 const createTransports = (): winston.transport[] => {
   const transports: winston.transport[] = [
@@ -60,7 +66,7 @@ const createTransports = (): winston.transport[] => {
     }),
   ];
 
-  // File transports - only in production
+  // File transports - in production OR in development with LOG_LEVEL=debug
   if (process.env.NODE_ENV === 'production') {
     transports.push(
       new winston.transports.File({
@@ -70,6 +76,19 @@ const createTransports = (): winston.transport[] => {
       }),
       new winston.transports.File({
         filename: 'logs/combined.log',
+        format: jsonFormat,
+      })
+    );
+  } else if (isDebugFileLogging()) {
+    // Development debug mode: write all logs to session file
+    transports.push(
+      new winston.transports.File({
+        filename: 'debug/combined.log',
+        format: jsonFormat,
+      }),
+      new winston.transports.File({
+        filename: 'debug/error.log',
+        level: 'error',
         format: jsonFormat,
       })
     );
@@ -111,8 +130,19 @@ export const loggerConfig = {
 // Create logs directory in production
 if (process.env.NODE_ENV === 'production') {
   const logsDir = path.join(process.cwd(), 'logs');
-
   if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
+  }
+}
+
+// Create debug/ directory in development when LOG_LEVEL=debug
+const debugLevel = process.env.LOG_LEVEL;
+if (
+  process.env.NODE_ENV !== 'production' &&
+  (debugLevel === 'debug' || debugLevel === 'verbose' || debugLevel === 'silly')
+) {
+  const debugDir = path.join(process.cwd(), 'debug');
+  if (!fs.existsSync(debugDir)) {
+    fs.mkdirSync(debugDir, { recursive: true });
   }
 }

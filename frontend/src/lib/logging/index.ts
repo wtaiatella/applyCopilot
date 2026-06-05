@@ -4,6 +4,7 @@
 export * from './config';
 export * from './logger';
 export * from './middleware';
+export * from './debug-utils';
 
 // Re-export default logger for convenience
 export { default } from './logger';

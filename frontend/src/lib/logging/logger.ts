@@ -75,7 +75,8 @@ export const saveAuditPayload = (
   ext: string,
   content: string | Buffer
 ): void => {
-  if (!isDebug) {
+  const isDebugMode = (process.env.LOG_LEVEL || "info").toLowerCase() === "debug";
+  if (!isDebugMode) {
     return;
   }
 

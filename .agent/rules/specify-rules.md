@@ -1,6 +1,6 @@
 # applyCopilot Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-05-04
+Auto-generated from all feature plans. Last updated: 2026-06-08
 
 ## Active Technologies
 

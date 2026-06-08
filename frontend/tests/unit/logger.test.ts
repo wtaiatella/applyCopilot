@@ -1,6 +1,5 @@
 import { logger, saveAuditPayload } from "@/lib/logging/logger";
 import fs from "fs";
-import path from "path";
 
 jest.mock("fs", () => {
   const actualFs = jest.requireActual("fs");

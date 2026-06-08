@@ -1,8 +1,6 @@
 import {
   BasicDataInputSchema,
   ExperienceInputSchema,
-  EducationInputSchema,
-  ProjectInputSchema,
   SkillInputSchema,
   ReferenceInputSchema,
   BulletInputSchema,

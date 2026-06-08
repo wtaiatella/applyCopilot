@@ -9,12 +9,12 @@
 
 **Purpose**: Project initialization and core shared configurations.
 
-- [ ] T001 Create folders and project skeleton in `frontend/src/`
-- [ ] T002 Initialize Next.js 16 App Router project in `frontend/`
-- [ ] T003 [P] Configure TypeScript compiler settings in `frontend/tsconfig.json`
-- [ ] T004 [P] Configure ESLint and Prettier formatting tools in `frontend/eslint.config.mjs`
-- [ ] T005 Setup Winston logger with payload auditing directory outputs in `frontend/src/lib/logging/logger.ts`
-- [ ] T006 [P] Configure Jest unit and integration testing environment in `frontend/jest.config.js` and `frontend/jest.setup.js`
+- [x] T001 Create folders and project skeleton in `frontend/src/`
+- [x] T002 Initialize Next.js 16 App Router project in `frontend/`
+- [x] T003 [P] Configure TypeScript compiler settings in `frontend/tsconfig.json`
+- [x] T004 [P] Configure ESLint and Prettier formatting tools in `frontend/eslint.config.mjs`
+- [x] T005 Setup Winston logger with payload auditing directory outputs in `frontend/src/lib/logging/logger.ts`
+- [x] T006 [P] Configure Jest unit and integration testing environment in `frontend/jest.config.js` and `frontend/jest.setup.js`
 
 ---
 

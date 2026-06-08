@@ -147,6 +147,7 @@ export function ProjectsForm({
                   label: projectName,
                   key: `${name}`,
                   closable: true,
+                  forceRender: true,
                   children: (
                     <div className="pt-4 px-1">
                       {/* Hidden field for project ID */}

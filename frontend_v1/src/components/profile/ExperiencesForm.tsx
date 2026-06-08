@@ -149,6 +149,7 @@ export function ExperiencesForm({
                   label: companyName,
                   key: `${name}`,
                   closable: true,
+                  forceRender: true,
                   children: (
                     <div className="pt-4 px-1">
                       {/* Hidden field for experience ID */}

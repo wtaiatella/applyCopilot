@@ -24,13 +24,13 @@
 
 **⚠️ CRITICAL**: No user story implementation can begin until all Phase 2 tasks are complete.
 
-- [ ] T007 Define models (User, UserProfile, Experience, Education, Project, Skill, Reference, CV, CVBullet, SystemConfig) in `frontend/prisma/schema.prisma`
-- [ ] T008 Generate database migrations and include the HNSW index and vector similarity configurations in `frontend/prisma/migrations/`
-- [ ] T009 Create seed script seeding default portal LLM settings in `frontend/prisma/seed.ts`
-- [ ] T010 [P] Implement NextAuth.js v5 credentials adapter in `frontend/src/lib/auth/authConfig.ts`
-- [ ] T011 [P] Configure Next.js middleware for route protection in `frontend/src/middleware.ts`
-- [ ] T012 Implement centralized dynamic AI client routing to Ollama/Gemini/Claude based on SystemConfig settings in `frontend/src/lib/ai/aiClient.ts`
-- [ ] T013 Define Zod validation schemas for requests and DTOs in `frontend/src/lib/validation/profileSchemas.ts`
+- [x] T007 Define models (User, UserProfile, Experience, Education, Project, Skill, Reference, CV, CVBullet, SystemConfig) in `frontend/prisma/schema.prisma`
+- [x] T008 Generate database migrations and include the HNSW index and vector similarity configurations in `frontend/prisma/migrations/`
+- [x] T009 Create seed script seeding default portal LLM settings in `frontend/prisma/seed.ts`
+- [x] T010 [P] Implement NextAuth.js v5 credentials adapter in `frontend/src/lib/auth/authConfig.ts`
+- [x] T011 [P] Configure Next.js middleware for route protection in `frontend/src/middleware.ts`
+- [x] T012 Implement centralized dynamic AI client routing to Ollama/Gemini/Claude based on SystemConfig settings in `frontend/src/lib/ai/aiClient.ts`
+- [x] T013 Define Zod validation schemas for requests and DTOs in `frontend/src/lib/validation/profileSchemas.ts`
 
 **Checkpoint**: Foundation complete. API, Authentication, and Database layers ready for parallel User Story implementation.
 

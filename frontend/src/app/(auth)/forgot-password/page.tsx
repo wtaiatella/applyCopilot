@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Form, Input, Button, message } from "antd";
+import { Form, Input, Button, message, Typography } from "antd";
 import { Mail, KeyRound, ArrowLeft } from "lucide-react";
+
+const { Title, Text } = Typography;
 
 export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
@@ -42,17 +44,18 @@ export default function ForgotPasswordPage() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/10 text-green-400 border border-green-500/20">
           <Mail className="h-6 w-6" />
         </div>
-        <h2 className="mt-6 text-3xl font-extrabold text-white">Check your email</h2>
-        <p className="mt-4 text-sm text-slate-400 leading-relaxed">
+        <Title level={2} className="!mt-6 !mb-4 !text-white">
+          Check your email
+        </Title>
+        <Text className="block text-sm leading-relaxed mb-8">
           If that email address exists in our database, we have sent a password reset link to it. Please check your inbox (and spam folder).
-        </p>
-        <div className="mt-8">
-          <Link
-            href="/login"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-blue-500 hover:text-blue-400 hover:underline"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to login
+        </Text>
+        <div>
+          <Link href="/login" passHref legacyBehavior>
+            <Typography.Link className="inline-flex items-center gap-2 text-sm font-semibold">
+              <ArrowLeft className="h-4 w-4" />
+              Back to login
+            </Typography.Link>
           </Link>
         </div>
       </div>
@@ -66,10 +69,12 @@ export default function ForgotPasswordPage() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600/10 text-blue-400 border border-blue-500/20">
           <KeyRound className="h-6 w-6" />
         </div>
-        <h2 className="mt-6 text-3xl font-extrabold text-white">Forgot Password?</h2>
-        <p className="mt-2 text-sm text-slate-400">
+        <Title level={2} className="!mt-6 !mb-2 !text-white">
+          Forgot Password?
+        </Title>
+        <Text type="secondary" className="block text-sm">
           Enter your email address and we will send you a secure link to reset your password.
-        </p>
+        </Text>
       </div>
 
       {/* Forgot Password Form */}
@@ -82,17 +87,16 @@ export default function ForgotPasswordPage() {
       >
         <Form.Item
           name="email"
-          label={<span className="text-slate-300">Email Address</span>}
+          label="Email Address"
           rules={[
             { required: true, message: "Please enter your email address" },
             { type: "email", message: "Please enter a valid email address" },
           ]}
         >
           <Input
-            prefix={<Mail className="h-4 w-4 text-slate-500 mr-2" />}
+            prefix={<Mail className="h-4 w-4 mr-2" />}
             placeholder="you@example.com"
             size="large"
-            className="bg-slate-900 border-slate-800 text-white placeholder-slate-500 hover:border-slate-700 focus:border-blue-500 focus:shadow-none"
           />
         </Form.Item>
 
@@ -102,19 +106,18 @@ export default function ForgotPasswordPage() {
             htmlType="submit"
             loading={loading}
             size="large"
-            className="w-full bg-blue-600 border-none hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.98] transition-all font-semibold"
+            className="w-full font-semibold"
           >
             Send Reset Link
           </Button>
         </Form.Item>
 
         <div className="text-center mt-4">
-          <Link
-            href="/login"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-400 hover:text-white transition-all"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to login
+          <Link href="/login" passHref legacyBehavior>
+            <Typography.Link className="inline-flex items-center gap-2 text-sm font-semibold">
+              <ArrowLeft className="h-4 w-4" />
+              Back to login
+            </Typography.Link>
           </Link>
         </div>
       </Form>

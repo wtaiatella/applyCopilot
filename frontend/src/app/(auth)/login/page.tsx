@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
-import { Form, Input, Button, message } from "antd";
+import { Form, Input, Button, message, Typography } from "antd";
 import { Mail, Lock, LogIn } from "lucide-react";
+
+const { Title, Text } = Typography;
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
@@ -42,13 +44,17 @@ export default function LoginPage() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600/10 text-blue-400 border border-blue-500/20">
           <LogIn className="h-6 w-6" />
         </div>
-        <h2 className="mt-6 text-3xl font-extrabold text-white">Welcome back</h2>
-        <p className="mt-2 text-sm text-slate-400">
+        <Title level={2} className="!mt-6 !mb-2 !text-white">
+          Welcome back
+        </Title>
+        <Text type="secondary" className="block text-sm">
           Or{" "}
-          <Link href="/register" className="font-medium text-blue-500 hover:text-blue-400 hover:underline">
-            create a new account
+          <Link href="/register" passHref legacyBehavior>
+            <Typography.Link>
+              create a new account
+            </Typography.Link>
           </Link>
-        </p>
+        </Text>
       </div>
 
       {/* Login Form */}
@@ -61,17 +67,16 @@ export default function LoginPage() {
       >
         <Form.Item
           name="email"
-          label={<span className="text-slate-300">Email Address</span>}
+          label="Email Address"
           rules={[
             { required: true, message: "Please enter your email address" },
             { type: "email", message: "Please enter a valid email address" },
           ]}
         >
           <Input
-            prefix={<Mail className="h-4 w-4 text-slate-500 mr-2" />}
+            prefix={<Mail className="h-4 w-4 mr-2" />}
             placeholder="you@example.com"
             size="large"
-            className="bg-slate-900 border-slate-800 text-white placeholder-slate-500 hover:border-slate-700 focus:border-blue-500 focus:shadow-none"
           />
         </Form.Item>
 
@@ -79,22 +84,20 @@ export default function LoginPage() {
           name="password"
           label={
             <div className="flex w-full justify-between items-center">
-              <span className="text-slate-300">Password</span>
-              <Link
-                href="/forgot-password"
-                className="text-xs font-medium text-blue-500 hover:text-blue-400 hover:underline"
-              >
-                Forgot password?
+              <span>Password</span>
+              <Link href="/forgot-password" passHref legacyBehavior>
+                <Typography.Link className="text-xs">
+                  Forgot password?
+                </Typography.Link>
               </Link>
             </div>
           }
           rules={[{ required: true, message: "Please enter your password" }]}
         >
           <Input.Password
-            prefix={<Lock className="h-4 w-4 text-slate-500 mr-2" />}
+            prefix={<Lock className="h-4 w-4 mr-2" />}
             placeholder="••••••••"
             size="large"
-            className="bg-slate-900 border-slate-800 text-white placeholder-slate-500 hover:border-slate-700 focus:border-blue-500 focus:shadow-none"
           />
         </Form.Item>
 
@@ -104,7 +107,7 @@ export default function LoginPage() {
             htmlType="submit"
             loading={loading}
             size="large"
-            className="w-full bg-blue-600 border-none hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.98] transition-all font-semibold"
+            className="w-full font-semibold"
           >
             Log In
           </Button>

@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Form, Input, Button, message } from "antd";
+import { Form, Input, Button, message, Typography } from "antd";
 import { Mail, Lock, UserPlus } from "lucide-react";
+
+const { Title, Text } = Typography;
 
 export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
@@ -51,13 +53,17 @@ export default function RegisterPage() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600/10 text-blue-400 border border-blue-500/20">
           <UserPlus className="h-6 w-6" />
         </div>
-        <h2 className="mt-6 text-3xl font-extrabold text-white">Create your account</h2>
-        <p className="mt-2 text-sm text-slate-400">
+        <Title level={2} className="!mt-6 !mb-2 !text-white">
+          Create your account
+        </Title>
+        <Text type="secondary" className="block text-sm">
           Or{" "}
-          <Link href="/login" className="font-medium text-blue-500 hover:text-blue-400 hover:underline">
-            sign in to your existing account
+          <Link href="/login" passHref legacyBehavior>
+            <Typography.Link>
+              sign in to your existing account
+            </Typography.Link>
           </Link>
-        </p>
+        </Text>
       </div>
 
       {/* Register Form */}
@@ -71,39 +77,37 @@ export default function RegisterPage() {
       >
         <Form.Item
           name="email"
-          label={<span className="text-slate-300">Email Address</span>}
+          label="Email Address"
           rules={[
             { required: true, message: "Please enter your email address" },
             { type: "email", message: "Please enter a valid email address" },
           ]}
         >
           <Input
-            prefix={<Mail className="h-4 w-4 text-slate-500 mr-2" />}
+            prefix={<Mail className="h-4 w-4 mr-2" />}
             placeholder="you@example.com"
             size="large"
-            className="bg-slate-900 border-slate-800 text-white placeholder-slate-500 hover:border-slate-700 focus:border-blue-500 focus:shadow-none"
           />
         </Form.Item>
 
         <Form.Item
           name="password"
-          label={<span className="text-slate-300">Password</span>}
+          label="Password"
           rules={[
             { required: true, message: "Please enter a password" },
             { min: 6, message: "Password must be at least 6 characters" },
           ]}
         >
           <Input.Password
-            prefix={<Lock className="h-4 w-4 text-slate-500 mr-2" />}
+            prefix={<Lock className="h-4 w-4 mr-2" />}
             placeholder="••••••••"
             size="large"
-            className="bg-slate-900 border-slate-800 text-white placeholder-slate-500 hover:border-slate-700 focus:border-blue-500 focus:shadow-none"
           />
         </Form.Item>
 
         <Form.Item
           name="confirmPassword"
-          label={<span className="text-slate-300">Confirm Password</span>}
+          label="Confirm Password"
           dependencies={["password"]}
           rules={[
             { required: true, message: "Please confirm your password" },
@@ -118,10 +122,9 @@ export default function RegisterPage() {
           ]}
         >
           <Input.Password
-            prefix={<Lock className="h-4 w-4 text-slate-500 mr-2" />}
+            prefix={<Lock className="h-4 w-4 mr-2" />}
             placeholder="••••••••"
             size="large"
-            className="bg-slate-900 border-slate-800 text-white placeholder-slate-500 hover:border-slate-700 focus:border-blue-500 focus:shadow-none"
           />
         </Form.Item>
 
@@ -131,7 +134,7 @@ export default function RegisterPage() {
             htmlType="submit"
             loading={loading}
             size="large"
-            className="w-full bg-blue-600 border-none hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.98] transition-all font-semibold"
+            className="w-full font-semibold"
           >
             Sign Up
           </Button>

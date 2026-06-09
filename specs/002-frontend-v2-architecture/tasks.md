@@ -47,14 +47,14 @@
 - [x] T014 [P] [US1] Create landing page sections (Hero, Features, How It Works, CTA) in `frontend/src/components/landing/`
 - [x] T015 [P] [US1] Implement landing page redirect CTAs based on session auth in `frontend/src/app/page.tsx`
 - [x] T016 [US1] Implement registration endpoint POST handler in `frontend/src/app/api/auth/register/route.ts`
-- [x] T017 [P] [US1] Create registration UI page using Ant Design Form in `frontend/src/app/(auth)/register/page.tsx`
-- [x] T018 [P] [US1] Create login UI page in `frontend/src/app/(auth)/login/page.tsx`
+- [x] T017 [P] [US1] Create registration UI page in `frontend/src/app/(auth)/register/page.tsx` (comply with Constitution Sec VII: no custom color classes, inherit theme tokens)
+- [x] T018 [P] [US1] Create login UI page in `frontend/src/app/(auth)/login/page.tsx` (comply with Constitution Sec VII: no custom color classes, inherit theme tokens)
 - [x] T019 [US1] Implement forgot-password token generator (SHA-256 hashed) and Resend API logger handler in `frontend/src/app/api/auth/forgot-password/route.ts`
-- [x] T020 [P] [US1] Create forgot-password input form UI in `frontend/src/app/(auth)/forgot-password/page.tsx`
+- [x] T020 [P] [US1] Create forgot-password input form UI in `frontend/src/app/(auth)/forgot-password/page.tsx` (comply with Constitution Sec VII: no custom color classes, inherit theme tokens)
 - [x] T021 [US1] Implement reset-password endpoint POST handler in `frontend/src/app/api/auth/reset-password/route.ts`
-- [x] T022 [P] [US1] Create reset-password UI form page in `frontend/src/app/(auth)/reset-password/page.tsx`
-- [x] T023 [US1] Create collapsible sidebar and header main layout in `frontend/src/app/(main)/layout.tsx` (expanded on >= 1280px, persists preference in localStorage)
-- [x] T024 [P] [US1] Create minimal dashboard welcome page in `frontend/src/app/(main)/dashboard/page.tsx`
+- [x] T022 [P] [US1] Create reset-password UI form page in `frontend/src/app/(auth)/reset-password/page.tsx` (comply with Constitution Sec VII: no custom color classes, inherit theme tokens)
+- [x] T023 [US1] Create collapsible sidebar and header main layout in `frontend/src/app/(main)/layout.tsx` (expanded on >= 1280px, persists preference in localStorage, complies with Constitution Sec VII)
+- [x] T024 [P] [US1] Create minimal dashboard welcome page in `frontend/src/app/(main)/dashboard/page.tsx` (comply with Constitution Sec VII: no custom color classes, inherit theme tokens)
 - [x] T025 [US1] Add Jest integration tests for forgot/reset password API handlers in `frontend/tests/integration/auth.test.ts`
 
 **Checkpoint**: Landing, registration, login, and forgot password routes fully operational and testable.

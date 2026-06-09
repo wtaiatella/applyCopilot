@@ -3,8 +3,10 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Form, Input, Button, message } from "antd";
+import { Form, Input, Button, message, Typography } from "antd";
 import { Lock, ShieldCheck, ArrowLeft } from "lucide-react";
+
+const { Title, Text } = Typography;
 
 function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
@@ -55,16 +57,17 @@ function ResetPasswordForm() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-red-500/10 text-red-400 border border-red-500/20">
           <Lock className="h-6 w-6" />
         </div>
-        <h2 className="mt-6 text-2xl font-extrabold text-white">Invalid Reset Link</h2>
-        <p className="mt-4 text-sm text-slate-400 leading-relaxed">
+        <Title level={2} className="!mt-6 !text-white">
+          Invalid Reset Link
+        </Title>
+        <Text className="block text-sm leading-relaxed mt-4">
           The password reset token is missing or invalid. Please request a new password reset link.
-        </p>
+        </Text>
         <div className="mt-8">
-          <Link
-            href="/forgot-password"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-blue-500 hover:text-blue-400 hover:underline"
-          >
-            Request new link
+          <Link href="/forgot-password" passHref legacyBehavior>
+            <Typography.Link className="inline-flex items-center gap-2 text-sm font-semibold">
+              Request new link
+            </Typography.Link>
           </Link>
         </div>
       </div>
@@ -78,10 +81,12 @@ function ResetPasswordForm() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600/10 text-blue-400 border border-blue-500/20">
           <ShieldCheck className="h-6 w-6" />
         </div>
-        <h2 className="mt-6 text-3xl font-extrabold text-white">Reset Password</h2>
-        <p className="mt-2 text-sm text-slate-400">
+        <Title level={2} className="!mt-6 !mb-2 !text-white">
+          Reset Password
+        </Title>
+        <Text type="secondary" className="block text-sm">
           Please enter and confirm your new secure password below.
-        </p>
+        </Text>
       </div>
 
       {/* Reset Password Form */}
@@ -94,23 +99,22 @@ function ResetPasswordForm() {
       >
         <Form.Item
           name="password"
-          label={<span className="text-slate-300">New Password</span>}
+          label="New Password"
           rules={[
             { required: true, message: "Please enter your new password" },
             { min: 6, message: "Password must be at least 6 characters" },
           ]}
         >
           <Input.Password
-            prefix={<Lock className="h-4 w-4 text-slate-500 mr-2" />}
+            prefix={<Lock className="h-4 w-4 mr-2" />}
             placeholder="••••••••"
             size="large"
-            className="bg-slate-900 border-slate-800 text-white placeholder-slate-500 hover:border-slate-700 focus:border-blue-500 focus:shadow-none"
           />
         </Form.Item>
 
         <Form.Item
           name="confirmPassword"
-          label={<span className="text-slate-300">Confirm New Password</span>}
+          label="Confirm New Password"
           dependencies={["password"]}
           rules={[
             { required: true, message: "Please confirm your new password" },
@@ -125,10 +129,9 @@ function ResetPasswordForm() {
           ]}
         >
           <Input.Password
-            prefix={<Lock className="h-4 w-4 text-slate-500 mr-2" />}
+            prefix={<Lock className="h-4 w-4 mr-2" />}
             placeholder="••••••••"
             size="large"
-            className="bg-slate-900 border-slate-800 text-white placeholder-slate-500 hover:border-slate-700 focus:border-blue-500 focus:shadow-none"
           />
         </Form.Item>
 
@@ -138,19 +141,18 @@ function ResetPasswordForm() {
             htmlType="submit"
             loading={loading}
             size="large"
-            className="w-full bg-blue-600 border-none hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.98] transition-all font-semibold"
+            className="w-full font-semibold"
           >
             Reset Password
           </Button>
         </Form.Item>
 
         <div className="text-center mt-4">
-          <Link
-            href="/login"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-400 hover:text-white transition-all"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to login
+          <Link href="/login" passHref legacyBehavior>
+            <Typography.Link className="inline-flex items-center gap-2 text-sm font-semibold">
+              <ArrowLeft className="h-4 w-4" />
+              Back to login
+            </Typography.Link>
           </Link>
         </div>
       </Form>

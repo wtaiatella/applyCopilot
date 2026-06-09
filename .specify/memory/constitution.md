@@ -53,11 +53,12 @@ Sensitive user data should be processed locally whenever possible:
 - Data sent to external APIs must be minimized and documented in `plan.md`
 
 ### VII. UI Consistency (Ant Design + Tailwind CSS)
-- Ant Design 6 is the primary component library — do not reinvent UI primitives
-- Tailwind CSS 4 is used exclusively for layout, spacing, and custom styling
-- **Dark mode is the default and priority** — all components must support dark/light themes
-- Use Ant Design's built-in theme system (`ConfigProvider`) for theming
-- No custom color values outside the Ant Design token system unless explicitly justified
+- **Primary Library:** Ant Design 6 is the primary component library — do not reinvent UI primitives.
+- **Tailwind CSS 4:** Used exclusively for layout, spacing, layout alignments, and structural styling.
+- **Dark Mode by Default:** Dark mode is the project standard and priority. Root theme must use `theme.darkAlgorithm`.
+- **Global Theme Color:** The default primary color token of the project is **`colorPrimary: "#2563eb"`** (blue-600).
+- **Centralized Theming:** All components must inherit styles from a centralized `<ConfigProvider>` wrapping the root application layout.
+- **Token Enforcement (CRITICAL):** Do not write custom CSS or inline Tailwind class declarations for color styling (backgrounds, borders, text colors, etc.) that lie outside of the Ant Design design token system. This ensures the app can adapt dynamically to theme adjustments.
 
 ### VIII. Standardized Logging & Auditing (NON-NEGOTIABLE)
 All backend components must use structured, centralized logging via Winston:

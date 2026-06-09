@@ -90,7 +90,7 @@ As a user, I want to add, edit, and delete items in all profile sections without
 
 **Profile Page Layout**:
 - Horizontal tabs at the top of the profile page, one tab per section
-- **BasicData**: single form (no inner tabs) — name, email, phone, location, LinkedIn, GitHub, website, active summary selector
+- **BasicData**: single form (no inner tabs) — first name, last name, email, phone, location, LinkedIn, GitHub, website, active summary selector
 - **Experiences / Education / Projects**: each item is its own editable tab (tab label = company name / institution / project name, editable on double-click using Ant Design `editableTabs`)
 - **Skills / References**: list views within a single tab
 
@@ -101,7 +101,7 @@ As a user, I want to add, edit, and delete items in all profile sections without
 - If auto-save fails, the indicator shows `Error — retry` with a manual retry button
 
 **Acceptance Scenarios**:
-1. **Given** I edit my name in the Basic Data tab, **When** I switch to Experiences tab and back, **Then** my unsaved edits are preserved in the ProfileContext (and auto-saved within 1.5s)
+1. **Given** I edit my first name or last name in the Basic Data tab, **When** I switch to Experiences tab and back, **Then** my unsaved edits are preserved in the ProfileContext (and auto-saved within 1.5s)
 2. **Given** I add a new experience, **When** I save, **Then** it appears immediately as a new tab without a full page reload
 3. **Given** I delete a bullet point that was used in a generated CV, **When** I save, **Then** the bullet is soft-deleted (hidden from the active profile UI, preserved in DB with `isArchived: true`)
 4. **Given** I add skills manually, **When** the debounce fires, **Then** the skills list is updated atomically (no partial saves)
@@ -390,7 +390,8 @@ export interface BulletDTO {
 }
 
 export interface BasicDataDTO {
-  name: string;
+  firstName: string | null;
+  lastName: string | null;
   email: string;
   phone: string | null;
   location: string | null;

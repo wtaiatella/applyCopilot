@@ -32,6 +32,7 @@ model User {
   profile            UserProfile?
   sessions           Session[]
   passwordResetTokens PasswordResetToken[]
+  aiUsageLogs        AIUsageLog[]
 }
 
 model UserProfile {
@@ -236,3 +237,13 @@ model SystemConfig {
   key   String @id
   value String
 }
+
+model AIUsageLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String   // "parse" or "summary"
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+

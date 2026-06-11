@@ -69,14 +69,16 @@
 
 ### Implementation for User Story 2
 
-- [ ] T026 [P] [US2] Implement mammoth-based DOCX text extraction and pdf2json-based PDF text extraction in `frontend/src/lib/parsing/documentExtract.ts`
-- [ ] T027 [US2] Implement centralized bullet, experience, and project normalization and merging in `frontend/src/lib/merge/profileMergeService.ts`
-- [ ] T028 [P] [US2] Create unit tests verifying deduplication and normalization rules in `frontend/tests/unit/merge.test.ts`
-- [ ] T029 [US2] Implement Server-Sent Events (SSE) parsing handler orchestrating text extraction and sequential LLM parsing in `frontend/src/app/api/profile/parse/route.ts`
-- [ ] T030 [US2] Implement client-side parseCV service caller to process the event stream in `frontend/src/services/profileService.ts`
-- [ ] T031 [P] [US2] Create CV Uploader widget component with progress bar in `frontend/src/components/profile/CVUploader.tsx`
+- [x] T026 [P] [US2] Implement mammoth-based DOCX text extraction and pdf2json-based PDF text extraction in `frontend/src/lib/parsing/documentExtract.ts` (include dev-mode hook to save raw uploads to `debug/uploads/` when `LOG_LEVEL=debug`)
+- [x] T027 [US2] Implement centralized bullet, experience, and project normalization and merging in `frontend/src/lib/merge/profileMergeService.ts` (if a merged bullet matches an archived one, set `isArchived: false` to reactivate it and preserve historic CV relationships)
+- [x] T028 [P] [US2] Create unit tests verifying deduplication, normalization, and archived bullet reactivation rules in `frontend/tests/unit/merge.test.ts`
+- [x] T028b [US2] Add `AIUsageLog` model to `frontend/prisma/schema.prisma` and execute migrations to support DB-driven rate limiting
+- [x] T029 [US2] Implement Server-Sent Events (SSE) parsing handler in `frontend/src/app/api/profile/parse/route.ts` orchestrating text extraction, rate-limiting validation (5 parses/day), sequential LLM parsing, and fallback prompts for empty projects/skills
+- [x] T030 [US2] Implement client-side parseCV service caller to process the event stream in `frontend/src/services/profileService.ts`
+- [x] T031 [P] [US2] Create CV Uploader widget component with progress bar in `frontend/src/components/profile/CVUploader.tsx`
 
-**Checkpoint**: SSE CV upload pipeline and parsing merge engines verified and working.
+**Checkpoint**: SSE CV upload pipeline, rate limiting, and parsing merge engines verified and working.
+
 
 ---
 
@@ -113,7 +115,7 @@
 
 - [ ] T042 [US4] Implement basic data update and active summary sync endpoint in `frontend/src/app/api/profile/basic/route.ts`
 - [ ] T043 [P] [US4] Create Basic Data UI form with inline manual summary additions and drag-and-drop ordering in `frontend/src/components/profile/BasicDataForm.tsx`
-- [ ] T044 [US4] Implement AI summary generator route handler in `frontend/src/app/api/profile/summaries/generate/route.ts`
+- [ ] T044 [US4] Implement AI summary generator route handler in `frontend/src/app/api/profile/summaries/generate/route.ts` (include rate-limiting validation: max 10 generations/hour)
 - [ ] T045 [P] [US4] Create AI summary generator Modal instructions form in `frontend/src/components/profile/SummaryGeneratorModal.tsx`
 - [ ] T046 [P] [US4] Create Experience form list UI with current date checkbox and bullet drag-drop sortable rows in `frontend/src/components/profile/ExperienceForm.tsx`
 - [ ] T047 [P] [US4] Create Education form list UI with current date and hideEndDate checkboxes in `frontend/src/components/profile/EducationForm.tsx`

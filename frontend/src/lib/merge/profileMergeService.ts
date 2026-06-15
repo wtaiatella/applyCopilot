@@ -60,17 +60,18 @@ export class ProfileMergeService {
       if (!incExp.company) continue;
 
       const normCompany = this.normalizeText(incExp.company);
-      const normPosition = this.normalizeText(incExp.position || "");
 
-      // Find existing experiences matching this company
+      // Find existing experiences matching this company (match key: company only, per spec).
+      // Rationale: same company / different position should not create a duplicate company entry;
+      // new positions are appended as new experiences under the same company.
       const existingExps = await prisma.experience.findMany({
         where: { profileId },
         include: { bullets: true },
       });
 
-      // Find exact match (same company and position)
+      // Match by normalized company only
       const exactMatch = existingExps.find(
-        (e) => this.normalizeText(e.company) === normCompany && this.normalizeText(e.position) === normPosition
+        (e) => this.normalizeText(e.company) === normCompany
       );
 
       const startDate = incExp.startDate ? new Date(incExp.startDate) : new Date();

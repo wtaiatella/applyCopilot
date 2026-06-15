@@ -112,7 +112,10 @@ describe("ProfileMergeService", () => {
       });
     });
 
-    it("should create new experience if company matches but position differs", async () => {
+    it("should update existing experience when company matches (even if position differs)", async () => {
+      // Per spec: experience match key is normalized company ONLY.
+      // "Same company / different position" must NOT create a duplicate company entry.
+      // Instead, the existing experience is updated with the new incoming data.
       const incomingExp = {
         company: "Avalara",
         position: "Manager",
@@ -130,8 +133,9 @@ describe("ProfileMergeService", () => {
 
       await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as unknown as ExperienceDTO[]);
 
-      expect(prisma.experience.create).toHaveBeenCalled();
-      expect(prisma.experience.update).not.toHaveBeenCalled();
+      // Should update existing, NOT create a new experience
+      expect(prisma.experience.update).toHaveBeenCalled();
+      expect(prisma.experience.create).not.toHaveBeenCalled();
     });
 
     it("should merge bullets and reactivate archived bullets if company and position match exactly", async () => {

@@ -5,16 +5,20 @@ import { Upload, App, Card, Typography, Space, Progress } from "antd";
 import type { UploadProps } from "antd";
 import { InboxOutlined, FilePdfOutlined, FileWordOutlined } from "@ant-design/icons";
 import { ProfileService } from "../../services/profileService";
-import { ParseProgressEvent } from "../../types/profile";
+import { ParseProgressEvent, BasicDataDTO } from "../../types/profile";
 
 const { Dragger } = Upload;
 const { Title, Text, Paragraph } = Typography;
 
 interface CVUploaderProps {
   onUploadSuccess: () => void;
+  /** Called as each SSE phase completes with partial data, enabling progressive UI updates.
+   * Per spec Acceptance Scenario 2: when the 'basic' phase event (40%) arrives,
+   * the BasicData tab must be immediately populated without waiting for remaining phases. */
+  onPartialData?: (phase: string, data: BasicDataDTO | unknown) => void;
 }
 
-export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
+export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess, onPartialData }) => {
   const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -33,6 +37,12 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
           setProgress(event.progress);
           if (event.phase !== "error") {
             setStatusMessage(event.status);
+
+            // Acceptance Scenario 2: propagate partial data as each phase completes
+            // so the parent (ProfileContext) can update the UI immediately.
+            if ("data" in event && event.data !== undefined) {
+              onPartialData?.(event.phase, event.data);
+            }
           } else {
             setStatusMessage(event.error);
           }

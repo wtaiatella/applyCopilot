@@ -14,14 +14,16 @@ const getRepoRoot = (): string => {
 };
 
 /**
- * Hook to save raw uploaded files to debug/uploads/ in development mode when LOG_LEVEL=debug
+ * Hook to save raw uploaded files to debug/uploads/ only when LOG_LEVEL=debug.
+ * Per spec: "In development mode (when LOG_LEVEL=debug), the raw uploaded CV files
+ * are saved to the debug/uploads/ directory for troubleshooting text extraction failures.
+ * No permanent storage of the raw file is allowed in production."
  */
 export function saveRawUploadForDebug(buffer: Buffer, originalFilename: string) {
   try {
-    const isDev = process.env.NODE_ENV !== "production";
     const isDebug = process.env.LOG_LEVEL?.toLowerCase() === "debug";
 
-    if (isDev || isDebug) {
+    if (isDebug) {
       const repoRoot = getRepoRoot();
       const debugUploadsDir = path.join(repoRoot, "debug", "uploads");
 

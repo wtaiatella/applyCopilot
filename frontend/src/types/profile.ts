@@ -106,9 +106,9 @@ export interface ProfileDTO {
 
 export type ParseProgressEvent =
   | { phase: "upload";      progress: number;  status: string }
-  | { phase: "basic";       progress: number;  status: string; data: BasicDataDTO }
-  | { phase: "experiences"; progress: number;  status: string; data: ExperienceDTO[] }
-  | { phase: "projects";    progress: number;  status: string; data: ProjectDTO[] }
-  | { phase: "education";   progress: number;  status: string; data: { education: EducationDTO[]; skills: SkillDTO[] } }
+  | { phase: "basic";       progress: number;  status: string; data?: BasicDataDTO }
+  | { phase: "experiences"; progress: number;  status: string; data?: ExperienceDTO[] }
+  | { phase: "projects";    progress: number;  status: string; data?: ProjectDTO[] }
+  | { phase: "education";   progress: number;  status: string; data?: { education: EducationDTO[]; skills: SkillDTO[] } }
   | { phase: "error";       progress: number;  error: string };
 

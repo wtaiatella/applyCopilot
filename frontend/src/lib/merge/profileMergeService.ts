@@ -30,7 +30,7 @@ export class ProfileMergeService {
   static async mergeBasicData(profileId: string, incoming: Partial<BasicDataDTO>): Promise<void> {
     logger.info(`Merging basic data for profile: ${profileId}`);
     
-    const updateData: Record<string, any> = {};
+    const updateData: Record<string, string | null> = {};
     
     if (incoming.firstName) updateData.firstName = incoming.firstName;
     if (incoming.lastName) updateData.lastName = incoming.lastName;

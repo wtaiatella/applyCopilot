@@ -4,6 +4,7 @@
 
 import { ProfileMergeService } from "../../src/lib/merge/profileMergeService";
 import { prisma } from "../../src/lib/db/prisma";
+import { ExperienceDTO } from "../../src/types/profile";
 
 // Mock the database client
 jest.mock("../../src/lib/db/prisma", () => ({
@@ -91,7 +92,7 @@ describe("ProfileMergeService", () => {
       (prisma.experience.findMany as jest.Mock).mockResolvedValue([]);
       (prisma.experience.create as jest.Mock).mockResolvedValue({ id: "new-exp-id" });
 
-      await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as any);
+      await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as unknown as ExperienceDTO[]);
 
       expect(prisma.experience.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -127,7 +128,7 @@ describe("ProfileMergeService", () => {
         },
       ]);
 
-      await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as any);
+      await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as unknown as ExperienceDTO[]);
 
       expect(prisma.experience.create).toHaveBeenCalled();
       expect(prisma.experience.update).not.toHaveBeenCalled();
@@ -156,7 +157,7 @@ describe("ProfileMergeService", () => {
         },
       ]);
 
-      await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as any);
+      await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as unknown as ExperienceDTO[]);
 
       // Bullets merge assertions
       // 1. Should unarchive "Archived Bullet" (id: b2)

@@ -230,9 +230,10 @@ export class ProfileService {
       }
 
       onComplete();
-    } catch (err: any) {
-      console.error("parseCV error:", err);
-      onError(err.message || "An error occurred during CV parsing.");
+    } catch (err) {
+      const error = err as Error;
+      console.error("parseCV error:", error);
+      onError(error.message || "An error occurred during CV parsing.");
     }
   }
 }

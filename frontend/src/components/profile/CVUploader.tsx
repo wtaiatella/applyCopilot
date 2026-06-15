@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Upload, App, Card, Typography, Space, Progress } from "antd";
+import type { UploadProps } from "antd";
 import { InboxOutlined, FilePdfOutlined, FileWordOutlined } from "@ant-design/icons";
 import { ProfileService } from "../../services/profileService";
 import { ParseProgressEvent } from "../../types/profile";
@@ -19,7 +20,7 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState("");
 
-  const handleCustomRequest = async (options: any) => {
+  const handleCustomRequest = async (options: Parameters<NonNullable<UploadProps["customRequest"]>>[0]) => {
     const { file, onSuccess, onError } = options;
     setLoading(true);
     setProgress(20);
@@ -38,14 +39,14 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
         },
         (errorMsg: string) => {
           message.error(`Parsing Error: ${errorMsg}`);
-          onError(new Error(errorMsg));
+          onError?.(new Error(errorMsg));
           resetState();
         },
         () => {
           // Success
           setProgress(100);
           setStatusMessage("CV parsed and merged successfully!");
-          onSuccess("ok");
+          onSuccess?.("ok");
           
           modal.success({
             title: "CV Parsing Complete",
@@ -58,10 +59,11 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess }) => {
           });
         }
       );
-    } catch (err: any) {
-      const msg = err.message || "An error occurred during CV upload.";
+    } catch (err) {
+      const error = err as Error;
+      const msg = error.message || "An error occurred during CV upload.";
       message.error(msg);
-      onError(err);
+      onError?.(error);
       resetState();
     }
   };

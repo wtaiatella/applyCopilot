@@ -10,7 +10,8 @@ import {
   ExperienceDTO, 
   ProjectDTO, 
   EducationDTO, 
-  SkillDTO 
+  SkillDTO,
+  ParseProgressEvent 
 } from "@/types/profile";
 
 export const dynamic = "force-dynamic";
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        const sendEvent = (event: any) => {
+        const sendEvent = (event: ParseProgressEvent) => {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         };
 
@@ -275,9 +276,10 @@ ${extractedText}`;
           });
           
           controller.close();
-        } catch (error: any) {
-          logger.error("SSE Parsing failed", { error: error.message });
-          sendEvent({ phase: "error", progress: 0, error: error.message || "CV parsing failed." });
+        } catch (error) {
+          const err = error as Error;
+          logger.error("SSE Parsing failed", { error: err.message });
+          sendEvent({ phase: "error", progress: 0, error: err.message || "CV parsing failed." });
           controller.close();
         }
       },
@@ -291,8 +293,9 @@ ${extractedText}`;
         "X-Accel-Buffering": "no", // Disable buffering in Nginx
       },
     });
-  } catch (error: any) {
-    logger.error("Failed to start CV parsing SSE handler", { error });
+  } catch (error) {
+    const err = error as Error;
+    logger.error("Failed to start CV parsing SSE handler", { error: err.message });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

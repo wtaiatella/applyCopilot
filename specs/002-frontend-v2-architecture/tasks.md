@@ -76,6 +76,7 @@
 - [x] T029 [US2] Implement Server-Sent Events (SSE) parsing handler in `frontend/src/app/api/profile/parse/route.ts` orchestrating text extraction, rate-limiting validation (5 parses/day), sequential LLM parsing, and fallback prompts for empty projects/skills
 - [x] T030 [US2] Implement client-side parseCV service caller to process the event stream in `frontend/src/services/profileService.ts`
 - [x] T031 [P] [US2] Create CV Uploader widget component with progress bar in `frontend/src/components/profile/CVUploader.tsx`
+- [x] T031b [US2] Initialize openapi.yaml in `frontend/public/` and build Swagger UI route at `frontend/src/app/api-docs/` exposing Phase 3 and Phase 4 API endpoints
 
 **Checkpoint**: SSE CV upload pipeline, rate limiting, and parsing merge engines verified and working.
 
@@ -100,6 +101,7 @@
 - [ ] T039 [US3] Implement Skills replace endpoint in `frontend/src/app/api/profile/skills/route.ts`
 - [ ] T040 [US3] Implement References replace endpoint in `frontend/src/app/api/profile/references/route.ts`
 - [ ] T041 [P] [US3] Add integration tests for all profile CRUD routes in `frontend/tests/integration/profile.test.ts`
+- [ ] T041b [US3] Update openapi.yaml in `frontend/public/` to include CRUD endpoints for profile, experiences, education, projects, skills, and references
 
 **Checkpoint**: Background auto-save, ProfileContext state machine, and basic section CRUD endpoints validated.
 
@@ -123,6 +125,7 @@
 - [ ] T049 [P] [US4] Create flat Skills form list UI sorting alphabetically in `frontend/src/components/profile/SkillsForm.tsx`
 - [ ] T050 [P] [US4] Create References form list UI in `frontend/src/components/profile/ReferencesForm.tsx`
 - [ ] T051 [P] [US4] Add Winston logging auditing integration tests for AI generation requests in `frontend/tests/integration/ai.test.ts`
+- [ ] T051b [US4] Update openapi.yaml in `frontend/public/` to include basic details PUT, AI summaries generator, and skills auto-suggest endpoints
 
 **Checkpoint**: Profile UI tab controls, drag-and-drop lists, and custom date checkbox logic completed.
 

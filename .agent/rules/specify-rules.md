@@ -1,6 +1,6 @@
 # applyCopilot Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-06-15
+Auto-generated from all feature plans. Last updated: 2026-06-16
 
 ## Active Technologies
 - TypeScript 5.x / Next.js 16 (App Router, Turbopack) + Ant Design 6, Tailwind CSS 4, Prisma 7.x (PostgreSQL), NextAuth v5, Lucide Reac (002-frontend-v2-architecture-phase-4)

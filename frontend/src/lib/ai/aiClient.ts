@@ -79,7 +79,7 @@ export async function resolveAIConfig(
   if (!modelStr) {
     modelStr =
       (provider === "gemini"
-        ? process.env.GEMINI_MODEL || "gemini-1.5-flash"
+        ? process.env.GEMINI_MODEL || "gemini-2.5-flash"
         : provider === "claude"
         ? process.env.CLAUDE_MODEL || "claude-3-5-sonnet-latest"
         : process.env.OLLAMA_MODEL || "granite4.1:8b") || "";

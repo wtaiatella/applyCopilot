@@ -34,6 +34,7 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     // 1. Initialize sidebar collapse state
     const savedPreference = localStorage.getItem("sidebar_collapsed");
     if (savedPreference !== null) {
@@ -49,6 +50,7 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
     }
 
     setMounted(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   const toggleSidebar = () => {

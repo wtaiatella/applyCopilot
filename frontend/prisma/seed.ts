@@ -14,7 +14,7 @@ async function main() {
     { key: "AI_PROVIDER_PARSING", value: "ollama" },
     { key: "AI_PROVIDER_SUMMARIES", value: "gemini" },
     { key: "OLLAMA_MODEL", value: "granite4.1:8b" },
-    { key: "GEMINI_MODEL", value: "gemini-1.5-flash" },
+    { key: "GEMINI_MODEL", value: "gemini-2.5-flash" },
     { key: "CLAUDE_MODEL", value: "claude-3-5-sonnet-latest" },
   ];
 

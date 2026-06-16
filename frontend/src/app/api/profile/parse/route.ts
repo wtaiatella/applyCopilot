@@ -16,6 +16,20 @@ import {
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Defensive helper: ensures an LLM response is always an array.
+ * Some models wrap the array in an object (e.g. { "experiences": [...] })
+ * instead of returning a bare array. This extracts the first array value found.
+ */
+function toArray<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (value && typeof value === "object") {
+    const firstArray = Object.values(value as Record<string, unknown>).find(Array.isArray);
+    if (firstArray) return firstArray as T[];
+  }
+  return [];
+}
+
 export async function POST(req: Request) {
   try {
     // 1. Authenticate user
@@ -137,7 +151,9 @@ Return ONLY valid JSON as an array of objects matching this schema:
 Resume Text:
 ${extractedText}`;
 
-          const parsedExperiences = await generateJSON<ExperienceDTO[]>(experiencesPrompt, "parsing");
+          const rawExperiences = await generateJSON<unknown>(experiencesPrompt, "parsing");
+          const parsedExperiences = toArray<ExperienceDTO>(rawExperiences);
+          logger.info(`Parsed ${parsedExperiences.length} experiences from CV`);
           await ProfileMergeService.mergeExperiences(profileId, parsedExperiences);
           sendEvent({ phase: "experiences", progress: 60, status: "Work history saved.", data: parsedExperiences });
 
@@ -165,10 +181,10 @@ Return ONLY valid JSON as an array of objects matching this schema:
 Resume Text:
 ${extractedText}`;
 
-          let parsedProjects = await generateJSON<ProjectDTO[]>(projectsPrompt, "parsing");
+          let parsedProjects = toArray<ProjectDTO>(await generateJSON<unknown>(projectsPrompt, "parsing"));
           
           // AI Fallback for projects
-          if (!parsedProjects || parsedProjects.length === 0) {
+          if (parsedProjects.length === 0) {
             logger.info("Main parsing returned empty projects. Triggering fallback project extraction prompt.");
             const projectFallbackPrompt = `Analyze the following CV and extract any meaningful projects, side projects, or significant initiatives that can be identified from the work experience. For each, provide name, technologies used, approximate dates, and 2-4 bullet highlights.
 Return ONLY valid JSON as an array matching the Project schema described previously:
@@ -186,7 +202,7 @@ Return ONLY valid JSON as an array matching the Project schema described previou
 
 Resume Text:
 ${extractedText}`;
-            parsedProjects = await generateJSON<ProjectDTO[]>(projectFallbackPrompt, "parsing");
+            parsedProjects = toArray<ProjectDTO>(await generateJSON<unknown>(projectFallbackPrompt, "parsing"));
           }
 
           await ProfileMergeService.mergeProjects(profileId, parsedProjects);
@@ -234,6 +250,16 @@ ${extractedText}`;
 
           let parsedEdSkills = await generateJSON<EdSkillsResponse>(edSkillsPrompt, "parsing");
 
+          // Normalize: LLM may return education/skills wrapped or as bare arrays
+          if (parsedEdSkills) {
+            if (!Array.isArray(parsedEdSkills.education)) {
+              parsedEdSkills.education = toArray<EducationDTO>(parsedEdSkills.education as unknown);
+            }
+            if (!Array.isArray(parsedEdSkills.skills)) {
+              parsedEdSkills.skills = toArray<SkillDTO>(parsedEdSkills.skills as unknown);
+            }
+          }
+
           // AI Fallback for skills
           if (!parsedEdSkills || !parsedEdSkills.skills || parsedEdSkills.skills.length === 0) {
             logger.info("Main parsing returned empty skills. Triggering fallback skill extraction prompt.");
@@ -249,7 +275,7 @@ Return ONLY valid JSON matching this schema:
 
 Resume Text:
 ${extractedText}`;
-            const fallbackSkills = await generateJSON<SkillDTO[]>(skillFallbackPrompt, "parsing");
+            const fallbackSkills = toArray<SkillDTO>(await generateJSON<unknown>(skillFallbackPrompt, "parsing"));
             if (!parsedEdSkills) {
               parsedEdSkills = { education: [], skills: fallbackSkills };
             } else {

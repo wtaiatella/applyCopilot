@@ -171,3 +171,25 @@ graph TD
 | **ollama** | latest | Local Ollama provider |
 | **resend** | latest | Forgot-password email client |
 | **typescript** | 5.x | |
+
+---
+
+## 9. Plan Amendments
+
+### Amendment 001 — Admin LLM Settings Complement (2026-06-15)
+
+> **Context for drift analysis tools**: The implementation of this spec paused between **Phase 4** (User Story 2 — CV Import) and **Phase 5** (User Story 3 — Profile Editing) of `tasks.md` to accommodate a planned complement feature tracked under a separate spec.
+
+**Complement feature**: [`specs/005-admin-llm-settings`](../005-admin-llm-settings/spec.md)  
+**Reason**: After completing Phase 4 (CV parsing pipeline with SSE), the admin configuration surface for the AI provider routing — already referenced in ADR-007 and specified in the constitution (Principle V) as "configurable via the Admin panel" — was missing a UI. Rather than shipping the Profile Editing phase without a working admin panel to configure the LLM providers used during CV parsing, the team decided to implement this complement first.
+
+**Scope of the complement** (does NOT modify this spec's user stories):
+- New route `GET/POST /api/admin/llm-config` (separate from all profile routes)
+- New page `(main)/settings/page.tsx` — ADMIN-only (sidebar entry already planned in project structure above, see section 5: `settings/ # Admin-only options`)
+- New component `components/settings/LLMSettingsPanel.tsx`
+- User promotion: `wtaiatella@gmail.com` → `ADMIN` role
+
+**Drift analysis note**: Any drift tool scanning files under `frontend/src/app/(main)/settings/`, `frontend/src/app/api/admin/`, or `frontend/src/components/settings/` should treat these as **planned complement work** covered by `specs/005-admin-llm-settings`, not as spec deviation from this document. The `settings/` directory was already listed in the project structure (section 5) as "Admin-only options".
+
+**Status**: Spec + Plan + Tasks complete for complement. Implementation pending before Phase 5 of this spec resumes.
+

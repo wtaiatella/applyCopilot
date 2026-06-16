@@ -217,6 +217,100 @@ paths:
                     type: string
                     example: Rate limit reached. You can only parse 5 resumes per day.
 
+  /api/admin/llm-config:
+    get:
+      summary: Retrieve LLM provider configurations
+      description: Returns the current LLM provider configuration and credential status. ADMIN role required.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Configuration retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    type: object
+                    properties:
+                      defaultProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+                      parsingProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+                      summariesProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+                  credentialStatus:
+                    type: object
+                    properties:
+                      ollama:
+                        type: boolean
+                      gemini:
+                        type: boolean
+                      claude:
+                        type: boolean
+        '401':
+          description: Unauthorized. Active session cookie required.
+        '403':
+          description: Forbidden. ADMIN role required.
+    post:
+      summary: Update LLM provider configurations
+      description: Updates the LLM provider configurations. ADMIN role required.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - defaultProvider
+                - parsingProvider
+                - summariesProvider
+              properties:
+                defaultProvider:
+                  type: string
+                  enum: [ollama, gemini, claude]
+                parsingProvider:
+                  type: string
+                  enum: [ollama, gemini, claude]
+                summariesProvider:
+                  type: string
+                  enum: [ollama, gemini, claude]
+      responses:
+        '200':
+          description: Configuration updated successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  updated:
+                    type: object
+                    properties:
+                      defaultProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+                      parsingProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+                      summariesProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+        '400':
+          description: Validation failed.
+        '401':
+          description: Unauthorized. Active session cookie required.
+        '403':
+          description: Forbidden. ADMIN role required.
+
 components:
   securitySchemes:
     cookieAuth:

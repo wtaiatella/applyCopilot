@@ -40,6 +40,9 @@ AI_PROVIDER_SUMMARIES="gemini"
 GEMINI_API_KEY="your-gemini-api-key-here"
 RESEND_API_KEY="your-resend-api-key-here"
 
+> **Note**: To activate Gemini: replace `GEMINI_API_KEY` placeholder. To activate Claude: add `CLAUDE_API_KEY=sk-ant-...` to `.env.local`
+
+
 # Log Levels
 LOG_LEVEL="debug"
 DEBUG_SAVE_EXTRACTED_TEXT="true"

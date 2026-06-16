@@ -1,0 +1,148 @@
+"use client";
+
+import { useState } from "react";
+import { Form, Select, Button, Collapse, Tag, Tooltip, App } from "antd";
+import { LLMProviderConfig, CredentialStatus } from "@/types/admin";
+
+interface LLMSettingsPanelProps {
+  config: LLMProviderConfig;
+  credentialStatus: CredentialStatus;
+}
+
+export default function LLMSettingsPanel({ config, credentialStatus }: LLMSettingsPanelProps) {
+  const { message } = App.useApp();
+  const [loading, setLoading] = useState(false);
+  const [form] = Form.useForm();
+
+  const onFinish = async (values: LLMProviderConfig) => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/admin/llm-config", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(values),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save LLM configuration");
+      }
+
+      message.success("LLM configuration saved successfully!");
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : "Failed to save configuration";
+      message.error(errMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getProviderLabel = (value: string, name: string) => {
+    let isConfigured = false;
+    let badgeText = "";
+    let badgeColor = "";
+    let tooltipText = "";
+
+    if (value === "ollama") {
+      isConfigured = credentialStatus.ollama;
+      badgeText = isConfigured ? "✓ Configured" : "❌ Not configured";
+      badgeColor = isConfigured ? "success" : "error";
+      tooltipText = "Requires OLLAMA_BASE_URL (default: http://localhost:11434) to be configured and local service running.";
+    } else if (value === "gemini") {
+      isConfigured = credentialStatus.gemini;
+      badgeText = isConfigured ? "✓ Configured" : "⚠️ API key not set";
+      badgeColor = isConfigured ? "success" : "warning";
+      tooltipText = "Requires GEMINI_API_KEY from Google AI Studio. The current value must not be the default placeholder.";
+    } else if (value === "claude") {
+      isConfigured = credentialStatus.claude;
+      badgeText = isConfigured ? "✓ Configured" : "❌ Not configured";
+      badgeColor = isConfigured ? "success" : "error";
+      tooltipText = "Requires CLAUDE_API_KEY from Anthropic Console to be added to environment variables.";
+    }
+
+    return (
+      <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+        <span>{name}</span>
+        <Tooltip title={tooltipText} mouseEnterDelay={0.1}>
+          <Tag color={badgeColor} style={{ marginLeft: 8, marginRight: 0 }} className="cursor-help">
+            {badgeText}
+          </Tag>
+        </Tooltip>
+      </span>
+    );
+  };
+
+  const providerOptions = [
+    { value: "ollama", label: getProviderLabel("ollama", "Ollama (Local)") },
+    { value: "gemini", label: getProviderLabel("gemini", "Gemini") },
+    { value: "claude", label: getProviderLabel("claude", "Claude") },
+  ];
+
+  const collapseItems = [
+    {
+      key: "llm-models",
+      label: <span className="text-white font-semibold text-base">LLM Models</span>,
+      children: (
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{
+            defaultProvider: config.defaultProvider,
+            parsingProvider: config.parsingProvider,
+            summariesProvider: config.summariesProvider,
+          }}
+          onFinish={onFinish}
+          requiredMark={false}
+          className="pt-2"
+        >
+          <Form.Item
+            name="defaultProvider"
+            label={<span className="text-zinc-300">Default Provider</span>}
+            tooltip="The fallback provider used for generic AI tasks when a task-specific provider is not specified"
+          >
+            <Select options={providerOptions} size="large" />
+          </Form.Item>
+
+          <Form.Item
+            name="parsingProvider"
+            label={<span className="text-zinc-300">Parsing Provider</span>}
+            tooltip="The provider used for extracting data from uploaded CVs"
+          >
+            <Select options={providerOptions} size="large" />
+          </Form.Item>
+
+          <Form.Item
+            name="summariesProvider"
+            label={<span className="text-zinc-300">Summaries Provider</span>}
+            tooltip="The provider used for generating summaries"
+          >
+            <Select options={providerOptions} size="large" />
+          </Form.Item>
+
+          <Form.Item className="mb-0 mt-6">
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={loading}
+              size="large"
+              className="w-full sm:w-auto font-semibold px-8"
+            >
+              Save Configuration
+            </Button>
+          </Form.Item>
+        </Form>
+      ),
+    },
+  ];
+
+  return (
+    <div className="max-w-2xl">
+      <Collapse
+        defaultActiveKey={[]}
+        items={collapseItems}
+        className="bg-zinc-900 border border-zinc-800"
+      />
+    </div>
+  );
+}

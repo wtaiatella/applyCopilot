@@ -40,7 +40,7 @@ export async function POST(req: Request) {
 
     const userId = session.user.id;
 
-    // 2. Rate limiting check (5 parses per user per day)
+    // 2. Rate limiting check (50 parses per user per day)
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const parseCount = await prisma.aIUsageLog.count({
       where: {
@@ -50,10 +50,10 @@ export async function POST(req: Request) {
       },
     });
 
-    if (parseCount >= 5) {
+    if (parseCount >= 50) {
       logger.warn(`User ${userId} hit parsing rate limit`, { parseCount });
       return NextResponse.json(
-        { error: "Rate limit reached. You can only parse 5 resumes per day." },
+        { error: "Rate limit reached. You can only parse 50 resumes per day." },
         { status: 429 }
       );
     }

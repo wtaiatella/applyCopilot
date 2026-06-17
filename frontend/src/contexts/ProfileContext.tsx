@@ -37,6 +37,7 @@ interface ProfileContextType {
   
   updateSkillsState: (skills: SkillDTO[]) => void;
   updateReferencesState: (references: ReferenceDTO[]) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlePartialData: (phase: string, data: any) => void;
 }
 
@@ -76,7 +77,9 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   // Load initial profile
   useEffect(() => {
-    refreshProfile();
+    Promise.resolve().then(() => {
+      refreshProfile();
+    });
   }, []);
 
   // Central helper to manage debounced saves
@@ -345,6 +348,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handlePartialData = (phase: string, data: any) => {
     if (!profile) return;
     if (phase === "basic") {

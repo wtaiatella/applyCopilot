@@ -21,6 +21,9 @@ export async function GET() {
         experiences: {
           include: {
             bullets: {
+              where: {
+                isArchived: false,
+              },
               include: {
                 usedInCVs: {
                   include: {
@@ -40,6 +43,9 @@ export async function GET() {
         education: {
           include: {
             bullets: {
+              where: {
+                isArchived: false,
+              },
               include: {
                 usedInCVs: {
                   include: {
@@ -59,6 +65,9 @@ export async function GET() {
         projects: {
           include: {
             bullets: {
+              where: {
+                isArchived: false,
+              },
               include: {
                 usedInCVs: {
                   include: {
@@ -98,6 +107,9 @@ export async function GET() {
           experiences: {
             include: {
               bullets: {
+                where: {
+                  isArchived: false,
+                },
                 include: {
                   usedInCVs: {
                     include: {
@@ -117,6 +129,9 @@ export async function GET() {
           education: {
             include: {
               bullets: {
+                where: {
+                  isArchived: false,
+                },
                 include: {
                   usedInCVs: {
                     include: {
@@ -136,6 +151,9 @@ export async function GET() {
           projects: {
             include: {
               bullets: {
+                where: {
+                  isArchived: false,
+                },
                 include: {
                   usedInCVs: {
                     include: {

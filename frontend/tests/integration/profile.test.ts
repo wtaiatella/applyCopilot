@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 /**
  * @jest-environment node
  */
@@ -153,6 +154,78 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       expect(data.bullets).toHaveLength(2);
       expect(data.bullets.map((b: any) => b.text)).toContain("Updated highlight bullet");
       expect(data.bullets.map((b: any) => b.text)).toContain("Brand new highlight bullet");
+    });
+
+    it("should soft-delete bullets that are used in CVs, and hard-delete those that are not", async () => {
+      // 1. Get current experience bullets
+      const bullets = await prisma.experienceBullet.findMany({
+        where: { experienceId },
+      });
+      expect(bullets).toHaveLength(2);
+
+      const bulletUsed = bullets[0];
+      const bulletNotUsed = bullets[1];
+
+      // 2. Create a test CV and associate it with bulletUsed
+      const cv = await prisma.cV.create({
+        data: {
+          profileId: testProfileId,
+          name: "Test CV",
+        },
+      });
+
+      await prisma.cVBullet.create({
+        data: {
+          cvId: cv.id,
+          experienceBulletId: bulletUsed.id,
+          renderedText: bulletUsed.text,
+        },
+      });
+
+      // 3. Update experience, completely omitting both bullets (so they should be deleted/soft-deleted)
+      const payload = {
+        company: "Google LLC",
+        position: "Senior Software Engineer",
+        startDate: new Date("2024-01-01").toISOString(),
+        current: true,
+        bullets: [], // Omit both
+      };
+
+      const req = new Request(`http://localhost:3000/api/profile/experiences/${experienceId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+
+      const params = Promise.resolve({ id: experienceId });
+      const res = await updateExperienceHandler(req, { params });
+      expect(res.status).toBe(200);
+
+      // 4. Verify bulletNotUsed is hard-deleted from database
+      const notUsedInDb = await prisma.experienceBullet.findUnique({
+        where: { id: bulletNotUsed.id },
+      });
+      expect(notUsedInDb).toBeNull();
+
+      // 5. Verify bulletUsed is soft-deleted (isArchived: true)
+      const usedInDb = await prisma.experienceBullet.findUnique({
+        where: { id: bulletUsed.id },
+      });
+      expect(usedInDb).not.toBeNull();
+      expect(usedInDb!.isArchived).toBe(true);
+      expect(usedInDb!.isActive).toBe(false);
+
+      // 6. Verify retrieve profile GET filters out the soft-deleted bullet
+      const getRes = await getProfileHandler();
+      expect(getRes.status).toBe(200);
+      const getProfileData = await getRes.json();
+      const expFromGet = getProfileData.experiences.find((e: any) => e.id === experienceId);
+      expect(expFromGet).toBeDefined();
+      expect(expFromGet.bullets).toHaveLength(0); // Should be empty since the only remaining bullet is archived
+
+      // Clean up CV & CVBullet records (cascade delete on CV will remove CVBullet)
+      await prisma.cV.delete({
+        where: { id: cv.id },
+      });
     });
 
     it("should delete experience and cascade delete bullets", async () => {

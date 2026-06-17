@@ -46,9 +46,9 @@ export async function PUT(req: Request, props: Params) {
 
     const data = parsed.data;
 
-    // Load existing bullets
+    // Load existing bullets (only active ones)
     const existingBullets = await prisma.experienceBullet.findMany({
-      where: { experienceId: id },
+      where: { experienceId: id, isArchived: false },
     });
 
     const incomingBullets = data.bullets;
@@ -58,13 +58,24 @@ export async function PUT(req: Request, props: Params) {
 
     // Update in transaction
     const updatedExp = await prisma.$transaction(async (tx) => {
-      // 1. Delete removed bullets
+      // 1. Reconcile removed bullets (soft-delete if used in CVs, hard-delete otherwise)
       if (bulletsToDelete.length > 0) {
-        await tx.experienceBullet.deleteMany({
-          where: {
-            id: { in: bulletsToDelete.map((b) => b.id) },
-          },
-        });
+        for (const bullet of bulletsToDelete) {
+          const usedCount = await tx.cVBullet.count({
+            where: { experienceBulletId: bullet.id },
+          });
+
+          if (usedCount > 0) {
+            await tx.experienceBullet.update({
+              where: { id: bullet.id },
+              data: { isArchived: true, isActive: false },
+            });
+          } else {
+            await tx.experienceBullet.delete({
+              where: { id: bullet.id },
+            });
+          }
+        }
       }
 
       // 2. Upsert incoming bullets
@@ -107,6 +118,9 @@ export async function PUT(req: Request, props: Params) {
         },
         include: {
           bullets: {
+            where: {
+              isArchived: false,
+            },
             include: {
               usedInCVs: {
                 include: {

@@ -91,17 +91,17 @@
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] Implement Profile state manager context with 1.5s debounced autosaves in `frontend/src/contexts/ProfileContext.tsx`
-- [ ] T033 [US3] Implement full profile API fetch endpoint in `frontend/src/app/api/profile/route.ts`
-- [ ] T034 [P] [US3] Create profile edit page in `frontend/src/app/(main)/profile/page.tsx`
-- [ ] T035 [US3] Implement dynamic Ant Design editable tabs layout in `frontend/src/components/profile/ProfileTabs.tsx`
-- [ ] T036 [US3] Implement Experience CRUD endpoints in `frontend/src/app/api/profile/experiences/route.ts` and `frontend/src/app/api/profile/experiences/[id]/route.ts`
-- [ ] T037 [US3] Implement Education CRUD endpoints in `frontend/src/app/api/profile/education/route.ts` and `frontend/src/app/api/profile/education/[id]/route.ts`
-- [ ] T038 [US3] Implement Project CRUD endpoints in `frontend/src/app/api/profile/projects/route.ts` and `frontend/src/app/api/profile/projects/[id]/route.ts`
-- [ ] T039 [US3] Implement Skills replace endpoint in `frontend/src/app/api/profile/skills/route.ts`
-- [ ] T040 [US3] Implement References replace endpoint in `frontend/src/app/api/profile/references/route.ts`
-- [ ] T041 [P] [US3] Add integration tests for all profile CRUD routes in `frontend/tests/integration/profile.test.ts`
-- [ ] T041b [US3] Update openapi.yaml in `frontend/public/` to include CRUD endpoints for profile, experiences, education, projects, skills, and references
+- [x] T032 [US3] Implement Profile state manager context with 1.5s debounced autosaves in `frontend/src/contexts/ProfileContext.tsx`
+- [x] T033 [US3] Implement full profile API fetch endpoint in `frontend/src/app/api/profile/route.ts`
+- [x] T034 [P] [US3] Create profile edit page in `frontend/src/app/(main)/profile/page.tsx`
+- [x] T035 [US3] Implement dynamic Ant Design editable tabs layout in `frontend/src/components/profile/ProfileTabs.tsx`
+- [x] T036 [US3] Implement Experience CRUD endpoints in `frontend/src/app/api/profile/experiences/route.ts` and `frontend/src/app/api/profile/experiences/[id]/route.ts`
+- [x] T037 [US3] Implement Education CRUD endpoints in `frontend/src/app/api/profile/education/route.ts` and `frontend/src/app/api/profile/education/[id]/route.ts`
+- [x] T038 [US3] Implement Project CRUD endpoints in `frontend/src/app/api/profile/projects/route.ts` and `frontend/src/app/api/profile/projects/[id]/route.ts`
+- [x] T039 [US3] Implement Skills replace endpoint in `frontend/src/app/api/profile/skills/route.ts`
+- [x] T040 [US3] Implement References replace endpoint in `frontend/src/app/api/profile/references/route.ts`
+- [x] T041 [P] [US3] Add integration tests for all profile CRUD routes in `frontend/tests/integration/profile.test.ts`
+- [x] T041b [US3] Update openapi.yaml in `frontend/public/` to include CRUD endpoints for profile, experiences, education, projects, skills, and references
 
 **Checkpoint**: Background auto-save, ProfileContext state machine, and basic section CRUD endpoints validated.
 

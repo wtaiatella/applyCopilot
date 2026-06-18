@@ -311,6 +311,257 @@ paths:
         '403':
           description: Forbidden. ADMIN role required.
 
+  /api/profile:
+    get:
+      summary: Retrieve complete profile
+      description: Returns the user's basic data, experiences, education, projects, skills, references, active summaries, and parsed CV versions.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Complete profile retrieved successfully.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/experiences:
+    post:
+      summary: Create work experience entry
+      description: Creates a new work experience entry on the profile.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - company
+                - position
+                - startDate
+              properties:
+                company:
+                  type: string
+                position:
+                  type: string
+                startDate:
+                  type: string
+                  format: date-time
+                endDate:
+                  type: string
+                  format: date-time
+                  nullable: true
+                current:
+                  type: boolean
+                bullets:
+                  type: array
+                  items:
+                    type: object
+                freeFormContext:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Experience created.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/experiences/{id}:
+    put:
+      summary: Update experience entry
+      description: Updates the experience and reconciles its bullets.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Experience updated.
+        '401':
+          description: Unauthorized.
+    delete:
+      summary: Delete experience entry
+      description: Deletes the experience and cascade deletes its bullets.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Experience deleted.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/education:
+    post:
+      summary: Create education entry
+      description: Creates a new education entry on the profile.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Education created.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/education/{id}:
+    put:
+      summary: Update education entry
+      description: Updates the education and reconciles its bullets.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Education updated.
+        '401':
+          description: Unauthorized.
+    delete:
+      summary: Delete education entry
+      description: Deletes the education entry.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Education deleted.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/projects:
+    post:
+      summary: Create project entry
+      description: Creates a new project entry on the profile.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Project created.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/projects/{id}:
+    put:
+      summary: Update project entry
+      description: Updates the project, technology tags, and reconciles its bullets.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Project updated.
+        '401':
+          description: Unauthorized.
+    delete:
+      summary: Delete project entry
+      description: Deletes the project entry.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Project deleted.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/skills:
+    put:
+      summary: Overwrite skills list
+      description: Replaces the complete flat skills list for the profile.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+      responses:
+        '200':
+          description: Skills updated.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/references:
+    put:
+      summary: Overwrite references list
+      description: Replaces the complete references list for the profile.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+      responses:
+        '200':
+          description: References updated.
+        '401':
+          description: Unauthorized.
+
 components:
   securitySchemes:
     cookieAuth:

@@ -147,6 +147,34 @@ export default function ProfileTabs() {
     updateReferencesState
   } = useProfileContext();
 
+  const [form] = Form.useForm();
+
+  useEffect(() => {
+    if (profile?.basicData) {
+      const formValues = form.getFieldsValue();
+      const hasDiff = Object.keys(profile.basicData).some((key) => {
+        const k = key as keyof typeof profile.basicData;
+        if (k === "email") return false;
+        return formValues[k] !== profile.basicData[k];
+      });
+
+      if (hasDiff) {
+        form.setFieldsValue({
+          firstName: profile.basicData.firstName,
+          lastName: profile.basicData.lastName,
+          phone: profile.basicData.phone,
+          location: profile.basicData.location,
+          linkedin: profile.basicData.linkedin,
+          github: profile.basicData.github,
+          website: profile.basicData.website,
+          title: profile.basicData.title,
+          summary: profile.basicData.summary,
+        });
+        form.validateFields().catch(() => {});
+      }
+    }
+  }, [profile?.basicData, form]);
+
   // Experiences active tab sync
   const [activeExpTab, setActiveExpTab] = useState<string>();
   const prevExpLengthRef = useRef(0);
@@ -228,73 +256,77 @@ export default function ProfileTabs() {
 
   // 1. Basic Data Form component
   const renderBasicDataForm = () => {
-    const { basicData } = profile;
     return (
       <Card className="bg-zinc-900/50 border-zinc-800 text-white" title="Basic Information">
-        <Form layout="vertical" className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Form.Item label={<span className="text-zinc-300">First Name</span>}>
+        <Form 
+          form={form}
+          layout="vertical" 
+          onValuesChange={(changedValues) => {
+            const cleanedValues: any = {};
+            for (const key of Object.keys(changedValues)) {
+              cleanedValues[key] = changedValues[key] === "" ? null : changedValues[key];
+            }
+            updateBasicDataState(cleanedValues);
+          }}
+          className="grid grid-cols-1 md:grid-cols-2 gap-4"
+        >
+          <Form.Item name="firstName" label={<span className="text-zinc-300">First Name</span>}>
             <Input 
-              value={basicData.firstName || ""} 
-              onChange={(e) => updateBasicDataState({ firstName: e.target.value || null })}
               className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700 focus:border-blue-500"
             />
           </Form.Item>
-          <Form.Item label={<span className="text-zinc-300">Last Name</span>}>
+          <Form.Item name="lastName" label={<span className="text-zinc-300">Last Name</span>}>
             <Input 
-              value={basicData.lastName || ""} 
-              onChange={(e) => updateBasicDataState({ lastName: e.target.value || null })}
               className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700 focus:border-blue-500"
             />
           </Form.Item>
-          <Form.Item label={<span className="text-zinc-300">Phone Number</span>}>
+          <Form.Item name="phone" label={<span className="text-zinc-300">Phone Number</span>}>
             <Input 
-              value={basicData.phone || ""} 
-              onChange={(e) => updateBasicDataState({ phone: e.target.value || null })}
               className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700"
             />
           </Form.Item>
-          <Form.Item label={<span className="text-zinc-300">Location</span>}>
+          <Form.Item name="location" label={<span className="text-zinc-300">Location</span>}>
             <Input 
-              value={basicData.location || ""} 
-              onChange={(e) => updateBasicDataState({ location: e.target.value || null })}
               className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700"
               placeholder="City, Country"
             />
           </Form.Item>
-          <Form.Item label={<span className="text-zinc-300">LinkedIn URL</span>}>
+          <Form.Item 
+            name="linkedin" 
+            label={<span className="text-zinc-300">LinkedIn URL</span>}
+            rules={[{ type: "url", warningOnly: true, message: "Invalid URL format" }]}
+          >
             <Input 
-              value={basicData.linkedin || ""} 
-              onChange={(e) => updateBasicDataState({ linkedin: e.target.value || null })}
               className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700"
             />
           </Form.Item>
-          <Form.Item label={<span className="text-zinc-300">GitHub URL</span>}>
+          <Form.Item 
+            name="github" 
+            label={<span className="text-zinc-300">GitHub URL</span>}
+            rules={[{ type: "url", warningOnly: true, message: "Invalid URL format" }]}
+          >
             <Input 
-              value={basicData.github || ""} 
-              onChange={(e) => updateBasicDataState({ github: e.target.value || null })}
               className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700"
             />
           </Form.Item>
-          <Form.Item label={<span className="text-zinc-300">Website URL</span>}>
+          <Form.Item 
+            name="website" 
+            label={<span className="text-zinc-300">Website URL</span>}
+            rules={[{ type: "url", warningOnly: true, message: "Invalid URL format" }]}
+          >
             <Input 
-              value={basicData.website || ""} 
-              onChange={(e) => updateBasicDataState({ website: e.target.value || null })}
               className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700"
             />
           </Form.Item>
-          <Form.Item label={<span className="text-zinc-300">Professional Title</span>}>
+          <Form.Item name="title" label={<span className="text-zinc-300">Professional Title</span>}>
             <Input 
-              value={basicData.title || ""} 
-              onChange={(e) => updateBasicDataState({ title: e.target.value || null })}
               className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700"
               placeholder="e.g. Senior Software Engineer"
             />
           </Form.Item>
-          <Form.Item className="col-span-1 md:col-span-2" label={<span className="text-zinc-300">Professional Summary</span>}>
+          <Form.Item name="summary" className="col-span-1 md:col-span-2" label={<span className="text-zinc-300">Professional Summary</span>}>
             <TextArea 
               rows={4}
-              value={basicData.summary || ""} 
-              onChange={(e) => updateBasicDataState({ summary: e.target.value || null })}
               className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700"
             />
           </Form.Item>

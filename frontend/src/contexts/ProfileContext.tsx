@@ -11,6 +11,7 @@ import {
   ReferenceDTO 
 } from "../types/profile";
 import { ProfileService } from "../services/profileService";
+import { isValidUrl } from "../lib/validation/profileSchemas";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -52,6 +53,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   // Track pending save operations
   const activeSavesRef = useRef<Set<string>>(new Set());
   const timeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const pendingBasicDataChangesRef = useRef<Partial<BasicDataDTO>>({});
 
   // Clean up timeouts on unmount
   useEffect(() => {
@@ -123,9 +125,31 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       basicData: updatedBasic,
     });
 
-    registerPendingSave("basicData", async () => {
-      await ProfileService.updateBasicData(updatedBasic);
-    });
+    const newPendingChanges = { ...pendingBasicDataChangesRef.current };
+
+    for (const key of Object.keys(data) as Array<keyof BasicDataDTO>) {
+      const val = data[key];
+      if (key === "linkedin" || key === "github" || key === "website") {
+        if (isValidUrl(val)) {
+          newPendingChanges[key] = val;
+        } else {
+          // If invalid URL is entered, do not save it, remove it from queue.
+          delete newPendingChanges[key];
+        }
+      } else {
+        newPendingChanges[key] = val as any;
+      }
+    }
+
+    pendingBasicDataChangesRef.current = newPendingChanges;
+
+    if (Object.keys(pendingBasicDataChangesRef.current).length > 0) {
+      registerPendingSave("basicData", async () => {
+        const payload = { ...pendingBasicDataChangesRef.current };
+        pendingBasicDataChangesRef.current = {};
+        await ProfileService.updateBasicData(payload);
+      });
+    }
   };
 
   // 2. Experiences CRUD

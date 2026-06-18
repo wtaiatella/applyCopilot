@@ -1,4 +1,33 @@
-import '@testing-library/jest-dom'
+console.log("JEST SETUP RUNNING. Node version:", process.version);
+try {
+  const { TextEncoder, TextDecoder } = require('util')
+  global.TextEncoder = TextEncoder
+  global.TextDecoder = TextDecoder
+
+  const streamWeb = require('stream/web')
+  global.ReadableStream = streamWeb.ReadableStream
+  global.WritableStream = streamWeb.WritableStream
+  global.TransformStream = streamWeb.TransformStream
+
+  const { MessageChannel, MessagePort } = require('worker_threads')
+  global.MessageChannel = MessageChannel
+  global.MessagePort = MessagePort
+
+  const timers = require('timers')
+  global.setImmediate = timers.setImmediate
+  global.clearImmediate = timers.clearImmediate
+
+  const undici = require('undici')
+  global.Request = undici.Request
+  global.Response = undici.Response
+  global.Headers = undici.Headers
+  global.fetch = undici.fetch
+  console.log("Polyfilled globals using undici. global.Request:", typeof global.Request);
+} catch (e) {
+  console.error("Failed to polyfill globals:", e instanceof Error ? e.stack : e);
+}
+
+require('@testing-library/jest-dom')
 
 // Mock Next.js router
 jest.mock('next/navigation', () => ({

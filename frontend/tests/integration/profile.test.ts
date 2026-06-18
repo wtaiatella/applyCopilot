@@ -12,6 +12,7 @@ import { POST as createProjectHandler } from "@/app/api/profile/projects/route";
 import { PUT as updateProjectHandler, DELETE as deleteProjectHandler } from "@/app/api/profile/projects/[id]/route";
 import { PUT as updateSkillsHandler } from "@/app/api/profile/skills/route";
 import { PUT as updateReferencesHandler } from "@/app/api/profile/references/route";
+import { PUT as updateBasicDataHandler } from "@/app/api/profile/basic/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 
@@ -368,6 +369,105 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
 
       const refsInDb = await prisma.reference.findMany({ where: { profileId: testProfileId } });
       expect(refsInDb).toHaveLength(1);
+    });
+  });
+
+  describe("Basic Data PUT Update & Active Summary Sync", () => {
+    it("should successfully update basic data fields directly", async () => {
+      const payload = {
+        firstName: "Wagner",
+        lastName: "Taiatella",
+        phone: "555-0199",
+        location: "Sao Paulo, Brazil",
+        linkedin: "https://linkedin.com/in/wagner",
+        github: "https://github.com/wagner",
+        website: "https://wagner.dev",
+        title: "Staff Software Engineer",
+        summary: "Passionate developer.",
+      };
+
+      const req = new Request("http://localhost:3000/api/profile/basic", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+
+      const res = await updateBasicDataHandler(req);
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.firstName).toBe("Wagner");
+      expect(data.lastName).toBe("Taiatella");
+      expect(data.phone).toBe("555-0199");
+      expect(data.location).toBe("Sao Paulo, Brazil");
+      expect(data.title).toBe("Staff Software Engineer");
+      expect(data.summary).toBe("Passionate developer.");
+
+      const profileInDb = await prisma.userProfile.findUnique({
+        where: { id: testProfileId },
+      });
+      expect(profileInDb!.firstName).toBe("Wagner");
+      expect(profileInDb!.lastName).toBe("Taiatella");
+    });
+
+    it("should successfully sync active summary title and content", async () => {
+      const payload = {
+        firstName: "Wagner",
+        lastName: "Taiatella",
+        summaries: [
+          { title: "Standard Resume Summary", content: "Experience building Next.js apps.", isActive: true, isAIGenerated: false, sortOrder: 0 },
+          { title: "Alternative Summary", content: "Passionate engineer.", isActive: false, isAIGenerated: false, sortOrder: 1 },
+        ],
+      };
+
+      const req = new Request("http://localhost:3000/api/profile/basic", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+
+      const res = await updateBasicDataHandler(req);
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.title).toBe("Standard Resume Summary");
+      expect(data.summary).toBe("Experience building Next.js apps.");
+
+      const profileInDb = await prisma.userProfile.findUnique({
+        where: { id: testProfileId },
+        include: { summaries: true },
+      });
+      expect(profileInDb!.title).toBe("Standard Resume Summary");
+      expect(profileInDb!.summary).toBe("Experience building Next.js apps.");
+      expect(profileInDb!.summaries).toHaveLength(2);
+    });
+
+    it("should successfully update basic data with social links lacking protocol schemas", async () => {
+      const payload = {
+        firstName: "Wagner",
+        lastName: "Taiatella",
+        linkedin: "linkedin.com/in/wagner-taiatella/",
+        github: "github.com/wtaiatella",
+        website: "wtaiatella.com.br",
+      };
+
+      const req = new Request("http://localhost:3000/api/profile/basic", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+
+      const res = await updateBasicDataHandler(req);
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.linkedin).toBe("linkedin.com/in/wagner-taiatella/");
+      expect(data.github).toBe("github.com/wtaiatella");
+      expect(data.website).toBe("wtaiatella.com.br");
+
+      const profileInDb = await prisma.userProfile.findUnique({
+        where: { id: testProfileId },
+      });
+      expect(profileInDb!.linkedin).toBe("linkedin.com/in/wagner-taiatella/");
+      expect(profileInDb!.github).toBe("github.com/wtaiatella");
+      expect(profileInDb!.website).toBe("wtaiatella.com.br");
     });
   });
 });

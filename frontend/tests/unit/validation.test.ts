@@ -4,6 +4,7 @@ import {
   SkillInputSchema,
   ReferenceInputSchema,
   BulletInputSchema,
+  isValidUrl,
 } from "@/lib/validation/profileSchemas";
 
 describe("Profile Validation Schemas (Zod)", () => {
@@ -42,16 +43,31 @@ describe("Profile Validation Schemas (Zod)", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should reject invalid social media URLs", () => {
-      const invalidPayload = {
+    it("should accept any string for social media URLs (permissive Zod schema)", () => {
+      const payload = {
         linkedin: "not-a-url",
+        github: "some-username",
+        website: "my-site",
       };
 
-      const result = BasicDataInputSchema.safeParse(invalidPayload);
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.issues[0].message).toContain("Invalid LinkedIn URL");
-      }
+      const result = BasicDataInputSchema.safeParse(payload);
+      expect(result.success).toBe(true);
+    });
+
+    it("should correctly identify valid and invalid URLs using isValidUrl helper", () => {
+      // Valid URLs
+      expect(isValidUrl("https://linkedin.com/in/wagner")).toBe(true);
+      expect(isValidUrl("http://github.com/wtaiatella")).toBe(true);
+      expect(isValidUrl("https://wtaiatella.com.br")).toBe(true);
+      expect(isValidUrl("")).toBe(true);
+      expect(isValidUrl(null)).toBe(true);
+      expect(isValidUrl(undefined)).toBe(true);
+
+      // Invalid URLs (lacking protocols)
+      expect(isValidUrl("linkedin.com/in/wagner")).toBe(false);
+      expect(isValidUrl("github.com/wtaiatella")).toBe(false);
+      expect(isValidUrl("wtaiatella.com.br")).toBe(false);
+      expect(isValidUrl("just-some-text")).toBe(false);
     });
   });
 

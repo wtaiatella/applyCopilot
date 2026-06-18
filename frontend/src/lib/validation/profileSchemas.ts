@@ -9,16 +9,38 @@ export const BulletInputSchema = z.object({
   sortOrder: z.number().int().default(0),
 });
 
+export const SummaryInputSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(1, "Title is required"),
+  content: z.string().min(1, "Content is required"),
+  isActive: z.boolean().default(false),
+  isAIGenerated: z.boolean().default(false),
+  sortOrder: z.number().int().default(0),
+});
+
+export const isValidUrl = (url: string | null | undefined): boolean => {
+  if (!url) return true;
+  const trimmed = url.trim();
+  if (trimmed === "") return true;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 export const BasicDataInputSchema = z.object({
   firstName: z.string().nullable().optional(),
   lastName: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
-  linkedin: z.string().url("Invalid LinkedIn URL").or(z.literal("")).nullable().optional(),
-  github: z.string().url("Invalid GitHub URL").or(z.literal("")).nullable().optional(),
-  website: z.string().url("Invalid website URL").or(z.literal("")).nullable().optional(),
+  linkedin: z.string().nullable().optional(),
+  github: z.string().nullable().optional(),
+  website: z.string().nullable().optional(),
   title: z.string().nullable().optional(),
   summary: z.string().nullable().optional(),
+  summaries: z.array(SummaryInputSchema).optional(),
 });
 
 export const ExperienceInputSchema = z.object({

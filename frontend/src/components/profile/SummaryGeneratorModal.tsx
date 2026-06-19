@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Modal, Form, Input, Select, Button, Typography, Alert, Spin } from "antd";
-import { SparklesOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
+import { ThunderboltOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -66,7 +66,7 @@ export default function SummaryGeneratorModal({
       open={open}
       title={
         <span className="flex items-center gap-2 text-white font-semibold text-lg">
-          <SparklesOutlined className="text-yellow-400" />
+          <ThunderboltOutlined className="text-yellow-400" />
           <span>Generate Profile Summary with AI</span>
         </span>
       }
@@ -145,7 +145,7 @@ export default function SummaryGeneratorModal({
                 type="primary"
                 htmlType="submit"
                 loading={generating}
-                icon={<SparklesOutlined />}
+                icon={<ThunderboltOutlined />}
                 className="bg-blue-600 border-blue-600 hover:bg-blue-500"
               >
                 {generating ? "Generating..." : "Generate"}

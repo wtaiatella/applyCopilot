@@ -161,7 +161,7 @@ function SortableBulletItem({ bullet, onUpdate, onDelete }: SortableBulletItemPr
               danger
               disabled
               icon={<DeleteOutlined />}
-              size="small/>"
+              size="small"
             />
           </Tooltip>
         ) : (

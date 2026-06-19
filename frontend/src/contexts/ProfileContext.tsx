@@ -54,7 +54,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   // Track pending save operations
   const activeSavesRef = useRef<Set<string>>(new Set());
   const timeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  const pendingBasicDataChangesRef = useRef<Partial<BasicDataDTO>>({});
+  const pendingBasicDataChangesRef = useRef<Partial<BasicDataDTO> & { summaries?: any[] }>({});
 
   // Clean up timeouts on unmount
   useEffect(() => {

@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Card, Form, Input, Button, Divider, Alert, Tooltip, Switch, Badge } from "antd";
 import { 
   PlusOutlined, 
-  SparklesOutlined, 
+  ThunderboltOutlined, 
   MenuOutlined, 
   DeleteOutlined, 
   CheckOutlined 
@@ -288,7 +288,7 @@ export default function BasicDataForm({
             </Button>
             <Button
               type="primary"
-              icon={<SparklesOutlined />}
+              icon={<ThunderboltOutlined />}
               onClick={() => setModalOpen(true)}
               className="bg-blue-600 border-blue-600 hover:bg-blue-500"
             >

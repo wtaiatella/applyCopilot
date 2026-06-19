@@ -6,7 +6,8 @@ import {
   ProjectDTO, 
   SkillDTO, 
   ReferenceDTO,
-  ParseProgressEvent
+  ParseProgressEvent,
+  SummaryDTO
 } from "../types/profile";
 
 export class ProfileService {
@@ -24,7 +25,7 @@ export class ProfileService {
   /**
    * Update basic data
    */
-  static async updateBasicData(data: Partial<BasicDataDTO>): Promise<BasicDataDTO> {
+  static async updateBasicData(data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }): Promise<BasicDataDTO> {
     const response = await fetch("/api/profile/basic", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

@@ -8,7 +8,8 @@ import {
   EducationDTO, 
   ProjectDTO, 
   SkillDTO, 
-  ReferenceDTO 
+  ReferenceDTO,
+  SummaryDTO
 } from "../types/profile";
 import { ProfileService } from "../services/profileService";
 import { isValidUrl } from "../lib/validation/profileSchemas";
@@ -22,7 +23,7 @@ interface ProfileContextType {
   error: string | null;
   refreshProfile: () => Promise<void>;
   
-  updateBasicDataState: (data: Partial<BasicDataDTO>) => void;
+  updateBasicDataState: (data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }) => void;
   
   addExperience: () => Promise<void>;
   updateExperienceState: (id: string, data: Partial<ExperienceDTO>) => void;
@@ -116,19 +117,36 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   };
 
   // 1. Basic Data Autosave
-  const updateBasicDataState = (data: Partial<BasicDataDTO>) => {
+  const updateBasicDataState = (data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }) => {
     if (!profile) return;
 
-    const updatedBasic = { ...profile.basicData, ...data };
+    const { summaries, ...basicFields } = data;
+
+    const updatedBasic = { ...profile.basicData, ...basicFields };
+    const updatedSummaries = summaries !== undefined ? summaries : profile.summaries;
+
+    // Synchronize active summary title/content to basic fields if summaries were updated
+    if (summaries !== undefined) {
+      const activeSummary = summaries.find((s) => s.isActive);
+      if (activeSummary) {
+        updatedBasic.title = activeSummary.title;
+        updatedBasic.summary = activeSummary.content;
+      } else {
+        updatedBasic.title = null;
+        updatedBasic.summary = null;
+      }
+    }
+
     setProfile({
       ...profile,
       basicData: updatedBasic,
+      summaries: updatedSummaries,
     });
 
     const newPendingChanges = { ...pendingBasicDataChangesRef.current };
 
-    for (const key of Object.keys(data) as Array<keyof BasicDataDTO>) {
-      const val = data[key];
+    for (const key of Object.keys(basicFields) as Array<keyof BasicDataDTO>) {
+      const val = basicFields[key];
       if (key === "linkedin" || key === "github" || key === "website") {
         if (isValidUrl(val)) {
           newPendingChanges[key] = val;
@@ -139,6 +157,17 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       } else {
         newPendingChanges[key] = val as any;
       }
+    }
+
+    if (summaries !== undefined) {
+      const cleaned = summaries.map((s) => {
+        if (s.id && s.id.startsWith("temp-")) {
+          const { id, ...rest } = s;
+          return rest;
+        }
+        return s;
+      });
+      newPendingChanges.summaries = cleaned as any;
     }
 
     pendingBasicDataChangesRef.current = newPendingChanges;
@@ -195,7 +224,17 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const targetExp = updatedExperiences.find((e) => e.id === id);
     if (targetExp) {
       registerPendingSave(`experience_${id}`, async () => {
-        await ProfileService.updateExperience(id, targetExp);
+        const payload = {
+          ...targetExp,
+          bullets: targetExp.bullets.map((b) => {
+            if (b.id && b.id.startsWith("temp-")) {
+              const { id: _, ...rest } = b;
+              return rest;
+            }
+            return b;
+          }),
+        };
+        await ProfileService.updateExperience(id, payload as any);
       });
     }
   };
@@ -259,7 +298,17 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const targetEd = updatedEdList.find((e) => e.id === id);
     if (targetEd) {
       registerPendingSave(`education_${id}`, async () => {
-        await ProfileService.updateEducation(id, targetEd);
+        const payload = {
+          ...targetEd,
+          bullets: targetEd.bullets.map((b) => {
+            if (b.id && b.id.startsWith("temp-")) {
+              const { id: _, ...rest } = b;
+              return rest;
+            }
+            return b;
+          }),
+        };
+        await ProfileService.updateEducation(id, payload as any);
       });
     }
   };
@@ -322,7 +371,17 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const targetProj = updatedProjects.find((p) => p.id === id);
     if (targetProj) {
       registerPendingSave(`project_${id}`, async () => {
-        await ProfileService.updateProject(id, targetProj);
+        const payload = {
+          ...targetProj,
+          bullets: targetProj.bullets.map((b) => {
+            if (b.id && b.id.startsWith("temp-")) {
+              const { id: _, ...rest } = b;
+              return rest;
+            }
+            return b;
+          }),
+        };
+        await ProfileService.updateProject(id, payload as any);
       });
     }
   };

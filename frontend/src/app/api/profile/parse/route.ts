@@ -8,11 +8,13 @@ import { logger } from "@/lib/logging/logger";
 import { 
   BasicDataDTO, 
   ExperienceDTO, 
-  ProjectDTO, 
+  ProjectDTO,
   EducationDTO, 
   SkillDTO,
   ParseProgressEvent 
 } from "@/types/profile";
+
+
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +131,9 @@ ${extractedText}`;
 
           // STEP 3: Experiences (60%)
           sendEvent({ phase: "experiences", progress: 60, status: "Extracting work history..." });
+          // NOTE: freeFormContext is intentionally omitted — it is a user-authored field
+          // that should never be auto-populated from the CV. Bullets from the CV are imported
+          // as PARAGRAPH type since they represent narrative text from the source document.
           const experiencesPrompt = `You are an expert resume parser. Read the resume text below and extract all professional work experiences.
 Return ONLY valid JSON as an array of objects matching this schema:
 [
@@ -136,15 +141,14 @@ Return ONLY valid JSON as an array of objects matching this schema:
     "company": "string (required)",
     "position": "string (required)",
     "startDate": "ISO 8601 date string (YYYY-MM-DD or YYYY-MM)",
-    "endDate": "ISO 8601 date string or null if present",
+    "endDate": "ISO 8601 date string or null if currently employed",
     "current": "boolean",
     "bullets": [
       {
         "text": "bullet description string",
-        "type": "BULLET or PARAGRAPH"
+        "type": "PARAGRAPH"
       }
-    ],
-    "freeFormContext": "string or null (extra context or background notes)"
+    ]
   }
 ]
 
@@ -157,9 +161,12 @@ ${extractedText}`;
           await ProfileMergeService.mergeExperiences(profileId, parsedExperiences);
           sendEvent({ phase: "experiences", progress: 60, status: "Work history saved.", data: parsedExperiences });
 
-          // STEP 4: Projects (80%)
+          // STEP 4: Projects (80%) — only explicit projects listed in the CV are imported.
+          // The AI fallback that inferred projects from work experiences has been removed;
+          // users can generate project suggestions manually via the profile page.
           sendEvent({ phase: "projects", progress: 80, status: "Extracting projects..." });
-          const projectsPrompt = `You are an expert resume parser. Read the resume text below and extract side projects or major initiatives.
+          const projectsPrompt = `You are an expert resume parser. Read the resume text below and extract side projects or major initiatives explicitly listed in a dedicated projects section.
+Do NOT infer or derive projects from the work experience section.
 Return ONLY valid JSON as an array of objects matching this schema:
 [
   {
@@ -171,45 +178,24 @@ Return ONLY valid JSON as an array of objects matching this schema:
     "bullets": [
       {
         "text": "bullet description string",
-        "type": "BULLET or PARAGRAPH"
+        "type": "PARAGRAPH"
       }
-    ],
-    "freeFormContext": "string or null"
+    ]
   }
 ]
+If no explicit projects section exists, return an empty array [].
 
 Resume Text:
 ${extractedText}`;
 
-          let parsedProjects = toArray<ProjectDTO>(await generateJSON<unknown>(projectsPrompt, "parsing"));
-          
-          // AI Fallback for projects
-          if (parsedProjects.length === 0) {
-            logger.info("Main parsing returned empty projects. Triggering fallback project extraction prompt.");
-            const projectFallbackPrompt = `Analyze the following CV and extract any meaningful projects, side projects, or significant initiatives that can be identified from the work experience. For each, provide name, technologies used, approximate dates, and 2-4 bullet highlights.
-Return ONLY valid JSON as an array matching the Project schema described previously:
-[
-  {
-    "name": "string",
-    "startDate": "ISO 8601 date or null",
-    "endDate": "ISO 8601 date or null",
-    "current": "boolean",
-    "technologies": ["string"],
-    "bullets": [{"text": "string", "type": "BULLET"}],
-    "freeFormContext": "string or null"
-  }
-]
-
-Resume Text:
-${extractedText}`;
-            parsedProjects = toArray<ProjectDTO>(await generateJSON<unknown>(projectFallbackPrompt, "parsing"));
-          }
-
+          const parsedProjects = toArray<ProjectDTO>(await generateJSON<unknown>(projectsPrompt, "parsing"));
+          logger.info(`Parsed ${parsedProjects.length} explicit projects from CV`);
           await ProfileMergeService.mergeProjects(profileId, parsedProjects);
           sendEvent({ phase: "projects", progress: 80, status: "Projects saved.", data: parsedProjects });
 
           // STEP 5: Education & Skills (100%)
           sendEvent({ phase: "education", progress: 100, status: "Extracting education and skills..." });
+          // NOTE: freeFormContext intentionally omitted from education bullets — user-authored field only.
           const edSkillsPrompt = `You are an expert resume parser. Read the resume text below and extract education credentials and key skills.
 Return ONLY valid JSON matching this schema:
 {
@@ -225,10 +211,9 @@ Return ONLY valid JSON matching this schema:
       "bullets": [
         {
           "text": "string",
-          "type": "BULLET or PARAGRAPH"
+          "type": "PARAGRAPH"
         }
-      ],
-      "freeFormContext": "string or null"
+      ]
     }
   ],
   "skills": [

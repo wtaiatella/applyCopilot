@@ -43,6 +43,14 @@ export const BasicDataInputSchema = z.object({
   summaries: z.array(SummaryInputSchema).optional(),
 });
 
+// freeFormContext accepts null/undefined from old records and normalises to [].
+// Empty strings are filtered out to avoid Prisma validation errors.
+const freeFormContextSchema = z
+  .array(z.string())
+  .nullable()
+  .optional()
+  .transform((v) => (v ?? []).filter((s) => s.trim() !== ""));
+
 export const ExperienceInputSchema = z.object({
   company: z.string().min(1, "Company name is required"),
   position: z.string().min(1, "Position is required"),
@@ -50,7 +58,8 @@ export const ExperienceInputSchema = z.object({
   endDate: z.string().datetime({ message: "End date must be a valid ISO datetime string" }).nullable().optional(),
   current: z.boolean().default(false),
   bullets: z.array(BulletInputSchema).default([]),
-  freeFormContext: z.string().nullable().optional(),
+  freeFormContext: freeFormContextSchema,
+  tabLabel: z.string().nullable().optional(),
 });
 
 export const EducationInputSchema = z.object({
@@ -62,7 +71,8 @@ export const EducationInputSchema = z.object({
   current: z.boolean().default(false),
   hideEndDate: z.boolean().default(false),
   bullets: z.array(BulletInputSchema).default([]),
-  freeFormContext: z.string().nullable().optional(),
+  freeFormContext: freeFormContextSchema,
+  tabLabel: z.string().nullable().optional(),
 });
 
 export const ProjectInputSchema = z.object({
@@ -72,7 +82,8 @@ export const ProjectInputSchema = z.object({
   current: z.boolean().default(false),
   technologies: z.array(z.string()).default([]),
   bullets: z.array(BulletInputSchema).default([]),
-  freeFormContext: z.string().nullable().optional(),
+  freeFormContext: freeFormContextSchema,
+  tabLabel: z.string().nullable().optional(),
 });
 
 export const SkillInputSchema = z.object({

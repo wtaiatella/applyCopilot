@@ -127,6 +127,7 @@ describe("ProfileMergeService", () => {
           id: "existing-exp-id",
           company: "Avalara",
           position: "Senior Engineer",
+          freeFormContext: [],
           bullets: [],
         },
       ]);
@@ -154,6 +155,7 @@ describe("ProfileMergeService", () => {
           id: "existing-exp-id",
           company: "Avalara",
           position: "Senior Engineer",
+          freeFormContext: [],
           bullets: [
             { id: "b1", text: "Active Bullet", isArchived: false },
             { id: "b2", text: "Archived Bullet", isArchived: true },
@@ -199,6 +201,7 @@ describe("ProfileMergeService", () => {
           id: "existing-proj-id",
           name: "ApplyCopilot",
           technologies: ["React", "Next.js"],
+          freeFormContext: [],
           bullets: [],
         },
       ]);

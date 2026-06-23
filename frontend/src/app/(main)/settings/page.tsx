@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { LLMProvider, CredentialStatus } from "@/types/admin";
 import LLMSettingsPanel from "@/components/settings/LLMSettingsPanel";
+import DatabasePanel from "@/components/settings/DatabasePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,10 @@ export default async function SettingsPage() {
         </p>
       </div>
 
-      <LLMSettingsPanel config={config} credentialStatus={credentialStatus} />
+      <div className="space-y-4">
+        <LLMSettingsPanel config={config} credentialStatus={credentialStatus} />
+        <DatabasePanel />
+      </div>
     </div>
   );
 }

@@ -41,7 +41,8 @@ export interface ExperienceDTO {
   endDate: string | null;     // ISO Date string or null
   current: boolean;
   bullets: BulletDTO[];       // Always "bullets", never "description"
-  freeFormContext: string | null;
+  freeFormContext: string[];  // Array of user-authored AI context notes
+  tabLabel: string | null;   // Optional short display name for the tab; does not affect company
 }
 
 export interface EducationDTO {
@@ -54,7 +55,8 @@ export interface EducationDTO {
   current: boolean;
   hideEndDate: boolean;
   bullets: BulletDTO[];
-  freeFormContext: string | null;
+  freeFormContext: string[];  // Array of user-authored AI context notes
+  tabLabel: string | null;   // Optional short display name for the tab; does not affect institution
 }
 
 export interface ProjectDTO {
@@ -65,7 +67,8 @@ export interface ProjectDTO {
   current: boolean;
   technologies: string[];     // Tag list
   bullets: BulletDTO[];
-  freeFormContext: string | null;
+  freeFormContext: string[];  // Array of user-authored AI context notes
+  tabLabel: string | null;   // Optional short display name for the tab; does not affect name
 }
 
 export interface SkillDTO {

@@ -219,6 +219,7 @@ export async function GET() {
         })),
       })),
       freeFormContext: exp.freeFormContext,
+      tabLabel: exp.tabLabel ?? null,
     }));
 
     const education: EducationDTO[] = profile.education.map((edu) => ({
@@ -243,6 +244,7 @@ export async function GET() {
         })),
       })),
       freeFormContext: edu.freeFormContext,
+      tabLabel: edu.tabLabel ?? null,
     }));
 
     const projects: ProjectDTO[] = profile.projects.map((proj) => ({
@@ -265,6 +267,7 @@ export async function GET() {
         })),
       })),
       freeFormContext: proj.freeFormContext,
+      tabLabel: proj.tabLabel ?? null,
     }));
 
     const responseData: ProfileDTO = {

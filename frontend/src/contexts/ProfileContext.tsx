@@ -435,7 +435,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const handlePartialData = (phase: string, data: any) => {
     if (!profile) return;
     if (phase === "basic") {
+      // Update the flat basicData fields immediately from SSE data
       setProfile((prev) => (prev ? { ...prev, basicData: data } : null));
+      // The backend also created/updated a ProfileSummary for this import.
+      // Refresh the full profile so the new summary appears in the summaries list
+      // without requiring a manual page reload.
+      refreshProfile();
     } else if (phase === "experiences") {
       setProfile((prev) => (prev ? { ...prev, experiences: data } : null));
     } else if (phase === "projects") {
@@ -444,6 +449,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       setProfile((prev) => (prev ? { ...prev, education: data.education, skills: data.skills } : null));
     }
   };
+
 
   return (
     <ProfileContext.Provider

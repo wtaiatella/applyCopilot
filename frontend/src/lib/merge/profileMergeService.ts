@@ -4,12 +4,13 @@ import {
   BasicDataDTO, 
   ExperienceDTO, 
   EducationDTO, 
-  ProjectDTO, 
+  ProjectDTO,
   SkillDTO, 
-  ProfileDTO, 
   ProficiencyLevel, 
   BulletType 
 } from "../../types/profile";
+
+
 
 export class ProfileMergeService {
   /**
@@ -25,7 +26,18 @@ export class ProfileMergeService {
   }
 
   /**
-   * Merge basic data into UserProfile
+   * Merge basic data into UserProfile.
+   *
+   * When the incoming data contains a summary (from CV import), this method also
+   * creates or reuses a ProfileSummary entry so the imported content is preserved
+   * in the summaries list and does not get silently overwritten when the user
+   * later activates a different summary.
+   *
+   * Merge logic for the summary:
+   *  - If a ProfileSummary with identical content already exists → skip creation
+   *    (idempotent re-import)
+   *  - Otherwise → create a new ProfileSummary marked as active, and deactivate
+   *    all other summaries so there is always exactly one active summary after import
    */
   static async mergeBasicData(profileId: string, incoming: Partial<BasicDataDTO>): Promise<void> {
     logger.info(`Merging basic data for profile: ${profileId}`);
@@ -39,8 +51,63 @@ export class ProfileMergeService {
     if (incoming.linkedin) updateData.linkedin = incoming.linkedin;
     if (incoming.github) updateData.github = incoming.github;
     if (incoming.website) updateData.website = incoming.website;
-    if (incoming.title) updateData.title = incoming.title;
-    if (incoming.summary) updateData.summary = incoming.summary;
+
+    // If the CV brought a summary/title, incorporate it into the ProfileSummary list
+    if (incoming.summary && incoming.title) {
+      const normalizedContent = this.normalizeText(incoming.summary);
+
+      // Check if an equivalent summary already exists (idempotent re-import)
+      const existingSummaries = await prisma.profileSummary.findMany({
+        where: { profileId },
+      });
+
+      const duplicate = existingSummaries.find(
+        (s) => this.normalizeText(s.content) === normalizedContent
+      );
+
+      if (!duplicate) {
+        logger.info(`CV import: creating ProfileSummary entry from imported title/summary for profile ${profileId}`);
+
+        // Deactivate all existing summaries so this import becomes the active one
+        if (existingSummaries.length > 0) {
+          await prisma.profileSummary.updateMany({
+            where: { profileId },
+            data: { isActive: false },
+          });
+        }
+
+        const nextSortOrder = existingSummaries.length;
+        await prisma.profileSummary.create({
+          data: {
+            profileId,
+            title: incoming.title,
+            content: incoming.summary,
+            isAIGenerated: false,
+            isActive: true,
+            sortOrder: nextSortOrder,
+          },
+        });
+      } else if (!duplicate.isActive) {
+        // Summary already exists but was not active — activate it and deactivate others
+        logger.info(`CV import: re-activating existing ProfileSummary ${duplicate.id} for profile ${profileId}`);
+        await prisma.profileSummary.updateMany({
+          where: { profileId },
+          data: { isActive: false },
+        });
+        await prisma.profileSummary.update({
+          where: { id: duplicate.id },
+          data: { isActive: true },
+        });
+      }
+
+      // Always sync the flat fields from the incoming CV data
+      updateData.title = incoming.title;
+      updateData.summary = incoming.summary;
+    } else {
+      // No summary in this import — still sync other flat fields as before
+      if (incoming.title) updateData.title = incoming.title;
+      if (incoming.summary) updateData.summary = incoming.summary;
+    }
 
     if (Object.keys(updateData).length > 0) {
       await prisma.userProfile.update({
@@ -77,17 +144,23 @@ export class ProfileMergeService {
       const startDate = incExp.startDate ? new Date(incExp.startDate) : new Date();
       const endDate = incExp.endDate ? new Date(incExp.endDate) : null;
       const current = incExp.current ?? false;
-      const freeFormContext = incExp.freeFormContext ?? null;
 
       if (exactMatch) {
-        // Update experience details if dates are provided
+        // Merge freeFormContext arrays (union, deduplicating by normalized text)
+        const mergedContext = [
+          ...exactMatch.freeFormContext,
+          ...(incExp.freeFormContext ?? []).filter(
+            (c) => !exactMatch.freeFormContext.some((e) => this.normalizeText(e) === this.normalizeText(c))
+          ),
+        ];
+
         await prisma.experience.update({
           where: { id: exactMatch.id },
           data: {
             startDate: incExp.startDate ? startDate : exactMatch.startDate,
             endDate: incExp.endDate !== undefined ? endDate : exactMatch.endDate,
             current: incExp.current !== undefined ? current : exactMatch.current,
-            freeFormContext: incExp.freeFormContext || exactMatch.freeFormContext,
+            freeFormContext: mergedContext,
           },
         });
 
@@ -124,7 +197,7 @@ export class ProfileMergeService {
             startDate,
             endDate,
             current,
-            freeFormContext,
+            freeFormContext: incExp.freeFormContext ?? [],
           },
         });
 
@@ -146,7 +219,9 @@ export class ProfileMergeService {
   }
 
   /**
-   * Merge projects list
+   * Merge projects list — called during CV import for explicitly listed projects only.
+   * The AI fallback that inferred projects from work experiences was removed;
+   * users can generate project suggestions manually via the profile page.
    */
   static async mergeProjects(profileId: string, incoming: Partial<ProjectDTO>[]): Promise<void> {
     logger.info(`Merging projects for profile: ${profileId}`);
@@ -166,12 +241,18 @@ export class ProfileMergeService {
       const startDate = incProj.startDate ? new Date(incProj.startDate) : null;
       const endDate = incProj.endDate ? new Date(incProj.endDate) : null;
       const current = incProj.current ?? false;
-      const freeFormContext = incProj.freeFormContext ?? null;
       const technologies = incProj.technologies ?? [];
 
       if (match) {
         // Merge technologies (union arrays)
         const combinedTech = Array.from(new Set([...match.technologies, ...technologies]));
+
+        const mergedProjContext = [
+          ...match.freeFormContext,
+          ...(incProj.freeFormContext ?? []).filter(
+            (c) => !match.freeFormContext.some((e) => this.normalizeText(e) === this.normalizeText(c))
+          ),
+        ];
 
         await prisma.project.update({
           where: { id: match.id },
@@ -180,23 +261,17 @@ export class ProfileMergeService {
             endDate: incProj.endDate !== undefined ? endDate : match.endDate,
             current: incProj.current !== undefined ? current : match.current,
             technologies: combinedTech,
-            freeFormContext: incProj.freeFormContext || match.freeFormContext,
+            freeFormContext: mergedProjContext,
           },
         });
 
-        // Merge project bullets
         if (incProj.bullets && incProj.bullets.length > 0) {
           await this.mergeBullets(
             match.bullets,
             incProj.bullets,
             async (text, type, sortOrder) => {
               await prisma.projectBullet.create({
-                data: {
-                  projectId: match.id,
-                  text,
-                  type,
-                  sortOrder,
-                },
+                data: { projectId: match.id, text, type, sortOrder },
               });
             },
             async (id, isArchived) => {
@@ -208,7 +283,6 @@ export class ProfileMergeService {
           );
         }
       } else {
-        // Create new project
         const newProj = await prisma.project.create({
           data: {
             profileId,
@@ -217,7 +291,7 @@ export class ProfileMergeService {
             endDate,
             current,
             technologies,
-            freeFormContext,
+            freeFormContext: incProj.freeFormContext ?? [],
           },
         });
 
@@ -266,6 +340,13 @@ export class ProfileMergeService {
       const fieldOfStudy = incEd.fieldOfStudy ?? null;
 
       if (match) {
+        const mergedEdContext = [
+          ...match.freeFormContext,
+          ...(incEd.freeFormContext ?? []).filter(
+            (c) => !match.freeFormContext.some((e) => this.normalizeText(e) === this.normalizeText(c))
+          ),
+        ];
+
         await prisma.education.update({
           where: { id: match.id },
           data: {
@@ -274,7 +355,7 @@ export class ProfileMergeService {
             endDate: incEd.endDate !== undefined ? endDate : match.endDate,
             current: incEd.current !== undefined ? current : match.current,
             hideEndDate: incEd.hideEndDate !== undefined ? hideEndDate : match.hideEndDate,
-            freeFormContext: incEd.freeFormContext || match.freeFormContext,
+            freeFormContext: mergedEdContext,
           },
         });
 
@@ -311,7 +392,7 @@ export class ProfileMergeService {
             endDate,
             current,
             hideEndDate,
-            freeFormContext,
+            freeFormContext: incEd.freeFormContext ?? [],
           },
         });
 
@@ -426,29 +507,4 @@ export class ProfileMergeService {
     }
   }
 
-  /**
-   * Main entrypoint to merge full incoming parsed CV payload into a UserProfile
-   */
-  static async mergeFullProfile(profileId: string, incoming: Partial<ProfileDTO>): Promise<void> {
-    logger.info(`Starting full profile merge for profile: ${profileId}`);
-
-    // Wrap in a manual sequencing (Prisma transaction could lock vector type, so sequential await is safer)
-    if (incoming.basicData) {
-      await this.mergeBasicData(profileId, incoming.basicData);
-    }
-    if (incoming.experiences) {
-      await this.mergeExperiences(profileId, incoming.experiences);
-    }
-    if (incoming.projects) {
-      await this.mergeProjects(profileId, incoming.projects);
-    }
-    if (incoming.education) {
-      await this.mergeEducation(profileId, incoming.education);
-    }
-    if (incoming.skills) {
-      await this.mergeSkills(profileId, incoming.skills);
-    }
-
-    logger.info(`Full profile merge completed for profile: ${profileId}`);
-  }
 }

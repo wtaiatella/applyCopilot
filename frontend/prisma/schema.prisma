@@ -74,7 +74,8 @@ model Experience {
   startDate       DateTime
   endDate         DateTime?
   current         Boolean            @default(false)
-  freeFormContext String?
+  freeFormContext String[]           @default([]) // Array of free-form AI context notes authored by the user
+  tabLabel        String?                         // Short display name for the profile tab; does not affect company
   
   profile         UserProfile        @relation(fields: [profileId], references: [id], onDelete: Cascade)
   bullets         ExperienceBullet[]
@@ -103,7 +104,8 @@ model Education {
   endDate         DateTime?
   current         Boolean           @default(false)
   hideEndDate     Boolean           @default(false)
-  freeFormContext String?
+  freeFormContext String[]          @default([]) // Array of free-form AI context notes authored by the user
+  tabLabel        String?                        // Short display name for the profile tab; does not affect institution
   
   profile         UserProfile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
   bullets         EducationBullet[]
@@ -130,7 +132,8 @@ model Project {
   endDate         DateTime?
   current         Boolean         @default(false)
   technologies    String[]        // Stored as text array in PostgreSQL
-  freeFormContext String?
+  freeFormContext String[]        @default([]) // Array of free-form AI context notes authored by the user
+  tabLabel        String?                      // Short display name for the profile tab; does not affect name
   
   profile         UserProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
   bullets         ProjectBullet[]

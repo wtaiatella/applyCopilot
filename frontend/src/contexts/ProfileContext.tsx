@@ -38,6 +38,7 @@ interface ProfileContextType {
   deleteProject: (id: string) => Promise<void>;
   
   updateSkillsState: (skills: SkillDTO[]) => void;
+  suggestSkills: () => Promise<void>;
   updateReferencesState: (references: ReferenceDTO[]) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlePartialData: (phase: string, data: any) => void;
@@ -417,6 +418,25 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  // 5b. Skills suggest
+  const suggestSkills = async () => {
+    if (!profile) return;
+    try {
+      setSaveStatus("saving");
+      const updatedSkills = await ProfileService.suggestSkills();
+      setProfile({
+        ...profile,
+        skills: updatedSkills,
+      });
+      setSaveStatus("saved");
+    } catch (err) {
+      console.error(err);
+      setSaveStatus("error");
+      setError("Failed to extract skills.");
+      throw err;
+    }
+  };
+
   // 6. References replace
   const updateReferencesState = (references: ReferenceDTO[]) => {
     if (!profile) return;
@@ -470,6 +490,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         updateProjectState,
         deleteProject,
         updateSkillsState,
+        suggestSkills,
         updateReferencesState,
         handlePartialData,
       }}

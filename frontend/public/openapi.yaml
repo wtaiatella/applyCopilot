@@ -542,6 +542,61 @@ paths:
         '401':
           description: Unauthorized.
 
+  /api/profile/skills/suggest:
+    post:
+      summary: Extract and merge skills from profile using AI
+      description: Analyzes the user's work experiences and projects to extract a list of relevant technical skills, and merges them with the user's current skills list (avoiding duplicates). Rate limit is 10 requests per hour.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Skills successfully extracted, merged, and updated list returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      example: cmqu_id_123
+                    name:
+                      type: string
+                      example: TypeScript
+                    proficiency:
+                      type: string
+                      enum: [BEGINNER, INTERMEDIATE, ADVANCED, EXPERT]
+                      example: INTERMEDIATE
+                    yearsExperience:
+                      type: integer
+                      nullable: true
+                      example: 3
+        '401':
+          description: Unauthorized. Active session cookie required.
+        '422':
+          description: Validation error. No work experiences or projects found in profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: No work experiences or projects found. Add them first so the AI can extract skills.
+        '429':
+          description: Rate limit reached.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Rate limit reached. You can only generate 10 skill suggestions per hour.
+        '500':
+          description: Internal server error.
+
   /api/profile/references:
     put:
       summary: Overwrite references list

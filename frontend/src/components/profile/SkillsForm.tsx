@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Card, Form, Input, Button, Select, InputNumber, Table, Tooltip, Space } from "antd";
-import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
+import { Card, Form, Input, Button, Select, InputNumber, Table, Tooltip, Space, Modal } from "antd";
+import { PlusOutlined, DeleteOutlined, CloudSyncOutlined } from "@ant-design/icons";
 import { SkillDTO, ProficiencyLevel } from "../../types/profile";
+import { useProfileContext } from "../../contexts/ProfileContext";
 
 const { Option } = Select;
 
@@ -16,9 +17,25 @@ export default function SkillsForm({
   skills = [],
   updateSkillsState,
 }: SkillsFormProps) {
+  const { suggestSkills } = useProfileContext();
+  const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [name, setName] = useState("");
   const [proficiency, setProficiency] = useState<ProficiencyLevel>("INTERMEDIATE");
   const [yearsExperience, setYearsExperience] = useState<number | null>(null);
+
+  const handleExtractSkills = async () => {
+    try {
+      setLoadingSuggest(true);
+      await suggestSkills();
+    } catch (err: any) {
+      Modal.error({
+        title: "Failed to extract skills",
+        content: err.message || "An error occurred while suggesting skills.",
+      });
+    } finally {
+      setLoadingSuggest(false);
+    }
+  };
 
   const sortedSkills = [...skills].sort((a, b) => a.name.localeCompare(b.name));
 
@@ -119,6 +136,17 @@ export default function SkillsForm({
     <Card 
       className="bg-zinc-900/50 border-zinc-800 text-white" 
       title={<span className="text-white font-semibold">Technical & Professional Skills</span>}
+      extra={
+        <Button
+          size="small"
+          loading={loadingSuggest}
+          onClick={handleExtractSkills}
+          icon={<CloudSyncOutlined />}
+          className="border-blue-700/60 text-blue-400 hover:border-blue-500 hover:text-blue-300"
+        >
+          {loadingSuggest ? "Extracting..." : "Extract skills from profile"}
+        </Button>
+      }
     >
       <div className="space-y-6">
         {/* Inline Add Skill form */}

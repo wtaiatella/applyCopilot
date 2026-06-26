@@ -160,6 +160,16 @@ export class ProfileService {
     return response.json();
   }
 
+  static async suggestSkills(): Promise<SkillDTO[]> {
+    const response = await fetch("/api/profile/skills/suggest", {
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to suggest skills: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
   static async updateReferences(references: ReferenceDTO[]): Promise<ReferenceDTO[]> {
     const response = await fetch("/api/profile/references", {
       method: "PUT",

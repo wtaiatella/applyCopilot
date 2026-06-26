@@ -108,7 +108,7 @@ describe("Profile Validation Schemas (Zod)", () => {
             sortOrder: 0,
           },
         ],
-        freeFormContext: "Great environment",
+        freeFormContext: ["Great environment"],
       };
 
       const result = ExperienceInputSchema.safeParse(validExperience);

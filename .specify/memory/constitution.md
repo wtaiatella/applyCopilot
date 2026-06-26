@@ -52,13 +52,14 @@ Sensitive user data should be processed locally whenever possible:
 - Pre-filtering of job compatibility: local only (TensorFlow.js)
 - Data sent to external APIs must be minimized and documented in `plan.md`
 
-### VII. UI Consistency (Ant Design + Tailwind CSS)
+### VII. UI Consistency (Ant Design + Tailwind CSS + shadcn/ui)
 - **Primary Library:** Ant Design 6 is the primary component library — do not reinvent UI primitives.
+- **Supplemental Library:** shadcn/ui is approved for use in **landing page sections and layout primitives only** (e.g., cards, hero sections). It must not be used for any functionality available in Ant Design (forms, tables, date pickers, tabs, modals, etc.).
 - **Tailwind CSS 4:** Used exclusively for layout, spacing, layout alignments, and structural styling.
 - **Dark Mode by Default:** Dark mode is the project standard and priority. Root theme must use `theme.darkAlgorithm`.
 - **Global Theme Color:** The default primary color token of the project is **`colorPrimary: "#2563eb"`** (blue-600).
 - **Centralized Theming:** All components must inherit styles from a centralized `<ConfigProvider>` wrapping the root application layout.
-- **Token Enforcement (CRITICAL):** Do not write custom CSS or inline Tailwind class declarations for color styling (backgrounds, borders, text colors, etc.) that lie outside of the Ant Design design token system. This ensures the app can adapt dynamically to theme adjustments.
+- **Token Enforcement (CRITICAL):** Do not write custom CSS or inline Tailwind class declarations for color styling (backgrounds, borders, text colors, etc.) that lie outside of the Ant Design design token system. This ensures the app can adapt dynamically to theme adjustments. shadcn/ui components used in landing sections are exempt from AntD token enforcement but must remain consistent with the global color palette.
 
 ### VIII. Standardized Logging & Auditing (NON-NEGOTIABLE)
 All backend components must use structured, centralized logging via Winston:

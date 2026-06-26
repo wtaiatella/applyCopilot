@@ -115,17 +115,19 @@
 
 ### Implementation for User Story 4
 
-- [ ] T042 [US4] Implement basic data update and active summary sync endpoint in `frontend/src/app/api/profile/basic/route.ts`
-- [ ] T043 [P] [US4] Create Basic Data UI form with inline manual summary additions and drag-and-drop ordering in `frontend/src/components/profile/BasicDataForm.tsx`
-- [ ] T044 [US4] Implement AI summary generator route handler in `frontend/src/app/api/profile/summaries/generate/route.ts` (include rate-limiting validation: max 10 generations/hour)
-- [ ] T045 [P] [US4] Create AI summary generator Modal instructions form in `frontend/src/components/profile/SummaryGeneratorModal.tsx`
-- [ ] T046 [P] [US4] Create Experience form list UI with current date checkbox and bullet drag-drop sortable rows in `frontend/src/components/profile/ExperienceForm.tsx`
-- [ ] T047 [P] [US4] Create Education form list UI with current date and hideEndDate checkboxes in `frontend/src/components/profile/EducationForm.tsx`
-- [ ] T048 [P] [US4] Create Project form list UI with technolgies tag input multi-select in `frontend/src/components/profile/ProjectForm.tsx`
-- [ ] T049 [P] [US4] Create flat Skills form list UI sorting alphabetically in `frontend/src/components/profile/SkillsForm.tsx`
-- [ ] T050 [P] [US4] Create References form list UI in `frontend/src/components/profile/ReferencesForm.tsx`
-- [ ] T051 [P] [US4] Add Winston logging auditing integration tests for AI generation requests in `frontend/tests/integration/ai.test.ts`
-- [ ] T051b [US4] Update openapi.yaml in `frontend/public/` to include basic details PUT, AI summaries generator, and skills auto-suggest endpoints
+- [x] T042 [US4] Implement basic data update and active summary sync endpoint in `frontend/src/app/api/profile/basic/route.ts`
+- [x] T043 [P] [US4] Create Basic Data UI form with inline manual summary additions and drag-and-drop ordering in `frontend/src/components/profile/BasicDataForm.tsx`
+- [x] T044 [US4] Implement AI summary generator route handler in `frontend/src/app/api/profile/summaries/generate/route.ts` (include rate-limiting validation: max 10 generations/hour)
+- [x] T045 [P] [US4] Create AI summary generator Modal instructions form in `frontend/src/components/profile/SummaryGeneratorModal.tsx`
+- [x] T046 [P] [US4] Create Experience form list UI with current date checkbox and bullet drag-drop sortable rows in `frontend/src/components/profile/ExperienceForm.tsx`
+- [x] T047 [P] [US4] Create Education form list UI with current date and hideEndDate checkboxes in `frontend/src/components/profile/EducationForm.tsx`
+- [x] T048 [P] [US4] Create Project form list UI with technologies tag input multi-select in `frontend/src/components/profile/ProjectForm.tsx`
+- [x] T049 [P] [US4] Create flat Skills form list UI sorting alphabetically in `frontend/src/components/profile/SkillsForm.tsx`
+- [ ] T049b [US4] Implement suggest skills REST API route POST /api/profile/skills/suggest and UI button trigger in `frontend/src/components/profile/SkillsForm.tsx`
+- [x] T050 [P] [US4] Create References form list UI in `frontend/src/components/profile/ReferencesForm.tsx` — `canContact` field uses Ant Design `<Checkbox>` rendered inline in the table column and in the add-reference form row
+- [x] T051 [P] [US4] Add Winston logging auditing integration tests for AI generation requests in `frontend/tests/integration/ai.test.ts`
+- [x] T051b [US4] Update openapi.yaml in `frontend/public/` to include basic details PUT, AI summaries generator, and skills auto-suggest endpoints
+- [ ] T051c [US4] Add unit/integration tests for Phase 6 UI behavior: bullet drag-and-drop ordering, bullet type dropdown (`BULLET`/`PARAGRAPH`), and "Current / Present" date checkbox logic in `frontend/tests/unit/profileForms.test.ts`
 
 **Checkpoint**: Profile UI tab controls, drag-and-drop lists, and custom date checkbox logic completed.
 
@@ -135,9 +137,11 @@
 
 **Purpose**: Cross-cutting requirements, admin structure, theme toggle, and lint/build checks.
 
-- [ ] T052 Create layout placeholder for ADMIN-only Settings in `frontend/src/app/(main)/settings/page.tsx`
+- [x] T052 Create layout placeholder for ADMIN-only Settings in `frontend/src/app/(main)/settings/page.tsx` with ADMIN role guard (redirect non-ADMIN users)
+- [ ] T052b Add integration test asserting that the `role` field is present as a claim in the NextAuth session JWT after login with an ADMIN-role user in `frontend/tests/integration/auth.test.ts`
 - [ ] T053 Configure global dark mode toggler in `frontend/src/components/layout/ThemeToggle.tsx`
-- [ ] T054 Run Next.js code compiler builds and ESLint checks to verify clean delivery compilation
+- [ ] T053b Add quickstart test assertion verifying that the dark/light mode preference survives a page reload (reads from `localStorage`) in `frontend/tests/quickstart.test.ts`
+- [ ] T054 Run Next.js code compiler builds and ESLint checks to verify clean delivery compilation; also run `jest --coverage --collectCoverageFrom="src/lib/merge/**"` to assert 100% coverage on `ProfileMergeService` (SC2-007)
 - [ ] T055 [P] Implement validation verification in `frontend/tests/quickstart.test.ts`
 
 ---

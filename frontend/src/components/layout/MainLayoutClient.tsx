@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { Layout, Menu, Splitter, Button, Typography } from "antd";
+import ThemeToggle from "./ThemeToggle";
+import { useTheme } from "../providers/AntdThemeProvider";
 import {
   LayoutDashboard,
   User,
@@ -29,8 +31,18 @@ interface MainLayoutClientProps {
 
 export default function MainLayoutClient({ children, user }: MainLayoutClientProps) {
   const pathname = usePathname();
+  const { themeMode } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(250);
+
+  const isDark = themeMode === "dark";
+  const bgColor = isDark ? "#000000" : "#ffffff";
+  const surfaceColor = isDark ? "#09090b" : "#f4f4f5";
+  const borderColor = isDark ? "#1f2937" : "#e4e4e7";
+  const btnColor = isDark ? "#18181b" : "#f4f4f5";
+  const btnBorder = isDark ? "#27272a" : "#e4e4e7";
+  const btnTextColor = isDark ? "#a1a1aa" : "#71717a";
+  const titleColor = isDark ? "#e4e4e7" : "#09090b";
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -107,7 +119,7 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
     <Layout style={{ height: "100vh", overflow: "hidden" }}>
       <Splitter
         onResize={onResize}
-        style={{ height: "100%", background: "#000000" }}
+        style={{ height: "100%", background: bgColor }}
       >
         <Splitter.Panel
           size={collapsed ? 80 : sidebarWidth}
@@ -120,10 +132,10 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
           <Layout
             style={{
               height: "100%",
-              background: "#09090b",
+              background: surfaceColor,
               display: "flex",
               flexDirection: "column",
-              borderRight: "1px solid #1f2937",
+              borderRight: `1px solid ${borderColor}`,
             }}
           >
             {/* Toggle Button */}
@@ -137,9 +149,9 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
                 right: -12,
                 top: 80,
                 zIndex: 10,
-                background: "#18181b",
-                border: "1px solid #27272a",
-                color: "#a1a1aa",
+                background: btnColor,
+                border: `1px solid ${btnBorder}`,
+                color: btnTextColor,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -193,19 +205,19 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
         </Splitter.Panel>
 
         <Splitter.Panel style={{ height: "100%" }}>
-          <Layout style={{ height: "100%", background: "#000000" }}>
+          <Layout style={{ height: "100%", background: bgColor }}>
             {/* Header bar */}
             <Header
               className="flex h-16 items-center justify-between border-b border-slate-900 px-8"
               style={{
-                background: "#09090b",
+                background: surfaceColor,
                 padding: "0 32px",
                 height: 64,
-                borderBottom: "1px solid #1f2937",
+                borderBottom: `1px solid ${borderColor}`,
               }}
             >
               <div>
-                <Title level={5} style={{ margin: 0, color: "#e4e4e7" }}>
+                <Title level={5} style={{ margin: 0, color: titleColor }}>
                   {pathname === "/dashboard"
                     ? "Dashboard"
                     : pathname === "/profile"
@@ -217,6 +229,7 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
               </div>
 
               <div className="flex items-center gap-4">
+                <ThemeToggle />
                 <Text type="secondary" className="text-xs font-medium">
                   {user.email}
                 </Text>
@@ -231,7 +244,7 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
               style={{
                 padding: 32,
                 overflowY: "auto",
-                background: "#000000",
+                background: bgColor,
                 height: "calc(100vh - 64px)",
               }}
             >

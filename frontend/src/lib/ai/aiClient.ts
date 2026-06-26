@@ -27,8 +27,8 @@ export async function resolveAIConfig(
       capability === "parsing"
         ? "AI_PROVIDER_PARSING"
         : capability === "summaries"
-        ? "AI_PROVIDER_SUMMARIES"
-        : "AI_PROVIDER_DEFAULT";
+          ? "AI_PROVIDER_SUMMARIES"
+          : "AI_PROVIDER_DEFAULT";
 
     // Try fetching from database SystemConfig
     const dbProvider = await prisma.systemConfig.findUnique({
@@ -53,8 +53,8 @@ export async function resolveAIConfig(
       (capability === "parsing"
         ? process.env.AI_PROVIDER_PARSING
         : capability === "summaries"
-        ? process.env.AI_PROVIDER_SUMMARIES
-        : process.env.AI_PROVIDER_DEFAULT) || "ollama";
+          ? process.env.AI_PROVIDER_SUMMARIES
+          : process.env.AI_PROVIDER_DEFAULT) || "ollama";
   }
 
   const provider = (providerStr.toLowerCase() as "ollama" | "gemini" | "claude") || "ollama";
@@ -65,8 +65,8 @@ export async function resolveAIConfig(
       provider === "gemini"
         ? "GEMINI_MODEL"
         : provider === "claude"
-        ? "CLAUDE_MODEL"
-        : "OLLAMA_MODEL";
+          ? "CLAUDE_MODEL"
+          : "OLLAMA_MODEL";
 
     const dbModel = await prisma.systemConfig.findUnique({
       where: { key: modelKey },
@@ -79,10 +79,10 @@ export async function resolveAIConfig(
   if (!modelStr) {
     modelStr =
       (provider === "gemini"
-        ? process.env.GEMINI_MODEL || "gemini-2.5-flash"
+        ? process.env.GEMINI_MODEL || "gemini-3-pro"
         : provider === "claude"
-        ? process.env.CLAUDE_MODEL || "claude-3-5-sonnet-latest"
-        : process.env.OLLAMA_MODEL || "granite4.1:8b") || "";
+          ? process.env.CLAUDE_MODEL || "claude-haiku-4-5"
+          : process.env.OLLAMA_MODEL || "granite4.1:8b") || "";
   }
 
   return { provider, model: modelStr };

@@ -22,8 +22,10 @@ All endpoints require authentication (NextAuth session) except those explicitly 
 | **PUT** | `/api/profile/projects/[id]` | Update project details, technology tags, and bullets | ✅ |
 | **DELETE** | `/api/profile/projects/[id]` | Delete a project entry | ✅ |
 | **PUT** | `/api/profile/skills` | Overwrite the complete flat skills list for the user | ✅ |
+| **POST** | `/api/profile/skills/suggest` | Trigger LLM to extract/suggest skills from experiences + projects | ✅ |
 | **PUT** | `/api/profile/references` | Overwrite the complete references list | ✅ |
 | **POST** | `/api/profile/summaries/generate` | Trigger LLM to generate a summary based on profile + instructions | ✅ |
+| **POST** | `/api/profile/projects/suggest` | Trigger LLM to suggest a project based on experiences | ✅ |
 | **POST** | `/api/profile/parse` | SSE endpoint: upload CV file and stream progress/data events | ✅ |
 | **POST** | `/api/auth/[...nextauth]` | NextAuth.js authentication endpoint handler | ❌ |
 | **POST** | `/api/auth/register` | Register a new user account (email + password) | ❌ |
@@ -78,7 +80,7 @@ export interface ExperienceDTO {
   endDate: string | null;     // ISO Date string or null
   current: boolean;
   bullets: BulletDTO[];       // Always "bullets", never "description"
-  freeFormContext: string | null;
+  freeFormContext: string[];
 }
 
 export interface EducationDTO {
@@ -91,7 +93,7 @@ export interface EducationDTO {
   current: boolean;
   hideEndDate: boolean;
   bullets: BulletDTO[];
-  freeFormContext: string | null;
+  freeFormContext: string[];
 }
 
 export interface ProjectDTO {
@@ -102,7 +104,7 @@ export interface ProjectDTO {
   current: boolean;
   technologies: string[];     // Tag list
   bullets: BulletDTO[];
-  freeFormContext: string | null;
+  freeFormContext: string[];
 }
 
 export interface SkillDTO {

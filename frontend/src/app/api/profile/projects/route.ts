@@ -50,6 +50,7 @@ export async function POST(req: Request) {
         current: data.current,
         technologies: data.technologies,
         freeFormContext: data.freeFormContext,
+        tabLabel: data.tabLabel ?? null,
         bullets: {
           create: data.bullets.map((b, idx) => ({
             text: b.text,
@@ -85,6 +86,7 @@ export async function POST(req: Request) {
       current: newProj.current,
       technologies: newProj.technologies,
       freeFormContext: newProj.freeFormContext,
+      tabLabel: newProj.tabLabel ?? null,
       bullets: newProj.bullets.map((b) => ({
         id: b.id,
         text: b.text,

@@ -8,7 +8,8 @@ import {
   EducationDTO, 
   ProjectDTO, 
   SkillDTO, 
-  ReferenceDTO 
+  ReferenceDTO,
+  SummaryDTO
 } from "../types/profile";
 import { ProfileService } from "../services/profileService";
 import { isValidUrl } from "../lib/validation/profileSchemas";
@@ -22,7 +23,7 @@ interface ProfileContextType {
   error: string | null;
   refreshProfile: () => Promise<void>;
   
-  updateBasicDataState: (data: Partial<BasicDataDTO>) => void;
+  updateBasicDataState: (data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }) => void;
   
   addExperience: () => Promise<void>;
   updateExperienceState: (id: string, data: Partial<ExperienceDTO>) => void;
@@ -37,6 +38,7 @@ interface ProfileContextType {
   deleteProject: (id: string) => Promise<void>;
   
   updateSkillsState: (skills: SkillDTO[]) => void;
+  suggestSkills: () => Promise<void>;
   updateReferencesState: (references: ReferenceDTO[]) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlePartialData: (phase: string, data: any) => void;
@@ -53,7 +55,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   // Track pending save operations
   const activeSavesRef = useRef<Set<string>>(new Set());
   const timeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  const pendingBasicDataChangesRef = useRef<Partial<BasicDataDTO>>({});
+  const pendingBasicDataChangesRef = useRef<Partial<BasicDataDTO> & { summaries?: any[] }>({});
 
   // Clean up timeouts on unmount
   useEffect(() => {
@@ -116,19 +118,36 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   };
 
   // 1. Basic Data Autosave
-  const updateBasicDataState = (data: Partial<BasicDataDTO>) => {
+  const updateBasicDataState = (data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }) => {
     if (!profile) return;
 
-    const updatedBasic = { ...profile.basicData, ...data };
+    const { summaries, ...basicFields } = data;
+
+    const updatedBasic = { ...profile.basicData, ...basicFields };
+    const updatedSummaries = summaries !== undefined ? summaries : profile.summaries;
+
+    // Synchronize active summary title/content to basic fields if summaries were updated
+    if (summaries !== undefined) {
+      const activeSummary = summaries.find((s) => s.isActive);
+      if (activeSummary) {
+        updatedBasic.title = activeSummary.title;
+        updatedBasic.summary = activeSummary.content;
+      } else {
+        updatedBasic.title = null;
+        updatedBasic.summary = null;
+      }
+    }
+
     setProfile({
       ...profile,
       basicData: updatedBasic,
+      summaries: updatedSummaries,
     });
 
     const newPendingChanges = { ...pendingBasicDataChangesRef.current };
 
-    for (const key of Object.keys(data) as Array<keyof BasicDataDTO>) {
-      const val = data[key];
+    for (const key of Object.keys(basicFields) as Array<keyof BasicDataDTO>) {
+      const val = basicFields[key];
       if (key === "linkedin" || key === "github" || key === "website") {
         if (isValidUrl(val)) {
           newPendingChanges[key] = val;
@@ -139,6 +158,17 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       } else {
         newPendingChanges[key] = val as any;
       }
+    }
+
+    if (summaries !== undefined) {
+      const cleaned = summaries.map((s) => {
+        if (s.id && s.id.startsWith("temp-")) {
+          const { id, ...rest } = s;
+          return rest;
+        }
+        return s;
+      });
+      newPendingChanges.summaries = cleaned as any;
     }
 
     pendingBasicDataChangesRef.current = newPendingChanges;
@@ -195,7 +225,17 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const targetExp = updatedExperiences.find((e) => e.id === id);
     if (targetExp) {
       registerPendingSave(`experience_${id}`, async () => {
-        await ProfileService.updateExperience(id, targetExp);
+        const payload = {
+          ...targetExp,
+          bullets: targetExp.bullets.map((b) => {
+            if (b.id && b.id.startsWith("temp-")) {
+              const { id: _, ...rest } = b;
+              return rest;
+            }
+            return b;
+          }),
+        };
+        await ProfileService.updateExperience(id, payload as any);
       });
     }
   };
@@ -259,7 +299,17 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const targetEd = updatedEdList.find((e) => e.id === id);
     if (targetEd) {
       registerPendingSave(`education_${id}`, async () => {
-        await ProfileService.updateEducation(id, targetEd);
+        const payload = {
+          ...targetEd,
+          bullets: targetEd.bullets.map((b) => {
+            if (b.id && b.id.startsWith("temp-")) {
+              const { id: _, ...rest } = b;
+              return rest;
+            }
+            return b;
+          }),
+        };
+        await ProfileService.updateEducation(id, payload as any);
       });
     }
   };
@@ -322,7 +372,17 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const targetProj = updatedProjects.find((p) => p.id === id);
     if (targetProj) {
       registerPendingSave(`project_${id}`, async () => {
-        await ProfileService.updateProject(id, targetProj);
+        const payload = {
+          ...targetProj,
+          bullets: targetProj.bullets.map((b) => {
+            if (b.id && b.id.startsWith("temp-")) {
+              const { id: _, ...rest } = b;
+              return rest;
+            }
+            return b;
+          }),
+        };
+        await ProfileService.updateProject(id, payload as any);
       });
     }
   };
@@ -358,6 +418,25 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  // 5b. Skills suggest
+  const suggestSkills = async () => {
+    if (!profile) return;
+    try {
+      setSaveStatus("saving");
+      const updatedSkills = await ProfileService.suggestSkills();
+      setProfile({
+        ...profile,
+        skills: updatedSkills,
+      });
+      setSaveStatus("saved");
+    } catch (err) {
+      console.error(err);
+      setSaveStatus("error");
+      setError("Failed to extract skills.");
+      throw err;
+    }
+  };
+
   // 6. References replace
   const updateReferencesState = (references: ReferenceDTO[]) => {
     if (!profile) return;
@@ -376,7 +455,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const handlePartialData = (phase: string, data: any) => {
     if (!profile) return;
     if (phase === "basic") {
+      // Update the flat basicData fields immediately from SSE data
       setProfile((prev) => (prev ? { ...prev, basicData: data } : null));
+      // The backend also created/updated a ProfileSummary for this import.
+      // Refresh the full profile so the new summary appears in the summaries list
+      // without requiring a manual page reload.
+      refreshProfile();
     } else if (phase === "experiences") {
       setProfile((prev) => (prev ? { ...prev, experiences: data } : null));
     } else if (phase === "projects") {
@@ -385,6 +469,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       setProfile((prev) => (prev ? { ...prev, education: data.education, skills: data.skills } : null));
     }
   };
+
 
   return (
     <ProfileContext.Provider
@@ -405,6 +490,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         updateProjectState,
         deleteProject,
         updateSkillsState,
+        suggestSkills,
         updateReferencesState,
         handlePartialData,
       }}

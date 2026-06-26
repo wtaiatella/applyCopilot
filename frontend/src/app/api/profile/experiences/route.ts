@@ -50,6 +50,7 @@ export async function POST(req: Request) {
         endDate: data.endDate ? new Date(data.endDate) : null,
         current: data.current,
         freeFormContext: data.freeFormContext,
+        tabLabel: data.tabLabel ?? null,
         bullets: {
           create: data.bullets.map((b, idx) => ({
             text: b.text,
@@ -85,6 +86,7 @@ export async function POST(req: Request) {
       endDate: newExp.endDate ? newExp.endDate.toISOString() : null,
       current: newExp.current,
       freeFormContext: newExp.freeFormContext,
+      tabLabel: newExp.tabLabel ?? null,
       bullets: newExp.bullets.map((b) => ({
         id: b.id,
         text: b.text,

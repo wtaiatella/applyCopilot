@@ -2,7 +2,7 @@
 
 **Feature Branch**: `002-frontend-v2-architecture`  
 **Created**: 2026-06-06  
-**Status**: Draft  
+**Status**: Published
 **Input**: Strategic architectural decision session + `/grill-me` interview clarification (2026-06-07)
 
 ---
@@ -125,7 +125,7 @@ As a user managing my profile, I want each tab to have rich, intuitive controls 
   - "Cancel" and "Generate" buttons
   - On Generate: calls `POST /api/profile/summaries/generate` with the user instructions; the AI receives the full profile context
   - On success: new summary appears in the list with `isAIGenerated: true`
-- **Drag-and-drop ordering**: summaries list is reorderable via drag-and-drop (using `@dnd-kit/core` or Ant Design `SortableList` if available). Order is persisted to the DB via a `sortOrder` field on `ProfileSummary`
+- **Drag-and-drop ordering**: summaries list is reorderable via drag-and-drop using `@dnd-kit/core`. Order is persisted to the DB via a `sortOrder` field on `ProfileSummary`
 - **Active summary**: selecting one summary as active marks it `isActive` in `ProfileContext`. When the debounced `PUT /api/profile/basic` runs, the server handler internally invokes the sync logic (equivalent to the backend `syncActiveSummary` routine) to populate the main `UserProfile.summary` and `UserProfile.title` fields with the active summary's content and title
 - **Delete**: each summary has a delete icon; if it is the active summary, prompt confirmation before deleting
 
@@ -170,19 +170,18 @@ Each project item is rendered as an editable tab. Form fields (as shown in the P
 - **Highlights & Features**: same bullet row UI as Experiences — type dropdown, active checkbox, CV usage badge, drag-and-drop, delete
 - **Context / Additional Details**: textarea (label: "Role, impact...")
 
-**AI fallback for missing projects**: If the CV parsing phase returns an empty projects array, the SSE pipeline MUST automatically trigger a dedicated AI prompt that receives the **full CV text** and asks the model to analyze experiences and extract any relevant projects. Prompt pattern: *"Analyze the following CV and extract any meaningful projects, side projects, or significant initiatives that can be identified from the work experience. For each, provide name, technologies used, approximate dates, and 2–4 bullet highlights."*
 
 #### Skills Tab
 
 - Each skill row: **name** | **Proficiency** dropdown (`BEGINNER` / `INTERMEDIATE` / `ADVANCED` / `EXPERT`) | **Years of experience** (number input) | delete button
 - No category fields — keeps the UI simple and focused
 - Skills are displayed in a single flat list, sorted alphabetically
-- **Auto-suggest from profile**: button "Extract skills from profile" runs a Server Action that reads technologies from experiences + projects and creates skill entries for any that don't already exist (name + default proficiency `INTERMEDIATE`)
-- **AI fallback for missing skills**: If the CV parsing phase returns an empty skills array, the SSE pipeline MUST automatically trigger a dedicated AI prompt that receives the **full CV text** and asks the model to extract skills. Prompt pattern: *"Extract all technical and soft skills from the following CV as a flat list. For each skill, estimate proficiency level (BEGINNER/INTERMEDIATE/ADVANCED/EXPERT) based on context and years of use."*
+- **Auto-suggest from profile**: button "Extract skills from profile" calls a REST API endpoint `POST /api/profile/skills/suggest` via `ProfileService` that reads technologies from experiences + projects and creates skill entries for any that don't already exist (name + default proficiency `INTERMEDIATE`)
+- **AI fallback for missing skills**: See FR2-026 for the full fallback prompt specification.
 
 #### References Tab
 
-Simple list with name, company, relationship, email, phone, canContact toggle. Reserved for future features.
+Simple list with name, company, relationship, email, phone, canContact toggle. Implemented in Phase 6 (T050).
 
 ---
 
@@ -219,7 +218,6 @@ Simple list with name, company, relationship, email, phone, canContact toggle. R
 - **FR2-022**: Each bullet row (experience, project, education) MUST have a Type dropdown with two options: `Bullet` (renders with bullet prefix `•`) and `Paragraph` (renders without prefix, as a paragraph). The `type` field on `ExperienceBullet`, `ProjectBullet`, and `EducationBullet` persists this
 - **FR2-023**: The Dates section of Experience, Education, and Project items MUST include a **"Current / Present" checkbox** next to the end date picker. When checked: end date picker is disabled, `endDate` is set to `null`, and `current` is set to `true`. Education items additionally have a **"Hide end date"** checkbox that sets `hideEndDate: true` without disabling the picker
 - **FR2-024**: If a bullet's `usedInCVs.length > 0`, the bullet row MUST display a count badge. Hovering the badge shows a popover listing CV names. In Phase 1, CV names are rendered as plain text (links to `/cv/[id]` deferred to a future phase)
-- **FR2-025**: If the CV parsing SSE pipeline produces zero projects after the projects phase, the system MUST automatically trigger a secondary AI prompt with the full CV text to extract projects from experience descriptions.
 - **FR2-026**: If the CV parsing SSE pipeline produces zero skills after the education-skills phase, the system MUST automatically trigger a secondary AI prompt with the full CV text to extract a flat skills list with proficiency levels
 - **FR2-027**: The Skills tab MUST display a single flat list of skills (name + proficiency + years of experience). No category fields or sub-sections in the UI
 - **FR2-028**: System MUST implement structured, centralized logging via Winston:
@@ -279,7 +277,7 @@ frontend/
     │   ├── jobs/                      # Job cards and filters
     │   ├── applications/              # Kanban and status components
     │   ├── layout/                    # Sidebar (collapsible), Header, Nav
-    │   └── ui/                        # Shared primitives (shadcn/ui based)
+    │   └── ui/                        # Shared UI primitives
     │
     ├── contexts/
     │   ├── ProfileContext.tsx          # Full profile state + per-section debounced auto-save
@@ -337,8 +335,7 @@ frontend/
 │ [⚙️]     │  (Settings visible to ADMIN only)        │
 │ Settings │                                          │
 └──────────┴──────────────────────────────────────────┘
-  ↑ Sidebar: expanded (>= 1280px) or icon-only (< 1280px)
-    Preference persisted in localStorage
+  ↑ Sidebar behavior defined in FR2-014
 ```
 
 ### ProfileContext Contract
@@ -419,7 +416,7 @@ export interface ExperienceDTO {
   endDate: string | null;
   current: boolean;
   bullets: BulletDTO[];       // ← always "bullets", never "description"
-  freeFormContext: string | null;
+  freeFormContext: string[];
 }
 
 export interface EducationDTO {
@@ -432,7 +429,7 @@ export interface EducationDTO {
   current: boolean;
   hideEndDate: boolean;
   bullets: BulletDTO[];
-  freeFormContext: string | null;
+  freeFormContext: string[];
 }
 
 export interface ProjectDTO {
@@ -443,7 +440,7 @@ export interface ProjectDTO {
   current: boolean;
   technologies: string[];     // tag list
   bullets: BulletDTO[];
-  freeFormContext: string | null;
+  freeFormContext: string[];
 }
 
 export interface SkillDTO {
@@ -539,7 +536,7 @@ export type ParseProgressEvent =
 
 ## Success Criteria (Phase 1)
 
-- **SC2-001**: A new user can register, log in, upload a CV, and have a fully populated profile in under 3 minutes
+- **SC2-001**: A new user can register, log in, upload a CV, and have a fully populated profile in under 5 minutes
 - **SC2-002**: Switching between profile tabs NEVER resets unsaved edits in other tabs (data lives in ProfileContext)
 - **SC2-003**: Saving any profile section (auto-save) completes in under 2 seconds on local dev
 - **SC2-004**: The landing page renders correctly for both authenticated and unauthenticated users
@@ -550,6 +547,7 @@ export type ParseProgressEvent =
 - **SC2-009**: If CV parsing is interrupted at any phase, already-persisted data is intact on the next page load
 - **SC2-010**: Password reset email is delivered within 60 seconds with a working reset link
 - **SC2-011**: The sidebar correctly adapts to viewport width (expanded `>= 1280px`, collapsed `< 1280px`) and persists user preference in localStorage
+- **SC2-012**: The `/dashboard` page displays a personalized welcome message and a clickable link to `/profile`
 
 ---
 

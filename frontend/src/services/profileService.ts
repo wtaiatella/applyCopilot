@@ -6,7 +6,8 @@ import {
   ProjectDTO, 
   SkillDTO, 
   ReferenceDTO,
-  ParseProgressEvent
+  ParseProgressEvent,
+  SummaryDTO
 } from "../types/profile";
 
 export class ProfileService {
@@ -24,7 +25,7 @@ export class ProfileService {
   /**
    * Update basic data
    */
-  static async updateBasicData(data: Partial<BasicDataDTO>): Promise<BasicDataDTO> {
+  static async updateBasicData(data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }): Promise<BasicDataDTO> {
     const response = await fetch("/api/profile/basic", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -155,6 +156,16 @@ export class ProfileService {
     });
     if (!response.ok) {
       throw new Error(`Failed to update skills: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  static async suggestSkills(): Promise<SkillDTO[]> {
+    const response = await fetch("/api/profile/skills/suggest", {
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to suggest skills: ${response.statusText}`);
     }
     return response.json();
   }

@@ -66,8 +66,8 @@ frontend/
 │   │   │   ├── applications/          # Kanban tracking placeholders
 │   │   │   └── settings/              # Admin-only options
 │   │   ├── api/                       # REST endpoints (auth handlers, profile CRUD, SSE parser)
-│   │   ├── page.tsx                   # Public landing page
-│   │   └── middleware.ts              # Route protection middleware
+│   │   └── page.tsx                   # Public landing page
+│   ├── middleware.ts                  # Route protection middleware (at src/ root per Next.js App Router)
 │   ├── components/
 │   │   ├── landing/                   # Hero, Features, CTA components
 │   │   ├── profile/                   # Editable tabs, form fields, auto-save spinner
@@ -130,6 +130,16 @@ frontend/
 * **Decision**: Consolidated PUT endpoints.
 * **Implementation**: Experience, Project, and Education updates (including their bullets) are sent as a single consolidated payload to the parent PUT route. The server reconciles bullet differences.
 
+### ADR-009: Active Summary Sync — `syncActiveSummary` Logic
+* **Decision**: The active summary's content is denormalized into `UserProfile.summary` and `UserProfile.title` on every `PUT /api/profile/basic` call.
+* **Implementation** (as coded in `src/app/api/profile/basic/route.ts`):
+  1. Receive `summaries[]` array in the PUT body.
+  2. Find the entry where `isActive === true`.
+  3. If found: set `UserProfile.title = activeSummary.title` and `UserProfile.summary = activeSummary.content`.
+  4. If none is active (all `isActive === false`): set both `UserProfile.title` and `UserProfile.summary` to `null`.
+  5. This sync runs inside the same `$transaction` that reconciles the `ProfileSummary` rows, ensuring consistency.
+  6. No separate endpoint or scheduled job is needed — the sync is a side-effect of every basic PUT call.
+
 ---
 
 ## 7. Architecture Responsibility Mapping
@@ -191,5 +201,5 @@ graph TD
 
 **Drift analysis note**: Any drift tool scanning files under `frontend/src/app/(main)/settings/`, `frontend/src/app/api/admin/`, or `frontend/src/components/settings/` should treat these as **planned complement work** covered by `specs/005-admin-llm-settings`, not as spec deviation from this document. The `settings/` directory was already listed in the project structure (section 5) as "Admin-only options".
 
-**Status**: Spec + Plan + Tasks complete for complement. Implementation pending before Phase 5 of this spec resumes.
+**Status**: Completed. The settings panel and role-based validation have been fully implemented, and the pause has ended. Implementation has advanced to Phase 6.
 

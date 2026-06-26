@@ -117,6 +117,7 @@ export async function PUT(req: Request, props: Params) {
           current: data.current,
           hideEndDate: data.hideEndDate,
           freeFormContext: data.freeFormContext,
+          tabLabel: data.tabLabel ?? null,
         },
         include: {
           bullets: {
@@ -148,6 +149,7 @@ export async function PUT(req: Request, props: Params) {
       current: updatedEd.current,
       hideEndDate: updatedEd.hideEndDate,
       freeFormContext: updatedEd.freeFormContext,
+      tabLabel: updatedEd.tabLabel ?? null,
       bullets: updatedEd.bullets.map((b) => ({
         id: b.id,
         text: b.text,

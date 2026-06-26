@@ -10,11 +10,11 @@ interface LLMSettingsPanelProps {
 }
 
 export default function LLMSettingsPanel({ config, credentialStatus }: LLMSettingsPanelProps) {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
 
-  const onFinish = async (values: LLMProviderConfig) => {
+  const saveConfig = async (values: LLMProviderConfig) => {
     setLoading(true);
     try {
       const response = await fetch("/api/admin/llm-config", {
@@ -35,6 +35,34 @@ export default function LLMSettingsPanel({ config, credentialStatus }: LLMSettin
       message.error(errMsg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const onFinish = async (values: LLMProviderConfig) => {
+    const unconfigured: string[] = [];
+    if (values.defaultProvider === "gemini" && !credentialStatus.gemini) unconfigured.push("Gemini (Default)");
+    if (values.defaultProvider === "claude" && !credentialStatus.claude) unconfigured.push("Claude (Default)");
+    if (values.defaultProvider === "ollama" && !credentialStatus.ollama) unconfigured.push("Ollama (Default)");
+
+    if (values.parsingProvider === "gemini" && !credentialStatus.gemini) unconfigured.push("Gemini (Parsing)");
+    if (values.parsingProvider === "claude" && !credentialStatus.claude) unconfigured.push("Claude (Parsing)");
+    if (values.parsingProvider === "ollama" && !credentialStatus.ollama) unconfigured.push("Ollama (Parsing)");
+
+    if (values.summariesProvider === "gemini" && !credentialStatus.gemini) unconfigured.push("Gemini (Summaries)");
+    if (values.summariesProvider === "claude" && !credentialStatus.claude) unconfigured.push("Claude (Summaries)");
+    if (values.summariesProvider === "ollama" && !credentialStatus.ollama) unconfigured.push("Ollama (Summaries)");
+
+    if (unconfigured.length > 0) {
+      modal.confirm({
+        title: "Warning: Missing Credentials",
+        content: `You have selected providers that do not have their API keys or endpoints configured in the environment:\n- ${unconfigured.join("\n- ")}\n\nThese providers may not function correctly. Do you want to save anyway?`,
+        okText: "Save Anyway",
+        cancelText: "Cancel",
+        okButtonProps: { danger: true },
+        onOk: () => saveConfig(values),
+      });
+    } else {
+      await saveConfig(values);
     }
   };
 

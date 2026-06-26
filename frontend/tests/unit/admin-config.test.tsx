@@ -9,6 +9,7 @@ import { App, message } from "antd";
 
 // Polyfill MessageChannel for React/rc-component in jsdom
 if (typeof global.MessageChannel === "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { MessageChannel } = require("worker_threads");
   global.MessageChannel = MessageChannel;
 }
@@ -16,10 +17,18 @@ if (typeof global.MessageChannel === "undefined") {
 // Mock fetch globally
 global.fetch = jest.fn();
 
+const mockModal = {
+  confirm: jest.fn().mockImplementation((options: any) => {
+    if (options && options.onOk) {
+      options.onOk();
+    }
+  }),
+};
+
 // Spy on App.useApp to return mocked message api from jest.setup
 jest.spyOn(App, "useApp").mockReturnValue({
   message: message,
-  modal: {} as any,
+  modal: mockModal as any,
   notification: {} as any,
 });
 

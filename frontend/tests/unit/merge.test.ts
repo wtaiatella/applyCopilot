@@ -12,6 +12,12 @@ jest.mock("../../src/lib/db/prisma", () => ({
     userProfile: {
       update: jest.fn(),
     },
+    profileSummary: {
+      findMany: jest.fn(),
+      updateMany: jest.fn(),
+      update: jest.fn(),
+      create: jest.fn(),
+    },
     experience: {
       findMany: jest.fn(),
       update: jest.fn(),
@@ -77,8 +83,93 @@ describe("ProfileMergeService", () => {
         data: basicData,
       });
     });
-  });
 
+    it("should create new ProfileSummary and deactivate old ones if summary is new", async () => {
+      const basicData = {
+        title: "Staff Engineer",
+        summary: "Passionate about full-stack architectures.",
+      };
+
+      (prisma.profileSummary.findMany as jest.Mock).mockResolvedValue([
+        { id: "s1", title: "Old Title", content: "Old Content", isActive: true },
+      ]);
+
+      await ProfileMergeService.mergeBasicData(profileId, basicData);
+
+      // Should deactivate existing
+      expect(prisma.profileSummary.updateMany).toHaveBeenCalledWith({
+        where: { profileId },
+        data: { isActive: false },
+      });
+
+      // Should create new active one
+      expect(prisma.profileSummary.create).toHaveBeenCalledWith({
+        data: {
+          profileId,
+          title: "Staff Engineer",
+          content: "Passionate about full-stack architectures.",
+          isAIGenerated: false,
+          isActive: true,
+          sortOrder: 1,
+        },
+      });
+
+      // Should update flat fields
+      expect(prisma.userProfile.update).toHaveBeenCalledWith({
+        where: { id: profileId },
+        data: {
+          title: "Staff Engineer",
+          summary: "Passionate about full-stack architectures.",
+        },
+      });
+    });
+
+    it("should activate matching duplicate ProfileSummary and deactivate others if duplicate is inactive", async () => {
+      const basicData = {
+        title: "Staff Engineer",
+        summary: "Passionate about full-stack architectures.",
+      };
+
+      (prisma.profileSummary.findMany as jest.Mock).mockResolvedValue([
+        { id: "s1", title: "Other Title", content: "Other Content", isActive: true },
+        { id: "s2", title: "Staff Engineer", content: "Passionate about full-stack architectures.", isActive: false },
+      ]);
+
+      await ProfileMergeService.mergeBasicData(profileId, basicData);
+
+      // Should deactivate all
+      expect(prisma.profileSummary.updateMany).toHaveBeenCalledWith({
+        where: { profileId },
+        data: { isActive: false },
+      });
+
+      // Should activate duplicate
+      expect(prisma.profileSummary.update).toHaveBeenCalledWith({
+        where: { id: "s2" },
+        data: { isActive: true },
+      });
+
+      // Should not call create
+      expect(prisma.profileSummary.create).not.toHaveBeenCalled();
+    });
+
+    it("should do nothing to duplicate ProfileSummary if already active", async () => {
+      const basicData = {
+        title: "Staff Engineer",
+        summary: "Passionate about full-stack architectures.",
+      };
+
+      (prisma.profileSummary.findMany as jest.Mock).mockResolvedValue([
+        { id: "s2", title: "Staff Engineer", content: "Passionate about full-stack architectures.", isActive: true },
+      ]);
+
+      await ProfileMergeService.mergeBasicData(profileId, basicData);
+
+      expect(prisma.profileSummary.updateMany).not.toHaveBeenCalled();
+      expect(prisma.profileSummary.update).not.toHaveBeenCalled();
+      expect(prisma.profileSummary.create).not.toHaveBeenCalled();
+    });
+  });
 
   describe("mergeExperiences", () => {
     it("should create new experience if no company match exists", async () => {
@@ -113,9 +204,6 @@ describe("ProfileMergeService", () => {
     });
 
     it("should update existing experience when company matches (even if position differs)", async () => {
-      // Per spec: experience match key is normalized company ONLY.
-      // "Same company / different position" must NOT create a duplicate company entry.
-      // Instead, the existing experience is updated with the new incoming data.
       const incomingExp = {
         company: "Avalara",
         position: "Manager",
@@ -134,7 +222,6 @@ describe("ProfileMergeService", () => {
 
       await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as unknown as ExperienceDTO[]);
 
-      // Should update existing, NOT create a new experience
       expect(prisma.experience.update).toHaveBeenCalled();
       expect(prisma.experience.create).not.toHaveBeenCalled();
     });
@@ -165,14 +252,11 @@ describe("ProfileMergeService", () => {
 
       await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as unknown as ExperienceDTO[]);
 
-      // Bullets merge assertions
-      // 1. Should unarchive "Archived Bullet" (id: b2)
       expect(prisma.experienceBullet.update).toHaveBeenCalledWith({
         where: { id: "b2" },
         data: { isArchived: false },
       });
 
-      // 2. Should create "Brand New Bullet"
       expect(prisma.experienceBullet.create).toHaveBeenCalledWith({
         data: {
           experienceId: "existing-exp-id",
@@ -182,9 +266,33 @@ describe("ProfileMergeService", () => {
         },
       });
 
-      // 3. Should not touch already active "Active Bullet" (id: b1)
-      expect(prisma.experienceBullet.create).toHaveBeenCalledTimes(1); // Only for the new one
-      expect(prisma.experienceBullet.update).toHaveBeenCalledTimes(1); // Only for the unarchived one
+      expect(prisma.experienceBullet.create).toHaveBeenCalledTimes(1);
+      expect(prisma.experienceBullet.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("should merge and filter duplicate context notes", async () => {
+      const incomingExp = {
+        company: "Avalara",
+        freeFormContext: ["Note A", "Note B"],
+      };
+
+      (prisma.experience.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: "existing-exp-id",
+          company: "Avalara",
+          freeFormContext: ["Note A"],
+          bullets: [],
+        },
+      ]);
+
+      await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as unknown as ExperienceDTO[]);
+
+      expect(prisma.experience.update).toHaveBeenCalledWith({
+        where: { id: "existing-exp-id" },
+        data: expect.objectContaining({
+          freeFormContext: ["Note A", "Note B"],
+        }),
+      });
     });
   });
 
@@ -215,6 +323,162 @@ describe("ProfileMergeService", () => {
         }),
       });
     });
+
+    it("should create new project if no project match exists", async () => {
+      const incomingProj = {
+        name: "NewProject",
+        technologies: ["Golang"],
+        bullets: [{ text: "Created REST API" }],
+      };
+
+      (prisma.project.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.project.create as jest.Mock).mockResolvedValue({ id: "new-proj-id" });
+
+      await ProfileMergeService.mergeProjects(profileId, [incomingProj]);
+
+      expect(prisma.project.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          profileId,
+          name: "NewProject",
+          technologies: ["Golang"],
+        }),
+      });
+
+      expect(prisma.projectBullet.create).toHaveBeenCalledWith({
+        data: {
+          projectId: "new-proj-id",
+          text: "Created REST API",
+          type: "BULLET",
+          sortOrder: 0,
+        },
+      });
+    });
+
+    it("should merge and filter duplicate project context notes", async () => {
+      const incomingProj = {
+        name: "ApplyCopilot",
+        freeFormContext: ["Note X", "Note Y"],
+        bullets: [
+          { text: "Archived Bullet" },
+          { text: "New Bullet" },
+        ],
+      };
+
+      (prisma.project.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: "existing-proj-id",
+          name: "ApplyCopilot",
+          freeFormContext: ["Note X"],
+          bullets: [
+            { id: "pb1", text: "Archived Bullet", isArchived: true },
+          ],
+          technologies: [],
+        },
+      ]);
+
+      await ProfileMergeService.mergeProjects(profileId, [incomingProj]);
+
+      expect(prisma.project.update).toHaveBeenCalledWith({
+        where: { id: "existing-proj-id" },
+        data: expect.objectContaining({
+          freeFormContext: ["Note X", "Note Y"],
+        }),
+      });
+
+      expect(prisma.projectBullet.update).toHaveBeenCalledWith({
+        where: { id: "pb1" },
+        data: { isArchived: false },
+      });
+
+      expect(prisma.projectBullet.create).toHaveBeenCalledWith({
+        data: {
+          projectId: "existing-proj-id",
+          text: "New Bullet",
+          type: "BULLET",
+          sortOrder: 1,
+        },
+      });
+    });
+  });
+
+  describe("mergeEducation", () => {
+    it("should create new education if no institution + degree match exists", async () => {
+      const incomingEd = {
+        institution: "UFSC",
+        degree: "B.S. Computer Science",
+        startDate: "2015-03-01",
+        bullets: [{ text: "GPA 3.9" }],
+      };
+
+      (prisma.education.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.education.create as jest.Mock).mockResolvedValue({ id: "new-ed-id" });
+
+      await ProfileMergeService.mergeEducation(profileId, [incomingEd]);
+
+      expect(prisma.education.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          profileId,
+          institution: "UFSC",
+          degree: "B.S. Computer Science",
+        }),
+      });
+
+      expect(prisma.educationBullet.create).toHaveBeenCalledWith({
+        data: {
+          educationId: "new-ed-id",
+          text: "GPA 3.9",
+          type: "BULLET",
+          sortOrder: 0,
+        },
+      });
+    });
+
+    it("should update existing education and merge contexts/bullets", async () => {
+      const incomingEd = {
+        institution: "UFSC",
+        degree: "B.S. Computer Science",
+        freeFormContext: ["Thesis about AI", "Thesis about compilers"],
+        bullets: [
+          { text: "Archived Bullet" },
+          { text: "New Bullet" },
+        ],
+      };
+
+      (prisma.education.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: "existing-ed-id",
+          institution: "UFSC",
+          degree: "B.S. Computer Science",
+          freeFormContext: ["Thesis about AI"],
+          bullets: [
+            { id: "eb1", text: "Archived Bullet", isArchived: true },
+          ],
+        },
+      ]);
+
+      await ProfileMergeService.mergeEducation(profileId, [incomingEd]);
+
+      expect(prisma.education.update).toHaveBeenCalledWith({
+        where: { id: "existing-ed-id" },
+        data: expect.objectContaining({
+          freeFormContext: ["Thesis about AI", "Thesis about compilers"],
+        }),
+      });
+
+      expect(prisma.educationBullet.update).toHaveBeenCalledWith({
+        where: { id: "eb1" },
+        data: { isArchived: false },
+      });
+
+      expect(prisma.educationBullet.create).toHaveBeenCalledWith({
+        data: {
+          educationId: "existing-ed-id",
+          text: "New Bullet",
+          type: "BULLET",
+          sortOrder: 1,
+        },
+      });
+    });
   });
 
   describe("mergeSkills", () => {
@@ -231,7 +495,6 @@ describe("ProfileMergeService", () => {
 
       await ProfileMergeService.mergeSkills(profileId, incomingSkills);
 
-      // TypeScript: EXPERT (from incoming) > ADVANCED, max years = 5 (from existing)
       expect(prisma.skill.update).toHaveBeenCalledWith({
         where: { id: "s1" },
         data: {
@@ -240,12 +503,30 @@ describe("ProfileMergeService", () => {
         },
       });
 
-      // Next.js: EXPERT (from existing) > INTERMEDIATE, max years = 5 (from incoming)
       expect(prisma.skill.update).toHaveBeenCalledWith({
         where: { id: "s2" },
         data: {
           proficiency: "EXPERT",
           yearsExperience: 5,
+        },
+      });
+    });
+
+    it("should create new skill if no skill match exists", async () => {
+      const incomingSkills = [
+        { name: "Rust", proficiency: "BEGINNER" as const, yearsExperience: 1 },
+      ];
+
+      (prisma.skill.findMany as jest.Mock).mockResolvedValue([]);
+
+      await ProfileMergeService.mergeSkills(profileId, incomingSkills);
+
+      expect(prisma.skill.create).toHaveBeenCalledWith({
+        data: {
+          profileId,
+          name: "Rust",
+          proficiency: "BEGINNER",
+          yearsExperience: 1,
         },
       });
     });

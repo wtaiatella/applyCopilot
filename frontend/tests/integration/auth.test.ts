@@ -6,6 +6,7 @@ import { POST as registerHandler } from "@/app/api/auth/register/route";
 import { POST as forgotPasswordHandler } from "@/app/api/auth/forgot-password/route";
 import { POST as resetPasswordHandler } from "@/app/api/auth/reset-password/route";
 import { prisma, pool } from "@/lib/db/prisma";
+import { authConfig } from "@/lib/auth/authConfig";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -254,6 +255,49 @@ describe("Authentication & Password Reset Integration Tests", () => {
       const json = await res.json();
       expect(json.success).toBe(false);
       expect(json.message).toContain("expired");
+    });
+  });
+
+  describe("NextAuth session role claim callbacks", () => {
+    it("should map user role to JWT token", async () => {
+      const jwtCallback = authConfig.callbacks?.jwt;
+      expect(jwtCallback).toBeDefined();
+
+      const mockUser = { id: "user-id-123", email: "admin@example.com", role: "ADMIN" };
+      const mockToken = { sub: "sub-123" };
+
+      const resultToken = await jwtCallback!({
+        token: mockToken,
+        user: mockUser as any,
+        account: null as any,
+        profile: null as any,
+        trigger: "signIn",
+      });
+
+      expect(resultToken).toBeDefined();
+      expect(resultToken.id).toBe("user-id-123");
+      expect(resultToken.role).toBe("ADMIN");
+    });
+
+    it("should map token role to Session user object", async () => {
+      const sessionCallback = authConfig.callbacks?.session;
+      expect(sessionCallback).toBeDefined();
+
+      const mockSession = {
+        user: { name: "Test User", email: "test@example.com" },
+        expires: new Date().toISOString(),
+      };
+      const mockToken = { id: "user-id-123", role: "ADMIN" };
+
+      const resultSession = await sessionCallback!({
+        session: mockSession as any,
+        token: mockToken as any,
+        user: null as any,
+      });
+
+      expect(resultSession).toBeDefined();
+      expect(resultSession.user.id).toBe("user-id-123");
+      expect(resultSession.user.role).toBe("ADMIN");
     });
   });
 });

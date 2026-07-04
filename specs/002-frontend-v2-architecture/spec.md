@@ -11,6 +11,20 @@
 
 This specification defines the architectural decisions and implementation details for the ApplyCopilot Frontend V2. The objective is to build a robust, scalable, and mobile-ready web client that integrates seamlessly with our relational PostgreSQL database.
 
+> [!IMPORTANT]
+> **Project Roadmap & Continuity**: This (`002`) is the principal architectural specification for the ApplyCopilot project. Its rules, patterns, and decisions serve as the foundation for all subsequent feature specifications. The project is organized into the following sequential phases:
+> - **Phase 1 - Foundation + Profile**
+>   - [Spec 002 (Architecture & Profile)](file:///Users/wagnertaiatella/repos/applyCopilot/specs/002-frontend-v2-architecture/spec.md)
+>   - [Spec 005 (Admin Settings Page)](file:///Users/wagnertaiatella/repos/applyCopilot/specs/005-admin-llm-settings/spec.md)
+> - **Phase 2 - Job Scraper and Worker**
+>   - [Spec 003 (Job Discovery)](file:///Users/wagnertaiatella/repos/applyCopilot/specs/003-job-discovery/spec.md)
+> - **Phase 3 - Job classification**
+>   - [Spec 004 (Job Classification)](file:///Users/wagnertaiatella/repos/applyCopilot/specs/004-application-tracking/spec.md)
+> - **Phase 4 - CV Creation**
+>   - Spec 007
+> - **Phase 5 - Job Tracking**
+>   - Spec 008
+
 The architecture focuses on:
 - Maintaining a clean, standardized REST API that can be consumed by future native clients (e.g., Android/iOS).
 - Implementing a unified client-side state machine using React Context to prevent data loss when navigating between profile sections.
@@ -181,7 +195,7 @@ Each project item is rendered as an editable tab. Form fields (as shown in the P
 
 #### References Tab
 
-Simple list with name, company, relationship, email, phone, canContact toggle. Implemented in Phase 6 (T050).
+Simple list with name, company, relationship, email, phone, canContact toggle. Implemented in Phase 6.
 
 ---
 

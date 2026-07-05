@@ -250,3 +250,79 @@ model AIUsageLog {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+enum ScrapeTaskType {
+  LIST
+  DEEP
+}
+
+enum ScrapeTaskStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum PortalStatus {
+  ACTIVE
+  BROKEN
+  DISABLED
+}
+
+model ScrapeTask {
+  id           String           @id @default(cuid())
+  type         ScrapeTaskType
+  portalId     String
+  status       ScrapeTaskStatus @default(PENDING)
+  progress     Int              @default(0)
+  resultsCount Int              @default(0)
+  attempts     Int              @default(0)
+  errorMessage String?
+
+  searchUrl    String?
+  keywords     String?
+  location     String?
+  triggeredBy  String?
+
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model PortalSearchUrl {
+  id              String       @id @default(cuid())
+  portalId        String
+  url             String
+  name            String
+  isActive        Boolean      @default(true)
+  status          PortalStatus @default(ACTIVE)
+  isRobotsBlocked Boolean      @default(false)
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model JobListing {
+  id                       String    @id @default(cuid())
+  portalId                 String
+  externalJobId            String
+  title                    String
+  company                  String
+  location                 String?
+  url                      String
+  isFullDescriptionFetched Boolean   @default(false)
+  fullDescription          String?   @db.Text
+
+  locationType             String?
+  countries                String?
+  jobType                  String?
+  experienceLevel          String?
+  postedAt                 DateTime?
+  salaryMin                Float?
+  salaryMax                Float?
+  currency                 String?
+
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@unique([portalId, externalJobId])
+}
+

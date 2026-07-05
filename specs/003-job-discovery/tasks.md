@@ -21,9 +21,9 @@
 
 **Purpose**: Project initialization and basic dependencies
 
-- [ ] T001 Install `cheerio` and `turndown` packages in frontend (`cd frontend && npm install cheerio turndown && npm install --save-dev @types/turndown`)
-- [ ] T002 [P] Create DTOs in `frontend/src/types/scraper.ts` based on data-model.md
-- [ ] T003 [P] Create directory structure `frontend/src/lib/scraper/portals` and `frontend/src/components/settings/portals`
+- [x] T001 Install `cheerio` and `turndown` packages in frontend (`cd frontend && npm install cheerio turndown && npm install --save-dev @types/turndown`)
+- [x] T002 [P] Create DTOs in `frontend/src/types/scraper.ts` based on data-model.md
+- [x] T003 [P] Create directory structure `frontend/src/lib/scraper/portals` and `frontend/src/components/settings/portals`
 
 ---
 
@@ -33,11 +33,11 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Add `ScrapeTask`, `PortalSearchUrl`, `JobListing`, and `SystemConfig` entities to `frontend/prisma/schema.prisma` per data-model.md
-- [ ] T005 Create database migration and apply schema changes (`cd frontend && npx prisma migrate dev --name init_scraper_worker`)
-- [ ] T006 Update `frontend/next.config.ts` to enable experimental instrumentation hooks via `experimental: { instrumentationHook: true }`
-- [ ] T007 Create background loop bootstrapper in `frontend/src/instrumentation.ts` to hook into Next.js startup
-- [ ] T008 Implement worker startup crash recovery inside `frontend/src/instrumentation.ts` that resets `RUNNING` tasks back to `PENDING`
+- [x] T004 Add `ScrapeTask`, `PortalSearchUrl`, `JobListing`, and `SystemConfig` entities to `frontend/prisma/schema.prisma` per data-model.md
+- [x] T005 Create database migration and apply schema changes (`cd frontend && npx prisma migrate dev --name init_scraper_worker`)
+- [x] T006 Update `frontend/next.config.ts` to enable experimental instrumentation hooks via `experimental: { instrumentationHook: true }`
+- [x] T007 Create background loop bootstrapper in `frontend/src/instrumentation.ts` to hook into Next.js startup
+- [x] T008 Implement worker startup crash recovery inside `frontend/src/instrumentation.ts` that resets `RUNNING` tasks back to `PENDING`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -51,14 +51,14 @@
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Create Queue Manager in `frontend/src/lib/scraper/queue.ts` to poll database tasks and schedule Step 1 and Step 2 execution loops
-- [ ] T010 [US1] Create strategy interface `ScraperStrategy` and runner engine in `frontend/src/lib/scraper/engine.ts`
-- [ ] T011 [US1] Implement standard HTML/JSON fetcher logic in `frontend/src/lib/scraper/engine.ts` with custom User-Agent configuration support
-- [ ] T012 [US1] Implement the Portal Strategy Registry in `frontend/src/lib/scraper/registry.ts`
-- [ ] T013 [P] [US1] Implement basic example portal strategy in `frontend/src/lib/scraper/portals/example.ts`
-- [ ] T014 [US1] Implement the Job List Worker (Step 1 loop, every 6 hours) and Job Description Queue Worker (Step 2 loop, 1-second delay) in `frontend/src/lib/scraper/queue.ts`
-- [ ] T015 [US1] Write Jest unit tests for strategies in `frontend/tests/scraper/strategies.test.ts`
-- [ ] T016 [US1] Write Jest integration test for queue workers in `frontend/tests/scraper/queue.test.ts`
+- [x] T009 [US1] Create Queue Manager in `frontend/src/lib/scraper/queue.ts` to poll database tasks and schedule Step 1 and Step 2 execution loops
+- [x] T010 [US1] Create strategy interface `ScraperStrategy` and runner engine in `frontend/src/lib/scraper/engine.ts`
+- [x] T011 [US1] Implement standard HTML/JSON fetcher logic in `frontend/src/lib/scraper/engine.ts` with custom User-Agent configuration support
+- [x] T012 [US1] Implement the Portal Strategy Registry in `frontend/src/lib/scraper/registry.ts`
+- [x] T013 [P] [US1] Implement basic example portal strategy in `frontend/src/lib/scraper/portals/example.ts`
+- [x] T014 [US1] Implement the Job List Worker (Step 1 loop, every 6 hours) and Job Description Queue Worker (Step 2 loop, 1-second delay) in `frontend/src/lib/scraper/queue.ts`
+- [x] T015 [US1] Write Jest unit tests for strategies in `frontend/tests/unit/scraper/strategies.test.ts`
+- [x] T016 [US1] Write Jest integration test for queue workers in `frontend/tests/integration/scraper/queue.test.ts`
 
 **Checkpoint**: At this point, the background worker automatically processes Step 1 and Step 2 in the background and populates the database.
 
@@ -72,10 +72,10 @@
 
 ### Implementation for User Story 2
 
-- [ ] T017 [US2] Create synchronous scraper tester endpoint `POST /api/scrape/test` in `frontend/src/app/api/scrape/test/route.ts`
-- [ ] T018 [US2] Implement SSE progress stream endpoint `GET /api/scrape/stream` in `frontend/src/app/api/scrape/stream/route.ts` using a Prisma polling loop to track manual scraper triggers
-- [ ] T019 [US2] Build manual trigger and results component `frontend/src/components/settings/portals/ManualScrapeTrigger.tsx`
-- [ ] T020 [US2] Write unit tests for tester and SSE stream endpoints in `frontend/tests/scraper/api.test.ts`
+- [x] T017 [US2] Create synchronous scraper tester endpoint `POST /api/scrape/test` in `frontend/src/app/api/scrape/test/route.ts`
+- [x] T018 [US2] Implement SSE progress stream endpoint `GET /api/scrape/stream` in `frontend/src/app/api/scrape/stream/route.ts` using a Prisma polling loop to track manual scraper triggers
+- [x] T019 [US2] Build manual trigger and results component `frontend/src/components/settings/portals/ManualScrapeTrigger.tsx`
+- [x] T020 [US2] Write unit tests for tester and SSE stream endpoints in `frontend/tests/unit/scraper/api.test.ts`
 
 **Checkpoint**: Users can now test strategies synchronously in the UI and receive real-time progress updates.
 
@@ -89,15 +89,15 @@
 
 ### Implementation for User Story 3
 
-- [ ] T021 [US3] Create REST API endpoints for portal search URL CRUD under `frontend/src/app/api/settings/portals/route.ts` and `frontend/src/app/api/settings/portals/[id]/route.ts`
-- [ ] T022 [US3] Apply session authentication middleware to portal settings and scrape API routes
-- [ ] T023 [US3] Implement `robots.txt` fetching and informational parsing flag on portal settings API creation
-- [ ] T024 [US3] Implement deduplication upsert logic (`@@unique([portalId, externalJobId])`) in the worker engine in `frontend/src/lib/scraper/engine.ts`
-- [ ] T025 [US3] Implement task-level retries (3 attempts) and Broken status transitions for `PortalSearchUrl` on task failures in `frontend/src/lib/scraper/engine.ts`
-- [ ] T026 [US3] Create global settings API and configurations (Interval, Delay, Concurrency, Max Retries, User-Agent) under `frontend/src/app/api/settings/config/route.ts`
-- [ ] T027 [US3] Build admin Portal URL Settings list and controls UI in `frontend/src/components/settings/portals/PortalSettingsList.tsx`
-- [ ] T028 [US3] Build parent admin settings page at `frontend/src/app/(main)/settings/portals/page.tsx`
-- [ ] T029 [US3] Write Jest tests for deduplication and failure state transitions in `frontend/tests/scraper/engine.test.ts`
+- [x] T021 [US3] Create REST API endpoints for portal search URL CRUD under `frontend/src/app/api/settings/portals/route.ts` and `frontend/src/app/api/settings/portals/[id]/route.ts`
+- [x] T022 [US3] Apply session authentication middleware to portal settings and scrape API routes
+- [x] T023 [US3] Implement `robots.txt` fetching and informational parsing flag on portal settings API creation
+- [x] T024 [US3] Implement deduplication upsert logic (`@@unique([portalId, externalJobId])`) in the worker engine in `frontend/src/lib/scraper/engine.ts`
+- [x] T025 [US3] Implement task-level retries (3 attempts) and Broken status transitions for `PortalSearchUrl` on task failures in `frontend/src/lib/scraper/engine.ts`
+- [x] T026 [US3] Create global settings API and configurations (Interval, Delay, Concurrency, Max Retries, User-Agent) under `frontend/src/app/api/settings/config/route.ts`
+- [x] T027 [US3] Build admin Portal URL Settings list and controls UI in `frontend/src/components/settings/portals/PortalSettingsList.tsx`
+- [x] T028 [US3] Build parent admin settings page at `frontend/src/app/(main)/settings/portals/page.tsx`
+- [x] T029 [US3] Write Jest tests for deduplication and failure state transitions in `frontend/tests/integration/scraper/engine.test.ts`
 
 **Checkpoint**: Administrators can manage portal URLs, configurations are persistent, and extraction failures flag broken portals.
 

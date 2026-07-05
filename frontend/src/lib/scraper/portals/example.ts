@@ -18,7 +18,7 @@ export const exampleStrategy: ScraperStrategy = {
           title,
           company,
           url,
-          location: $(el).find(".location").text().trim() || null,
+          location: $(el).find(".location").text().trim() || undefined,
         });
       }
     });

@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Table, Button, Form, Input, InputNumber, Select, Switch, Tag, Tooltip, Card, Space, Typography, Popconfirm, message } from "antd";
-import { ShieldAlert, Trash2, RotateCw, Settings, Plus } from "lucide-react";
+import { Form, Input, Select, Button, Radio, Progress, Table, Switch, Tag, InputNumber, Space, Typography, Popconfirm, Collapse, Tooltip } from "antd";
+import { message as AntdMessage } from "antd";
+import { Play, Plus, Trash2, RotateCw, Settings, Activity, ShieldAlert } from "lucide-react";
 
 const { Text, Link } = Typography;
 
@@ -16,24 +17,34 @@ interface PortalSearchUrl {
   isRobotsBlocked: boolean;
 }
 
-interface ScraperConfig {
-  globalScrapeInterval: number;
-  maxConcurrency: number;
-  rateLimitDelay: number;
-  maxExtractionRetries: number;
-  userAgent: string;
+interface StreamData {
+  status: string;
+  progress: number;
+  resultsCount: number;
+  errorMessage: string | null;
+  error?: string;
 }
 
 export default function PortalSettingsList() {
+  const [messageApi, contextHolder] = AntdMessage.useMessage();
+  const message = messageApi; // Shadow imported static message with context-aware hook instance
+
   const [portals, setPortals] = useState<PortalSearchUrl[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
-  const [submittingPortal, setSubmittingPortal] = useState(false);
-  
-  const [portalForm] = Form.useForm();
+  const [loadingTest, setLoadingTest] = useState(false);
+  const [addingToWorker, setAddingToWorker] = useState(false);
+  const [mode, setMode] = useState<"sync" | "async">("sync");
+  const [testResult, setTestResult] = useState<any>(null);
+
+  // SSE states
+  const [sseTask, setSseTask] = useState<StreamData | null>(null);
+  const [sseLogs, setSseLogs] = useState<string[]>([]);
+
+  const [testerForm] = Form.useForm();
   const [configForm] = Form.useForm();
 
-  // Load configs and portal search URLs
+  // Load database portal configurations and global settings
   const loadData = async () => {
     setLoadingList(true);
     setLoadingConfig(true);
@@ -61,25 +72,121 @@ export default function PortalSettingsList() {
     loadData();
   }, []);
 
-  const handleAddPortal = async (values: any) => {
-    setSubmittingPortal(true);
+  // Run Test (synchronous or background queue with SSE)
+  const handleRunTest = async () => {
     try {
+      const values = await testerForm.validateFields();
+      setTestResult(null);
+      setSseTask(null);
+      setSseLogs([]);
+
+      const { url, portalId, type } = values;
+      setLoadingTest(true);
+
+      if (mode === "sync") {
+        const res = await fetch("/api/scrape/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, portalId, type }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Synchronous test failed");
+        }
+        setTestResult(data);
+        message.success("Synchronous strategy test complete!");
+        setLoadingTest(false);
+      } else {
+        // Async / SSE Mode
+        const res = await fetch("/api/scrape/manual", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, portalId, type }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Failed to trigger manual background task");
+        }
+
+        const taskId = data.taskId;
+        setSseLogs((prev) => [...prev, `[SSE] Created background task: ${taskId}`]);
+        message.info("Background task enqueued. Connecting stream...");
+
+        const eventSource = new EventSource(`/api/scrape/stream?taskId=${taskId}`);
+
+        eventSource.onmessage = (event) => {
+          const taskData: StreamData = JSON.parse(event.data);
+          setSseTask(taskData);
+
+          if (taskData.error) {
+            setSseLogs((prev) => [...prev, `[Error] ${taskData.error}`]);
+            eventSource.close();
+            setLoadingTest(false);
+            message.error("Task failed to process.");
+            return;
+          }
+
+          setSseLogs((prev) => [
+            ...prev,
+            `[Update] Status: ${taskData.status} | Progress: ${taskData.progress}%` +
+            (taskData.resultsCount ? ` | Results: ${taskData.resultsCount}` : "") +
+            (taskData.errorMessage ? ` | Error: ${taskData.errorMessage}` : ""),
+          ]);
+
+          if (taskData.status === "COMPLETED") {
+            setSseLogs((prev) => [...prev, "[SSE] Connection closed. Task completed successfully!"]);
+            eventSource.close();
+            setLoadingTest(false);
+            message.success("Manual scrape completed!");
+          } else if (taskData.status === "FAILED") {
+            setSseLogs((prev) => [...prev, `[SSE] Connection closed. Task failed: ${taskData.errorMessage}`]);
+            eventSource.close();
+            setLoadingTest(false);
+            message.error("Manual scrape failed.");
+          }
+        };
+
+        eventSource.onerror = (err) => {
+          console.error("SSE Error:", err);
+          setSseLogs((prev) => [...prev, "[SSE Error] Connection interrupted. Client closed."]);
+          eventSource.close();
+          setLoadingTest(false);
+        };
+      }
+    } catch (err: any) {
+      message.error(err.message || "Please check required fields.");
+      setLoadingTest(false);
+    }
+  };
+
+  // Add to Worker (saves search URL target configuration to Database)
+  const handleAddToWorker = async () => {
+    try {
+      const values = await testerForm.validateFields();
+      const { url, portalId } = values;
+      setAddingToWorker(true);
+
+      let host = "Target";
+      try {
+        host = new URL(url).hostname.replace("www.", "");
+      } catch {}
+      const derivedName = `${portalId.toUpperCase()} - ${host}`;
+
       const res = await fetch("/api/settings/portals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({ url, portalId, name: derivedName }),
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to create portal search URL");
+        throw new Error(data.error || "Failed to add target to database");
       }
-      message.success("Portal search URL registered!");
-      portalForm.resetFields();
+      message.success("Search target added to worker queue!");
       loadData();
     } catch (err: any) {
-      message.error(err.message || "Failed to add portal URL");
+      message.error(err.message || "Failed to register target.");
     } finally {
-      setSubmittingPortal(false);
+      setAddingToWorker(false);
     }
   };
 
@@ -101,10 +208,10 @@ export default function PortalSettingsList() {
       if (!res.ok) {
         throw new Error("Update failed");
       }
-      message.success(`Portal ${checked ? "enabled" : "disabled"}`);
+      message.success(`Target ${checked ? "activated" : "deactivated"}`);
       loadData();
     } catch (err) {
-      message.error("Failed to toggle active state");
+      message.error("Failed to update active state");
     }
   };
 
@@ -116,10 +223,10 @@ export default function PortalSettingsList() {
       if (!res.ok) {
         throw new Error("Delete failed");
       }
-      message.success("Search URL deleted!");
+      message.success("Search target removed.");
       loadData();
     } catch (err) {
-      message.error("Failed to delete search URL");
+      message.error("Failed to delete target.");
     }
   };
 
@@ -135,8 +242,8 @@ export default function PortalSettingsList() {
       const data = await res.json();
       message.success({
         content: data.isRobotsBlocked
-          ? "Re-check complete: Crawling is discouraged by robots.txt (warning displayed)"
-          : "Re-check complete: Crawling is allowed!",
+          ? "Re-check complete: crawling is discouraged by robots.txt"
+          : "Re-check complete: crawling is allowed!",
         key: "robots",
         duration: 4,
       });
@@ -157,10 +264,10 @@ export default function PortalSettingsList() {
       if (!res.ok) {
         throw new Error("Failed to save global configurations");
       }
-      message.success("Global scraper configuration updated!");
+      message.success("Global settings saved successfully!");
       loadData();
     } catch (err) {
-      message.error("Failed to update global configurations");
+      message.error("Failed to update configurations");
     } finally {
       setLoadingConfig(false);
     }
@@ -174,30 +281,31 @@ export default function PortalSettingsList() {
       render: (text: string) => <Text strong>{text}</Text>,
     },
     {
-      title: "Portal Strategy",
-      dataIndex: "portalId",
-      key: "portalId",
-      render: (text: string) => <Tag color="blue">{text.toUpperCase()}</Tag>,
-    },
-    {
-      title: "Search URL",
+      title: "URL",
       dataIndex: "url",
       key: "url",
       render: (text: string) => (
-        <Link href={text} target="_blank" ellipsis style={{ maxWidth: 250 }}>
+        <Link href={text} target="_blank" ellipsis style={{ maxWidth: 300 }}>
           {text}
         </Link>
       ),
     },
     {
-      title: "Status",
+      title: "Health",
       dataIndex: "status",
       key: "status",
-      render: (status: string) => {
+      render: (status: string, record: PortalSearchUrl) => {
         let color = "green";
-        if (status === "BROKEN") color = "red";
-        if (status === "DISABLED") color = "orange";
-        return <Tag color={color}>{status}</Tag>;
+        let label = "Healthy";
+        
+        if (status === "BROKEN") {
+          color = "red";
+          label = "Broken";
+        } else if (status === "DISABLED" || !record.isActive) {
+          color = "orange";
+          label = "Disabled";
+        }
+        return <Tag color={color}>{label}</Tag>;
       },
     },
     {
@@ -230,7 +338,7 @@ export default function PortalSettingsList() {
             Check Robots
           </Button>
           <Popconfirm
-            title="Are you sure you want to delete this configuration?"
+            title="Remove this target config?"
             onConfirm={() => handleDeletePortal(record.id)}
             okText="Yes"
             cancelText="No"
@@ -244,134 +352,255 @@ export default function PortalSettingsList() {
     },
   ];
 
-  return (
-    <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      {/* Global Configuration Card */}
-      <Card title="Global Scraper Parameters" extra={<Settings size={18} />}>
+  // Define the collapsible items matching Settings General
+  const collapseItems = [
+    {
+      key: "global-config",
+      label: (
+        <span className="flex items-center gap-2 text-white font-semibold text-base">
+          <Settings size={18} />
+          Global Worker Configuration
+        </span>
+      ),
+      children: (
         <Form
           form={configForm}
           layout="vertical"
           onFinish={handleSaveConfig}
           disabled={loadingConfig}
+          className="pt-2"
         >
-          <Space size="large" style={{ display: "flex", flexWrap: "wrap", width: "100%", marginBottom: 0 }}>
+          <Form.Item
+            label="Worker User-Agent"
+            name="userAgent"
+            rules={[{ required: true, message: "Required" }]}
+            style={{ maxWidth: 600 }}
+          >
+            <Input placeholder="ApplyCopilot/1.0" />
+          </Form.Item>
+
+          <Form.Item
+            label="Wellfound Cookie (Bypass Datadome)"
+            name="wellfoundCookie"
+            style={{ maxWidth: 600 }}
+          >
+            <Input.TextArea placeholder="notice_preferences=2:; notice_gdpr_prefs=0|1|2:; ... datadome=..." rows={3} />
+          </Form.Item>
+
+          <Form.Item
+            label="Wellfound User-Agent (Must match browser of Cookie)"
+            name="wellfoundUserAgent"
+            style={{ maxWidth: 600 }}
+          >
+            <Input placeholder="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ..." />
+          </Form.Item>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Form.Item
-              label="Scraping Cycle Interval (Minutes)"
+              label="Max Retries"
+              name="maxExtractionRetries"
+              rules={[{ required: true, message: "Required" }]}
+            >
+              <InputNumber min={1} max={5} style={{ width: "100%" }} />
+            </Form.Item>
+
+            <Form.Item
+              label="Auto-Scrape Interval (Minutes)"
               name="globalScrapeInterval"
               rules={[{ required: true, message: "Required" }]}
-              style={{ marginBottom: 16 }}
             >
-              <InputNumber min={5} max={1440} placeholder="360" />
+              <InputNumber min={5} max={1440} style={{ width: "100%" }} />
             </Form.Item>
 
             <Form.Item
               label="Rate Limit Delay (ms)"
               name="rateLimitDelay"
               rules={[{ required: true, message: "Required" }]}
-              style={{ marginBottom: 16 }}
             >
-              <InputNumber min={100} max={10000} placeholder="1000" />
+              <InputNumber min={100} max={10000} style={{ width: "100%" }} />
             </Form.Item>
 
             <Form.Item
               label="Max Concurrency"
               name="maxConcurrency"
               rules={[{ required: true, message: "Required" }]}
-              style={{ marginBottom: 16 }}
             >
-              <InputNumber min={1} max={10} placeholder="3" />
+              <InputNumber min={1} max={10} style={{ width: "100%" }} />
             </Form.Item>
+          </div>
 
-            <Form.Item
-              label="Max Extraction Retries"
-              name="maxExtractionRetries"
-              rules={[{ required: true, message: "Required" }]}
-              style={{ marginBottom: 16 }}
-            >
-              <InputNumber min={1} max={5} placeholder="3" />
-            </Form.Item>
-          </Space>
-
-          <Form.Item
-            label="User-Agent String"
-            name="userAgent"
-            rules={[{ required: true, message: "Required" }]}
-            style={{ maxWidth: 600, marginBottom: 16 }}
-          >
-            <Input placeholder="ApplyCopilot/1.0" />
-          </Form.Item>
-
-          <Form.Item style={{ marginBottom: 0 }}>
+          <Form.Item style={{ marginTop: 16, marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" loading={loadingConfig}>
-              Save Scraper Configurations
+              Save Global Settings
             </Button>
           </Form.Item>
         </Form>
-      </Card>
-
-      {/* Add New Portal Card */}
-      <Card title="Register Portal Search Target">
+      ),
+    },
+    {
+      key: "tester",
+      label: (
+        <span className="flex items-center gap-2 text-white font-semibold text-base">
+          <Play size={18} />
+          Scraper Tester
+        </span>
+      ),
+      children: (
         <Form
-          form={portalForm}
+          form={testerForm}
           layout="vertical"
-          onFinish={handleAddPortal}
-          style={{ maxWidth: 800 }}
+          initialValues={{ portalId: "example", type: "LIST" }}
+          className="pt-2"
         >
-          <Space size="large" style={{ display: "flex", flexWrap: "wrap", width: "100%", marginBottom: 16 }}>
-            <Form.Item
-              label="Configuration Name"
-              name="name"
-              rules={[{ required: true, message: "Please input a configuration name!" }]}
-              style={{ minWidth: 250, marginBottom: 0 }}
-            >
-              <Input placeholder="e.g. Workable React Jobs" />
-            </Form.Item>
-
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Form.Item
               label="Portal Strategy"
               name="portalId"
-              rules={[{ required: true, message: "Select strategy!" }]}
-              style={{ minWidth: 180, marginBottom: 0 }}
+              rules={[{ required: true, message: "Required" }]}
             >
               <Select>
-                <Select.Option value="example">Example Strategy</Select.Option>
-                <Select.Option value="workable">Workable Strategy</Select.Option>
-                <Select.Option value="linkedin">LinkedIn Strategy</Select.Option>
+                <Select.Option value="example">example</Select.Option>
+                <Select.Option value="workable">workable</Select.Option>
+                <Select.Option value="linkedin">linkedin</Select.Option>
+                <Select.Option value="wellfound">wellfound</Select.Option>
               </Select>
             </Form.Item>
-          </Space>
 
-          <Form.Item
-            label="Scraping Search URL"
-            name="url"
-            rules={[{ required: true, message: "Please input the target search URL!" }]}
-          >
-            <Input placeholder="https://jobs.workable.com/api/v1/jobs?query=react" />
-          </Form.Item>
+            <Form.Item
+              label="Logic Type"
+              name="type"
+              rules={[{ required: true, message: "Required" }]}
+            >
+              <Select>
+                <Select.Option value="LIST">Job List</Select.Option>
+                <Select.Option value="DEEP">Job Detail</Select.Option>
+              </Select>
+            </Form.Item>
 
-          <Form.Item style={{ marginBottom: 0 }}>
+            <Form.Item
+              label="Search URL"
+              name="url"
+              rules={[{ required: true, message: "Required" }]}
+            >
+              <Input placeholder="https://..." />
+            </Form.Item>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <Radio.Group value={mode} onChange={(e) => setMode(e.target.value)}>
+              <Radio.Button value="sync">Synchronous Test</Radio.Button>
+              <Radio.Button value="async">Queue Task (SSE Stream)</Radio.Button>
+            </Radio.Group>
+          </div>
+
+          <Space>
             <Button
               type="primary"
-              htmlType="submit"
-              loading={submittingPortal}
+              onClick={handleRunTest}
+              loading={loadingTest}
+              icon={<Play size={16} />}
+            >
+              {mode === "sync" ? "Run Test" : "Trigger Scrape"}
+            </Button>
+            <Button
+              onClick={handleAddToWorker}
+              loading={addingToWorker}
               icon={<Plus size={16} />}
             >
-              Register URL Target
+              Add to Worker
             </Button>
-          </Form.Item>
-        </Form>
-      </Card>
+          </Space>
 
-      {/* Registered Targets List */}
-      <Card title="Registered Search Targets">
-        <Table
-          dataSource={portals}
-          columns={columns}
-          rowKey="id"
-          loading={loadingList}
-          pagination={false}
-        />
-      </Card>
-    </Space>
+          {/* SSE log display */}
+          {sseTask && (
+            <div style={{ marginTop: 20, padding: 15, background: "#111", borderRadius: 8 }} className="border border-zinc-800">
+              <Text strong style={{ color: "#fff" }}>Manual Task Progress</Text>
+              <div style={{ margin: "10px 0" }}>
+                <Progress
+                  percent={sseTask.progress}
+                  status={
+                    sseTask.status === "FAILED"
+                      ? "exception"
+                      : sseTask.status === "COMPLETED"
+                      ? "success"
+                      : "active"
+                  }
+                />
+              </div>
+              <Space>
+                <Text style={{ color: "#aaa" }}>Status: <strong style={{ color: "#fff", textTransform: "uppercase" }}>{sseTask.status}</strong></Text>
+                {sseTask.resultsCount > 0 && (
+                  <Text type="success">| Processed Count: <strong style={{ color: "#52c41a" }}>{sseTask.resultsCount}</strong></Text>
+                )}
+              </Space>
+            </div>
+          )}
+
+          {sseLogs.length > 0 && (
+            <div
+              style={{ marginTop: 15, maxHeight: 180, overflowY: "auto", background: "#0c0c0e", padding: 10, borderRadius: 8 }}
+              className="border border-zinc-800"
+            >
+              {sseLogs.map((log, index) => (
+                <pre key={index} style={{ margin: 0, color: "#4ade80", fontFamily: "monospace", fontSize: 12, whiteSpace: "pre-wrap" }}>
+                  {log}
+                </pre>
+              ))}
+            </div>
+          )}
+
+          {/* Sync result code output */}
+          {testResult && (
+            <div style={{ marginTop: 20, background: "#0c0c0e", padding: 15, borderRadius: 8 }} className="border border-zinc-800">
+              <pre
+                style={{
+                  margin: 0,
+                  color: "#f8f8f2",
+                  maxHeight: 300,
+                  overflowY: "auto",
+                  fontFamily: "monospace",
+                  fontSize: 11,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {JSON.stringify(testResult, null, 2)}
+              </pre>
+            </div>
+          )}
+        </Form>
+      ),
+    },
+    {
+      key: "portals",
+      label: (
+        <span className="flex items-center gap-2 text-white font-semibold text-base">
+          <Activity size={18} />
+          Portal Management
+        </span>
+      ),
+      children: (
+        <div className="pt-2">
+          <Table
+            dataSource={portals}
+            columns={columns}
+            rowKey="id"
+            loading={loadingList}
+            pagination={false}
+          />
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      {contextHolder}
+      <Collapse
+        defaultActiveKey={["global-config", "tester", "portals"]}
+        items={collapseItems}
+        className="bg-transparent border-0"
+        expandIconPosition="start"
+      />
+    </>
   );
 }

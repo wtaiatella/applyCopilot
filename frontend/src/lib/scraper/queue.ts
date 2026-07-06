@@ -1,8 +1,11 @@
 import { prisma } from "@/lib/db/prisma";
 import { runTask } from "./engine";
+import { logger } from "@/lib/logging/logger";
 
 // Import strategy files to trigger auto-registration in Registry
 import "./portals/example";
+import "./portals/workable";
+import "./portals/wellfound";
 
 let isWorkerRunning = false;
 
@@ -11,13 +14,14 @@ async function getConfigVal(key: string, defaultVal: string): Promise<string> {
   try {
     const config = await prisma.systemConfig.findUnique({ where: { key } });
     return config ? config.value : defaultVal;
-  } catch (err) {
+  } catch {
     return defaultVal;
   }
 }
 
 // Schedule LIST tasks (Step 1) for active configurations that have not run within the interval
 export async function scheduleListTasks() {
+  logger.debug("[Scraper Queue] scheduleListTasks entry");
   try {
     const activeConfigs = await prisma.portalSearchUrl.findMany({
       where: {
@@ -42,7 +46,7 @@ export async function scheduleListTasks() {
       });
 
       if (!lastTask) {
-        await prisma.scrapeTask.create({
+        const newTask = await prisma.scrapeTask.create({
           data: {
             type: "LIST",
             portalId: config.portalId,
@@ -51,16 +55,20 @@ export async function scheduleListTasks() {
             progress: 0,
           },
         });
-        console.log(`[Scraper Queue] Scheduled LIST task for config ${config.id} (${config.portalId})`);
+        logger.info(`[Scraper Queue] Scheduled LIST task ${newTask.id} for config ${config.id} (${config.portalId})`);
       }
     }
-  } catch (error) {
-    console.error("[Scraper Queue] Failed scheduling LIST tasks:", error);
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error(`[Scraper Queue] Failed scheduling LIST tasks: ${errMsg}`, { error });
+  } finally {
+    logger.debug("[Scraper Queue] scheduleListTasks return");
   }
 }
 
 // Enqueue DEEP tasks (Step 2) for JobListing entries with pending full description extraction
 export async function enqueueDeepTasks() {
+  logger.debug("[Scraper Queue] enqueueDeepTasks entry");
   try {
     const pendingJobs = await prisma.jobListing.findMany({
       where: {
@@ -80,7 +88,7 @@ export async function enqueueDeepTasks() {
       });
 
       if (!taskExists) {
-        await prisma.scrapeTask.create({
+        const newTask = await prisma.scrapeTask.create({
           data: {
             type: "DEEP",
             portalId: job.portalId,
@@ -89,27 +97,34 @@ export async function enqueueDeepTasks() {
             progress: 0,
           },
         });
-        console.log(`[Scraper Queue] Enqueued DEEP task for job listing: ${job.url}`);
+        logger.info(`[Scraper Queue] Enqueued DEEP task ${newTask.id} for job listing: ${job.url}`);
       }
     }
-  } catch (error) {
-    console.error("[Scraper Queue] Failed enqueuing DEEP tasks:", error);
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error(`[Scraper Queue] Failed enqueuing DEEP tasks: ${errMsg}`, { error });
+  } finally {
+    logger.debug("[Scraper Queue] enqueueDeepTasks return");
   }
 }
 
 // Bootstrap worker and initiate background loops (called on Next.js boot via instrumentation.ts)
 export async function bootstrapWorker() {
+  logger.debug("[Scraper Worker] bootstrapWorker entry");
   if (isWorkerRunning) {
-    console.log("[Scraper Worker] Queue worker already bootstrapped and running.");
+    logger.info("[Scraper Worker] Queue worker already bootstrapped and running.");
+    logger.debug("[Scraper Worker] bootstrapWorker return");
     return;
   }
   isWorkerRunning = true;
-  console.log("[Scraper Worker] Initializing background polling worker loops...");
+  logger.info("[Scraper Worker] Initializing background polling worker loops...");
 
   // Polling loop 1: Scan configurations and check for pending job descriptions every 1 minute
   setInterval(async () => {
+    logger.debug("[Scraper Worker] 1-minute interval loop entry");
     await scheduleListTasks();
     await enqueueDeepTasks();
+    logger.debug("[Scraper Worker] 1-minute interval loop return");
   }, 60 * 1000);
 
   // Fire scheduling immediately on startup
@@ -118,6 +133,7 @@ export async function bootstrapWorker() {
 
   // Polling loop 2: Process pending tasks sequentially respecting concurrency and delay rates
   async function runQueueLoop() {
+    logger.debug("[Scraper Worker] runQueueLoop entry");
     try {
       const concurrencyStr = await getConfigVal("SCRAPER_MAX_CONCURRENCY", "3");
       const maxConcurrency = parseInt(concurrencyStr) || 3;
@@ -127,28 +143,38 @@ export async function bootstrapWorker() {
       });
 
       if (runningCount < maxConcurrency) {
+        // Query next PENDING task, filtering out future createdAt schedules from backoffs
         const nextTask = await prisma.scrapeTask.findFirst({
-          where: { status: "PENDING" },
+          where: {
+            status: "PENDING",
+            createdAt: { lte: new Date() },
+          },
           orderBy: { createdAt: "asc" },
         });
 
         if (nextTask) {
+          logger.info(`[Scraper Worker] Worker picked up next task: ${nextTask.id} (${nextTask.type}) for portal: ${nextTask.portalId}`);
           // Execute runTask asynchronously to prevent blocking the worker scheduler
-          runTask(nextTask.id).catch((err) => {
-            console.error(`[Scraper Worker] Error executing task ${nextTask.id}:`, err);
+          runTask(nextTask.id).catch((err: unknown) => {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            logger.error(`[Scraper Worker] Error executing task ${nextTask.id}: ${errMsg}`, { error: err });
           });
         }
       }
-    } catch (error) {
-      console.error("[Scraper Worker] Error inside execution queue loop:", error);
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`[Scraper Worker] Error inside execution queue loop: ${errMsg}`, { error });
     }
 
     // Dynamic scheduling delay loaded directly from DB SystemConfig settings
     const delayStr = await getConfigVal("SCRAPER_RATE_LIMIT_DELAY", "1000");
     const delay = parseInt(delayStr) || 1000;
+    
+    logger.debug(`[Scraper Worker] runQueueLoop return. Scheduling next run in ${delay}ms`);
     setTimeout(runQueueLoop, delay);
   }
 
   // Launch task processing queue loop
   runQueueLoop();
+  logger.debug("[Scraper Worker] bootstrapWorker return");
 }

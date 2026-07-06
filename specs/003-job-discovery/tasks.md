@@ -107,12 +107,12 @@
 
 **Purpose**: General stability, error management, logging, and performance checking
 
-- [ ] T030 Add Winston logging (`INFO`, `WARN`, `ERROR`, `DEBUG`) and global file logging in `frontend/src/lib/scraper/queue.ts` and `engine.ts`
-- [ ] T031 Implement Payload Auditing: save raw HTML and extracted strategy JSON to `/debug/scraper/` when `LOG_LEVEL=debug`
-- [ ] T032 Implement rate-limiting backoff: double interval with jitter (up to 5 min) on HTTP 429 responses in `frontend/src/lib/scraper/engine.ts`
-- [ ] T033 Implement UI pending state for Step 2: show descriptions as pending when `isFullDescriptionFetched = false` in `frontend/src/components/jobs/JobDetail.tsx`
-- [ ] T034 Run performance verification script in `frontend/tests_scripts/load-scraper.ts` to ensure 100 listings process in under 3 minutes
-- [ ] T035 [P] Complete documentation updates in `specs/003-job-discovery/quickstart.md` and verify final build
+- [x] T030 Add Winston logging (`INFO`, `WARN`, `ERROR`, `DEBUG`) and global file logging in `frontend/src/lib/scraper/queue.ts` and `engine.ts`
+- [x] T031 Implement Payload Auditing: save raw HTML and extracted strategy JSON to `/debug/scraper/` when `LOG_LEVEL=debug`
+- [x] T032 Implement rate-limiting backoff: double interval with jitter (up to 5 min) on HTTP 429 responses in `frontend/src/lib/scraper/engine.ts`
+- [x] T033 Implement UI pending state for Step 2: show descriptions as pending when `isFullDescriptionFetched = false` in `frontend/src/components/jobs/JobDetail.tsx`
+- [x] T034 Run performance verification script in `frontend/tests_scripts/load-scraper.ts` to ensure 100 listings process in under 3 minutes
+- [x] T035 [P] Complete documentation updates in `specs/003-job-discovery/quickstart.md` and verify final build
 
 ---
 

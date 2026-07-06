@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 import { getStrategy } from "@/lib/scraper/registry";
-import { fetchHtml } from "@/lib/scraper/engine";
+import { fetchHtml, saveAuditPayload } from "@/lib/scraper/engine";
 import { prisma } from "@/lib/db/prisma";
 
 // Trigger auto-registration of strategies
 import "@/lib/scraper/portals/example";
+import "@/lib/scraper/portals/workable";
+import "@/lib/scraper/portals/wellfound";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,17 +29,21 @@ export async function POST(req: NextRequest) {
 
     console.log(`[Scraper Tester] Sync testing ${type} extraction for ${portalId} using User-Agent: ${userAgent}`);
     const html = await fetchHtml(url, userAgent);
+    await saveAuditPayload(portalId, type === "LIST" ? "list_html" : "deep_html", "html", html);
     const $ = cheerio.load(html);
 
     if (type === "LIST") {
       const results = await strategy.extractList(html, $, { searchUrl: url, userAgent });
+      await saveAuditPayload(portalId, "list_result", "json", JSON.stringify(results, null, 2));
       return NextResponse.json({ type: "LIST", count: results.length, data: results });
     } else {
       const result = await strategy.extractDeep(html, $);
+      await saveAuditPayload(portalId, "deep_result", "json", JSON.stringify(result, null, 2));
       return NextResponse.json({ type: "DEEP", data: result });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error("[Scraper Tester API] Test failed:", error);
-    return NextResponse.json({ error: error.message || String(error) }, { status: 500 });
+    return NextResponse.json({ error: errMsg }, { status: 500 });
   }
 }

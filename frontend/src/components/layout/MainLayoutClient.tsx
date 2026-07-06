@@ -100,10 +100,20 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
   // Visible settings page only for ADMIN role
   if (user.role === "ADMIN") {
     menuItems.push({
-      key: "/settings",
+      key: "settings-group",
       icon: <Settings className="h-5 w-5" />,
-      label: <Link href="/settings">Settings</Link>,
-    });
+      label: "Settings",
+      children: [
+        {
+          key: "/settings",
+          label: <Link href="/settings">General</Link>,
+        },
+        {
+          key: "/settings/portals",
+          label: <Link href="/settings/portals">Job Scraper</Link>,
+        },
+      ],
+    } as any);
   }
 
   // Prevent server-side rendering mismatch for states

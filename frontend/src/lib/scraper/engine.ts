@@ -4,6 +4,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { prisma } from "@/lib/db/prisma";
 import { getStrategy } from "./registry";
+import { logger } from "@/lib/logging/logger";
 
 const turndown = new TurndownService({
   headingStyle: "atx",
@@ -48,34 +49,181 @@ export interface ScraperStrategy {
   extractDeep(html: string, $: cheerio.CheerioAPI): DeepResult | Promise<DeepResult>;
 }
 
+// Custom Error to represent HTTP 429 Rate Limit
+export class RateLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RateLimitError";
+  }
+}
+
 // Fetch raw HTML with custom User-Agent header
 export async function fetchHtml(url: string, userAgent: string): Promise<string> {
+  logger.debug(`[Scraper Engine] fetchHtml entry: url=${url}`);
+  logger.info(`[Scraper Engine] HTTP GET Request to target URL: ${url}`);
+
+  const headers: Record<string, string> = {
+    "User-Agent": userAgent,
+  };
+
+  if (url.includes("wellfound.com")) {
+    try {
+      const cookieConfig = await prisma.systemConfig.findUnique({ where: { key: "WELLFOUND_COOKIE" } });
+      if (cookieConfig?.value) {
+        headers["Cookie"] = cookieConfig.value;
+      }
+      const uaConfig = await prisma.systemConfig.findUnique({ where: { key: "WELLFOUND_USER_AGENT" } });
+      if (uaConfig?.value) {
+        headers["User-Agent"] = uaConfig.value;
+      }
+      headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
+      headers["Accept-Language"] = "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7,es;q=0.6";
+      headers["Referer"] = "https://wellfound.com/";
+    } catch (err) {
+      logger.warn(`[Scraper Engine] Failed to load Wellfound configs from DB: ${err}`);
+    }
+  }
+
   const response = await fetch(url, {
-    headers: {
-      "User-Agent": userAgent,
-    },
+    headers,
   });
+
+  if (response.status === 429) {
+    logger.warn(`[Scraper Engine] Rate limited on URL: ${url} (HTTP 429)`);
+    throw new RateLimitError(`Rate limited on URL: ${url} (HTTP 429)`);
+  }
+
   if (!response.ok) {
     throw new Error(`Failed to fetch URL: ${url} (HTTP ${response.status})`);
   }
-  return response.text();
+
+  const html = await response.text();
+  logger.debug(`[Scraper Engine] fetchHtml return: url=${url}, contentSize=${html.length} bytes`);
+  return html;
 }
 
-// Save raw HTML payloads to /debug/scraper/ for developer inspection
-async function saveAuditPayload(portalId: string, type: string, data: string) {
+const getRepoRoot = (): string => {
+  const cwd = process.cwd();
+  if (cwd.endsWith("frontend")) {
+    return path.join(cwd, "..");
+  }
+  return cwd;
+};
+
+// Save raw payloads to /debug/scraper/ for developer inspection when LOG_LEVEL=debug
+export async function saveAuditPayload(portalId: string, type: string, ext: string, data: string) {
+  logger.debug(`[Scraper Engine] saveAuditPayload entry: portalId=${portalId}, type=${type}, ext=${ext}`);
+  
+  const isDebugMode = (process.env.LOG_LEVEL || "info").toLowerCase() === "debug";
+  if (!isDebugMode) {
+    logger.debug("[Scraper Engine] saveAuditPayload return (skipped because LOG_LEVEL != debug)");
+    return;
+  }
+
   try {
-    const debugDir = path.join(process.cwd(), "debug", "scraper");
+    const repoRoot = getRepoRoot();
+    const debugDir = path.join(repoRoot, "debug", "scraper");
     await fs.mkdir(debugDir, { recursive: true });
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const fileName = `${timestamp}-${portalId}-${type}.html`;
-    await fs.writeFile(path.join(debugDir, fileName), data, "utf-8");
-  } catch (err) {
-    console.error("[Scraper Engine] Failed to save audit payload:", err);
+    const fileName = `${timestamp}-${portalId}-${type}.${ext}`;
+    const filePath = path.join(debugDir, fileName);
+
+    let content = data;
+    if (ext === "html") {
+      try {
+        const prettier = await import("prettier");
+        content = await prettier.format(data, { parser: "html" });
+      } catch {
+        // Fallback to raw data silently if prettier is not available or fails
+      }
+    }
+
+    await fs.writeFile(filePath, content, "utf-8");
+    logger.debug(`[Scraper Engine] saveAuditPayload return: saved to ${filePath}`);
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.error(`[Scraper Engine] Failed to save audit payload: ${errMsg}`, { error: err });
+    logger.debug("[Scraper Engine] saveAuditPayload return (error)");
   }
 }
 
+// Handle task retry logic with exponential backoff on rate limit (HTTP 429)
+export async function handleRateLimitFailure(
+  task: { id: string; portalId: string; attempts: number; searchUrl: string | null },
+  errorMessage: string
+) {
+  logger.debug(`[Scraper Engine] handleRateLimitFailure entry: taskId=${task.id}`);
+  
+  const nextAttempts = task.attempts + 1;
+  const maxRetriesConfig = await prisma.systemConfig.findUnique({ where: { key: "SCRAPER_MAX_RETRIES" } });
+  const maxRetries = maxRetriesConfig ? parseInt(maxRetriesConfig.value) : 3;
+
+  if (nextAttempts < maxRetries) {
+    // Exponential backoff: starting at 30 seconds, doubling, max 5 minutes, plus 0-5s jitter
+    const baseDelayMs = 30 * 1000;
+    const expFactor = Math.pow(2, task.attempts);
+    const maxBackoffMs = 5 * 60 * 1000;
+    const jitter = Math.random() * 5000;
+    const backoffMs = Math.min(baseDelayMs * expFactor + jitter, maxBackoffMs);
+    const newCreatedAt = new Date(Date.now() + backoffMs);
+
+    await prisma.scrapeTask.update({
+      where: { id: task.id },
+      data: {
+        status: "PENDING",
+        attempts: nextAttempts,
+        errorMessage: `${errorMessage} (Rate limited - backing off for ${Math.round(backoffMs / 1000)}s)`,
+        progress: 0,
+        createdAt: newCreatedAt, // Delay picker
+      },
+    });
+
+    logger.warn(
+      `[Scraper Engine] Task ${task.id} rate limited. Backoff: ${Math.round(
+        backoffMs / 1000
+      )}s. Re-scheduled at ${newCreatedAt.toISOString()}. Attempts: ${nextAttempts}/${maxRetries}`
+    );
+  } else {
+    // Permanent FAILED state when attempts exceed maxRetries
+    await prisma.scrapeTask.update({
+      where: { id: task.id },
+      data: {
+        status: "FAILED",
+        attempts: nextAttempts,
+        errorMessage: `${errorMessage} (Rate limited - max retries exceeded)`,
+        progress: 100,
+      },
+    });
+    logger.error(`[Scraper Engine] Task ${task.id} reached maximum retries on rate limit. Status set to FAILED.`);
+
+    // Set matching PortalSearchUrl status to BROKEN
+    if (task.searchUrl) {
+      const updatedPortals = await prisma.portalSearchUrl.updateMany({
+        where: {
+          portalId: task.portalId,
+          url: task.searchUrl,
+          isActive: true,
+        },
+        data: {
+          status: "BROKEN",
+        },
+      });
+      if (updatedPortals.count > 0) {
+        logger.warn(`[Scraper Engine] Flagged PortalSearchUrl configuration for portal ${task.portalId} as BROKEN.`);
+      }
+    }
+  }
+
+  logger.debug("[Scraper Engine] handleRateLimitFailure return");
+}
+
 // Handle task retry logic and broken portal configuration status updates
-export async function handleTaskFailure(task: { id: string; portalId: string; attempts: number; searchUrl: string | null }, errorMessage: string) {
+export async function handleTaskFailure(
+  task: { id: string; portalId: string; attempts: number; searchUrl: string | null },
+  errorMessage: string
+) {
+  logger.debug(`[Scraper Engine] handleTaskFailure entry: taskId=${task.id}`);
+  
   const nextAttempts = task.attempts + 1;
   const maxRetriesConfig = await prisma.systemConfig.findUnique({ where: { key: "SCRAPER_MAX_RETRIES" } });
   const maxRetries = maxRetriesConfig ? parseInt(maxRetriesConfig.value) : 3;
@@ -91,7 +239,7 @@ export async function handleTaskFailure(task: { id: string; portalId: string; at
         progress: 0,
       },
     });
-    console.log(`[Scraper Engine] Task ${task.id} failed. Attempts: ${nextAttempts}/${maxRetries}. Re-queued as PENDING.`);
+    logger.warn(`[Scraper Engine] Task ${task.id} failed. Attempts: ${nextAttempts}/${maxRetries}. Re-queued as PENDING.`);
   } else {
     // Permanent task failure
     await prisma.scrapeTask.update({
@@ -103,7 +251,7 @@ export async function handleTaskFailure(task: { id: string; portalId: string; at
         progress: 100,
       },
     });
-    console.warn(`[Scraper Engine] Task ${task.id} reached maximum retries (${maxRetries}). Status set to FAILED.`);
+    logger.error(`[Scraper Engine] Task ${task.id} reached maximum retries (${maxRetries}). Status set to FAILED.`);
 
     // Set matching PortalSearchUrl status to BROKEN
     if (task.searchUrl) {
@@ -118,18 +266,25 @@ export async function handleTaskFailure(task: { id: string; portalId: string; at
         },
       });
       if (updatedPortals.count > 0) {
-        console.warn(`[Scraper Engine] Flagged PortalSearchUrl configuration for portal ${task.portalId} as BROKEN.`);
+        logger.warn(`[Scraper Engine] Flagged PortalSearchUrl configuration for portal ${task.portalId} as BROKEN.`);
       }
     }
   }
+
+  logger.debug("[Scraper Engine] handleTaskFailure return");
 }
 
 // Main strategy execution engine runner
 export async function runTask(taskId: string) {
+  logger.debug(`[Scraper Engine] runTask entry: taskId=${taskId}`);
+
   const task = await prisma.scrapeTask.findUnique({
     where: { id: taskId },
   });
-  if (!task || task.status === "COMPLETED" || task.status === "FAILED") return;
+  if (!task || task.status === "COMPLETED" || task.status === "FAILED") {
+    logger.debug(`[Scraper Engine] runTask return (task is null or already completed/failed)`);
+    return;
+  }
 
   await prisma.scrapeTask.update({
     where: { id: taskId },
@@ -152,13 +307,14 @@ export async function runTask(taskId: string) {
       await prisma.scrapeTask.update({ where: { id: taskId }, data: { progress: 30 } });
       const html = await fetchHtml(url, userAgent);
 
-      if (process.env.LOG_LEVEL === "debug") {
-        await saveAuditPayload(task.portalId, "list_html", html);
-      }
+      await saveAuditPayload(task.portalId, "list_html", "html", html);
 
       await prisma.scrapeTask.update({ where: { id: taskId }, data: { progress: 50 } });
       const $ = cheerio.load(html);
       const results = await strategy.extractList(html, $, { searchUrl: url, userAgent });
+
+      logger.debug(`[Scraper Engine] JobList Response for task ${taskId}: extracted ${results.length} listings.`);
+      await saveAuditPayload(task.portalId, "list_result", "json", JSON.stringify(results, null, 2));
 
       await prisma.scrapeTask.update({ where: { id: taskId }, data: { progress: 80 } });
 
@@ -219,7 +375,7 @@ export async function runTask(taskId: string) {
           errorMessage: null,
         },
       });
-      console.log(`[Scraper Engine] LIST task ${taskId} completed successfully. Found ${jobsAdded} jobs.`);
+      logger.info(`[Scraper Engine] LIST task ${taskId} completed successfully. Found ${jobsAdded} jobs.`);
 
     } else if (task.type === "DEEP") {
       const jobUrl = task.searchUrl;
@@ -228,13 +384,14 @@ export async function runTask(taskId: string) {
       await prisma.scrapeTask.update({ where: { id: taskId }, data: { progress: 40 } });
       const html = await fetchHtml(jobUrl, userAgent);
 
-      if (process.env.LOG_LEVEL === "debug") {
-        await saveAuditPayload(task.portalId, "deep_html", html);
-      }
+      await saveAuditPayload(task.portalId, "deep_html", "html", html);
 
       await prisma.scrapeTask.update({ where: { id: taskId }, data: { progress: 70 } });
       const $ = cheerio.load(html);
       const deepResult = await strategy.extractDeep(html, $);
+
+      logger.debug(`[Scraper Engine] JobDetail parsed response for DEEP task ${taskId}`);
+      await saveAuditPayload(task.portalId, "deep_result", "json", JSON.stringify(deepResult, null, 2));
 
       // Save description Markdown and set completed flag on JobListing
       await prisma.jobListing.updateMany({
@@ -254,10 +411,16 @@ export async function runTask(taskId: string) {
           errorMessage: null,
         },
       });
-      console.log(`[Scraper Engine] DEEP task ${taskId} completed successfully for URL: ${jobUrl}`);
+      logger.info(`[Scraper Engine] DEEP task ${taskId} completed successfully for URL: ${jobUrl}`);
     }
-  } catch (error: any) {
-    const errorStr = error.message || String(error);
-    await handleTaskFailure(task, errorStr);
+  } catch (error: unknown) {
+    const errorStr = error instanceof Error ? error.message : String(error);
+    if (error instanceof RateLimitError || (error && typeof error === "object" && "name" in error && error.name === "RateLimitError")) {
+      await handleRateLimitFailure(task, errorStr);
+    } else {
+      await handleTaskFailure(task, errorStr);
+    }
+  } finally {
+    logger.debug(`[Scraper Engine] runTask return: taskId=${taskId}`);
   }
 }

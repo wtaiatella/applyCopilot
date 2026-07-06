@@ -1,7 +1,6 @@
 import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
 import PortalSettingsList from "@/components/settings/portals/PortalSettingsList";
-import ManualScrapeTrigger from "@/components/settings/portals/ManualScrapeTrigger";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
@@ -23,17 +22,16 @@ export default async function PortalsSettingsPage() {
             <Link href="/settings" className="text-zinc-400 hover:text-white transition-colors">
               <ArrowLeft size={20} />
             </Link>
-            <h1 className="text-3xl font-extrabold text-white">Job Scraper Portal Settings</h1>
+            <h1 className="text-3xl font-extrabold text-white">Job Scraper Settings</h1>
           </div>
           <p className="text-zinc-400 text-sm mt-2 ml-7">
-            Manage automated scraping URLs, global delay intervals, and manually test strategies.
+            Manage target portals, global background worker behavior, and trigger manual extractions.
           </p>
         </div>
       </div>
 
       <div className="space-y-6">
         <PortalSettingsList />
-        <ManualScrapeTrigger />
       </div>
     </div>
   );

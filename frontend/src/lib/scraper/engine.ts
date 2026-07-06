@@ -62,30 +62,10 @@ export async function fetchHtml(url: string, userAgent: string): Promise<string>
   logger.debug(`[Scraper Engine] fetchHtml entry: url=${url}`);
   logger.info(`[Scraper Engine] HTTP GET Request to target URL: ${url}`);
 
-  const headers: Record<string, string> = {
-    "User-Agent": userAgent,
-  };
-
-  if (url.includes("wellfound.com")) {
-    try {
-      const cookieConfig = await prisma.systemConfig.findUnique({ where: { key: "WELLFOUND_COOKIE" } });
-      if (cookieConfig?.value) {
-        headers["Cookie"] = cookieConfig.value;
-      }
-      const uaConfig = await prisma.systemConfig.findUnique({ where: { key: "WELLFOUND_USER_AGENT" } });
-      if (uaConfig?.value) {
-        headers["User-Agent"] = uaConfig.value;
-      }
-      headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
-      headers["Accept-Language"] = "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7,es;q=0.6";
-      headers["Referer"] = "https://wellfound.com/";
-    } catch (err) {
-      logger.warn(`[Scraper Engine] Failed to load Wellfound configs from DB: ${err}`);
-    }
-  }
-
   const response = await fetch(url, {
-    headers,
+    headers: {
+      "User-Agent": userAgent,
+    },
   });
 
   if (response.status === 429) {

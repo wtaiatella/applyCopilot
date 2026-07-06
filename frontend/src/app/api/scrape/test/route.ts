@@ -7,7 +7,6 @@ import { prisma } from "@/lib/db/prisma";
 // Trigger auto-registration of strategies
 import "@/lib/scraper/portals/example";
 import "@/lib/scraper/portals/workable";
-import "@/lib/scraper/portals/wellfound";
 
 export async function POST(req: NextRequest) {
   try {

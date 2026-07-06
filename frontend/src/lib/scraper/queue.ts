@@ -5,7 +5,6 @@ import { logger } from "@/lib/logging/logger";
 // Import strategy files to trigger auto-registration in Registry
 import "./portals/example";
 import "./portals/workable";
-import "./portals/wellfound";
 
 let isWorkerRunning = false;
 

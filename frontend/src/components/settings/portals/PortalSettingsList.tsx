@@ -379,22 +379,6 @@ export default function PortalSettingsList() {
             <Input placeholder="ApplyCopilot/1.0" />
           </Form.Item>
 
-          <Form.Item
-            label="Wellfound Cookie (Bypass Datadome)"
-            name="wellfoundCookie"
-            style={{ maxWidth: 600 }}
-          >
-            <Input.TextArea placeholder="notice_preferences=2:; notice_gdpr_prefs=0|1|2:; ... datadome=..." rows={3} />
-          </Form.Item>
-
-          <Form.Item
-            label="Wellfound User-Agent (Must match browser of Cookie)"
-            name="wellfoundUserAgent"
-            style={{ maxWidth: 600 }}
-          >
-            <Input placeholder="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ..." />
-          </Form.Item>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Form.Item
               label="Max Retries"
@@ -449,7 +433,7 @@ export default function PortalSettingsList() {
         <Form
           form={testerForm}
           layout="vertical"
-          initialValues={{ portalId: "example", type: "LIST" }}
+          initialValues={{ portalId: "workable", type: "LIST" }}
           className="pt-2"
         >
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -459,10 +443,7 @@ export default function PortalSettingsList() {
               rules={[{ required: true, message: "Required" }]}
             >
               <Select>
-                <Select.Option value="example">example</Select.Option>
                 <Select.Option value="workable">workable</Select.Option>
-                <Select.Option value="linkedin">linkedin</Select.Option>
-                <Select.Option value="wellfound">wellfound</Select.Option>
               </Select>
             </Form.Item>
 

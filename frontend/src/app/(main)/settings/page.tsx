@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { LLMProvider, CredentialStatus } from "@/types/admin";
 import LLMSettingsPanel from "@/components/settings/LLMSettingsPanel";
 import DatabasePanel from "@/components/settings/DatabasePanel";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,24 @@ export default async function SettingsPage() {
       </div>
 
       <div className="space-y-4">
+        {/* Scraper Settings Link Card */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 hover:border-blue-500 transition-colors">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white">Job Scraper Portal Settings</h2>
+              <p className="text-zinc-400 text-sm mt-1">
+                Configure automated background scraping tasks, portal URLs, rate-limit delays, and test scraping strategies.
+              </p>
+            </div>
+            <Link
+              href="/settings/portals"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-colors text-sm"
+            >
+              Configure Portals
+            </Link>
+          </div>
+        </div>
+
         <LLMSettingsPanel config={config} credentialStatus={credentialStatus} />
         <DatabasePanel />
       </div>

@@ -105,6 +105,8 @@ export interface ProfileDTO {
   references: ReferenceDTO[];
   summaries: SummaryDTO[];
   cvs: CVVersionDTO[];
+  embeddingSyncedAt?: string | null;
+  aiCleanedText?: string | null;
 }
 
 export type ParseProgressEvent =

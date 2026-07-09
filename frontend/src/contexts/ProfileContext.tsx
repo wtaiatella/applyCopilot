@@ -40,6 +40,8 @@ interface ProfileContextType {
   updateSkillsState: (skills: SkillDTO[]) => void;
   suggestSkills: () => Promise<void>;
   updateReferencesState: (references: ReferenceDTO[]) => void;
+  syncProfile: () => Promise<void>;
+  isSyncOutOfDate: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlePartialData: (phase: string, data: any) => void;
 }
@@ -51,6 +53,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [isSyncOutOfDate, setIsSyncOutOfDate] = useState<boolean>(false);
 
   // Track pending save operations
   const activeSavesRef = useRef<Set<string>>(new Set());
@@ -96,6 +99,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
     setSaveStatus("saving");
     activeSavesRef.current.add(key);
+    setIsSyncOutOfDate(true);
 
     // 2. Set new timeout for 1.5 seconds
     const timeout = setTimeout(async () => {
@@ -470,6 +474,21 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const syncProfile = async () => {
+    if (!profile) return;
+    try {
+      setSaveStatus("saving");
+      await ProfileService.syncProfile();
+      await refreshProfile();
+      setIsSyncOutOfDate(false);
+      setSaveStatus("saved");
+    } catch (err) {
+      console.error(err);
+      setSaveStatus("error");
+      setError(err instanceof Error ? err.message : "AI sync failed.");
+      throw err;
+    }
+  };
 
   return (
     <ProfileContext.Provider
@@ -492,6 +511,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         updateSkillsState,
         suggestSkills,
         updateReferencesState,
+        syncProfile,
+        isSyncOutOfDate,
         handlePartialData,
       }}
     >

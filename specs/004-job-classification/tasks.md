@@ -21,7 +21,7 @@
 
 **Purpose**: Dependency installation and baseline setup.
 
-- [ ] T001 Install TensorFlow.js and Universal Sentence Encoder packages in `frontend/package.json`
+- [x] T001 Install TensorFlow.js and Universal Sentence Encoder packages in `frontend/package.json`
 
 ---
 
@@ -31,11 +31,11 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T002 Update Prisma Schema in `frontend/prisma/schema.prisma` to include `Unsupported("vector(512)")` on `UserProfile` and `JobListing`, add the `ClassificationStatus` & `RecommendationVerdict` enums, and add the `JobAnalysis` model.
-- [ ] T003 Generate the database migration using `prisma migrate dev --create-only`, manually add `CREATE EXTENSION IF NOT EXISTS vector;` at the top of the generated SQL migration file, and apply it to PostgreSQL.
-- [ ] T004 Implement the Universal Sentence Encoder singleton model loader in `frontend/src/lib/ai/tensorflow-model.ts` with CPU backend initialization.
-- [ ] T005 Implement the vector generation service in `frontend/src/lib/ai/vector-service.ts` to convert text strings to 512-dimension vectors.
-- [ ] T006 Create unit tests for local vector generation in `frontend/tests/unit/vector-service.test.ts`.
+- [x] T002 Update Prisma Schema in `frontend/prisma/schema.prisma` to include `Unsupported("vector(512)")` on `UserProfile` and `JobListing`, add the `ClassificationStatus` & `RecommendationVerdict` enums, and add the `JobAnalysis` model.
+- [x] T003 Generate the database migration using `prisma migrate dev --create-only`, manually add `CREATE EXTENSION IF NOT EXISTS vector;` at the top of the generated SQL migration file, and apply it to PostgreSQL.
+- [x] T004 Implement the Universal Sentence Encoder singleton model loader in `frontend/src/lib/ai/tensorflow-model.ts` with CPU backend initialization.
+- [x] T005 Implement the vector generation service in `frontend/src/lib/ai/vector-service.ts` to convert text strings to 512-dimension vectors.
+- [x] T006 Create unit tests for local vector generation in `frontend/tests/unit/vector-service.test.ts`.
 
 **Checkpoint**: Foundation ready - local vectorization and database structure are verified and functional.
 
@@ -48,12 +48,12 @@
 **Independent Test**: Edit candidate experience, check the status indicator showing "Out of Date", click "Sync with AI", and verify that the database contains the 512-dimension vector in `UserProfile` and the status updates to "Synced".
 
 ### Tests for User Story 1
-- [ ] T007 [P] [US1] Create integration tests for the profile sync endpoint in `frontend/tests/integration/profile-sync.test.ts`.
+- [x] T007 [P] [US1] Create integration tests for the profile sync endpoint in `frontend/tests/integration/profile-sync.test.ts`.
 
 ### Implementation for User Story 1
-- [ ] T008 [P] [US1] Implement profile text consolidation and LLM summarization logic in `frontend/src/services/profileSyncService.ts` using `AI_PROVIDER_SUMMARIES` from `SystemConfig`.
-- [ ] T009 [P] [US1] Create API endpoint `POST /api/profile/sync` in `frontend/src/app/api/profile/sync/route.ts` to trigger LLM cleaning, generate a 512-dimension vector via `vector-service.ts`, and update `UserProfile`.
-- [ ] T010 [US1] Add a manual "Sync with AI" button and last sync timestamp status text in the Profile page component `frontend/src/components/profile/ProfileTabs.tsx`.
+- [x] T008 [P] [US1] Implement profile text consolidation and LLM summarization logic in `frontend/src/services/profileSyncService.ts` using `AI_PROVIDER_SUMMARIES` from `SystemConfig`.
+- [x] T009 [P] [US1] Create API endpoint `POST /api/profile/sync` in `frontend/src/app/api/profile/sync/route.ts` to trigger LLM cleaning, generate a 512-dimension vector via `vector-service.ts`, and update `UserProfile`.
+- [x] T010 [US1] Add a manual "Sync with AI" button and last sync timestamp status text in the Profile page component `frontend/src/components/profile/ProfileTabs.tsx`.
 
 **Checkpoint**: User Story 1 is functional. The user can manually clean and vectorize their profile.
 

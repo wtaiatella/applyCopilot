@@ -100,7 +100,10 @@ export async function generateText(
     const contentPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
     const response = await googleGenAI.models.generateContent({
       model,
-      contents: contentPrompt,
+      contents: [{
+        role: "user",
+        parts: [{ text: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt }]
+      }],
     });
     return response.text || "";
   }

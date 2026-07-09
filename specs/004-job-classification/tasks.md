@@ -86,13 +86,13 @@
 **Independent Test**: Load `/jobs`, see the list sorted by Match %, change the date filter range, click "Update Job List", and verify results adapt. If profile is un-synced, verify date-descending sorting and the "Sync Profile" badge appears in place of percentages.
 
 ### Tests for User Story 3
-- [ ] T016 [P] [US3] Create integration tests for the raw SQL pgvector similarity query in `frontend/tests/integration/vector-query.test.ts`, verifying correct cosine-similarity ordering, date-range filtering, and the fallback to creation-date ordering when `embedding` is null.
+- [x] T016 [P] [US3] Create integration tests for the raw SQL pgvector similarity query in `frontend/tests/integration/vector-query.test.ts`, verifying correct cosine-similarity ordering, date-range filtering, and the fallback to creation-date ordering when `embedding` is null.
 
 ### Implementation for User Story 3
-- [ ] T017 [P] [US3] Implement the raw SQL pgvector similarity search method using `prisma.$queryRawUnsafe` in `frontend/src/lib/db/job-query.ts`. The method must: accept `profileEmbedding: number[] | null`, `daysLimit: number`, and `limit: number`; when embedding is non-null execute cosine similarity (`1 - (embedding <=> $1::vector)`) filtered by `postedAt >= NOW() - $2 * INTERVAL '1 day'`; fallback to `ORDER BY "createdAt" DESC` when embedding is null.
-- [ ] T018 [P] [US3] Create API route `GET /api/jobs` in `frontend/src/app/api/jobs/route.ts` to: authenticate the session; load the user's `UserProfile.embedding`; call `job-query.ts`; return the list with `matchScore` as a percentage (or `null` for un-synced profiles).
-- [ ] T019 [US3] Implement UI components in `frontend/src/components/jobs/`: `MatchBadge.tsx` (color-coded badge: High Match green ≥80%, Medium Match yellow 60–79%, Low Match gray <60%, "Sync Profile" CTA when null); `JobCard.tsx` (title, company, location, postedAt, MatchBadge); `JobList.tsx` (list container with date-range selector defaulting to 15 days and "Update Job List" button).
-- [ ] T020 [US3] Create the job dashboard page at `frontend/src/app/(main)/jobs/page.tsx` composing `JobList` and wiring query parameters (`days`, `limit`) to `GET /api/jobs`.
+- [x] T017 [P] [US3] Implement the raw SQL pgvector similarity search method using `prisma.$queryRawUnsafe` in `frontend/src/lib/db/job-query.ts`. The method must: accept `profileEmbedding: number[] | null`, `daysLimit: number`, and `limit: number`; when embedding is non-null execute cosine similarity (`1 - (embedding <=> $1::vector)`) filtered by `postedAt >= NOW() - $2 * INTERVAL '1 day'`; fallback to `ORDER BY "createdAt" DESC` when embedding is null.
+- [x] T018 [P] [US3] Create API route `GET /api/jobs` in `frontend/src/app/api/jobs/route.ts` to: authenticate the session; load the user's `UserProfile.embedding`; call `job-query.ts`; return the list with `matchScore` as a percentage (or `null` for un-synced profiles).
+- [x] T019 [US3] Implement UI components in `frontend/src/components/jobs/`: `MatchBadge.tsx` (color-coded badge: High Match green ≥80%, Medium Match yellow 60–79%, Low Match gray <60%, "Sync Profile" CTA when null); `JobCard.tsx` (title, company, location, postedAt, MatchBadge); `JobList.tsx` (list container with date-range selector defaulting to 15 days and "Update Job List" button).
+- [x] T020 [US3] Create the job dashboard page at `frontend/src/app/(main)/jobs/page.tsx` composing `JobList` and wiring query parameters (`days`, `limit`) to `GET /api/jobs`.
 
 **Checkpoint**: User can view and filter job listings ranked dynamically by compatibility score.
 

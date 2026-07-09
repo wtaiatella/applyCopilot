@@ -26,9 +26,9 @@ export interface ListResult {
   title: string;
   company: string;
   url: string;
-  location?: string;
+  location?: string[];
   locationType?: string;
-  countries?: string;
+  countries?: string[];
   jobType?: string;
   experienceLevel?: string;
   postedAt?: Date;
@@ -313,12 +313,12 @@ export async function runTask(taskId: string) {
             externalJobId: item.externalJobId,
             title: item.title,
             company: item.company,
-            location: item.location || null,
+            location: item.location || [],
             url: item.url,
             isFullDescriptionFetched: item.isFullDescriptionFetched || false,
             fullDescription: item.fullDescription || null,
             locationType: item.locationType || null,
-            countries: item.countries || null,
+            countries: item.countries || [],
             jobType: item.jobType || null,
             experienceLevel: item.experienceLevel || null,
             postedAt: item.postedAt || null,
@@ -329,12 +329,12 @@ export async function runTask(taskId: string) {
           update: {
             title: item.title,
             company: item.company,
-            location: item.location || null,
+            location: item.location || [],
             url: item.url,
             isFullDescriptionFetched: item.isFullDescriptionFetched || undefined,
             fullDescription: item.fullDescription || undefined,
             locationType: item.locationType || null,
-            countries: item.countries || null,
+            countries: item.countries || [],
             jobType: item.jobType || null,
             experienceLevel: item.experienceLevel || null,
             postedAt: item.postedAt || null,

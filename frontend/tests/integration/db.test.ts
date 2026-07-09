@@ -19,12 +19,12 @@ describe("Database Integration Tests (Prisma + pgvector)", () => {
       where: { key: "AI_PROVIDER_DEFAULT" },
     });
     expect(defaultProvider).toBeDefined();
-    expect(defaultProvider?.value).toBe("ollama");
+    expect(defaultProvider?.value).toBe("gemini");
 
     const parsingProvider = await prisma.systemConfig.findUnique({
       where: { key: "AI_PROVIDER_PARSING" },
     });
-    expect(parsingProvider?.value).toBe("ollama");
+    expect(parsingProvider?.value).toBe("gemini");
   });
 
   it("should perform basic User/UserProfile CRUD with cascade deletion", async () => {
@@ -98,8 +98,8 @@ describe("Database Integration Tests (Prisma + pgvector)", () => {
 
     const profileId = user.profile!.id;
 
-    // Generate a valid 1536-dimension float array representation
-    const mockVector = Array.from({ length: 1536 }, (_, i) => i / 1536);
+    // Generate a valid 512-dimension float array representation
+    const mockVector = Array.from({ length: 512 }, (_, i) => i / 512);
     const vectorString = `[${mockVector.join(",")}]`;
 
     // 1. Update embedding using Raw SQL
@@ -110,7 +110,7 @@ describe("Database Integration Tests (Prisma + pgvector)", () => {
     );
 
     // 2. Query embedding distance using Raw SQL with Cosine Distance operator <=>
-    const queryVector = Array.from({ length: 1536 }, (_, i) => (i + 0.1) / 1536);
+    const queryVector = Array.from({ length: 512 }, (_, i) => (i + 0.1) / 512);
     const queryVectorString = `[${queryVector.join(",")}]`;
 
     const results = await prisma.$queryRawUnsafe<

@@ -34,12 +34,12 @@ export interface JobListingDTO {
   externalJobId: string;
   title: string;
   company: string;
-  location: string | null;
+  location: string[];
   url: string;
   isFullDescriptionFetched: boolean;
   fullDescription: string | null;
   locationType: string | null;
-  countries: string | null;
+  countries: string[];
   jobType: string | null;
   experienceLevel: string | null;
   postedAt: string | null;

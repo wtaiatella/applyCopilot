@@ -11,7 +11,7 @@ interface JobListing {
   title: string;
   company: string;
   url: string;
-  location?: string | null;
+  location?: string[] | string | null;
   locationType?: string | null;
   jobType?: string | null;
   experienceLevel?: string | null;
@@ -38,10 +38,10 @@ export default function JobDetail({ job }: JobDetailProps) {
         </div>
 
         <Space size="middle" wrap className="text-zinc-400 text-sm">
-          {job.location && (
+          {Array.isArray(job.location) && job.location.length > 0 && (
             <span className="flex items-center gap-1.5">
               <MapPin size={16} />
-              {job.location}
+              {job.location.join(", ")}
             </span>
           )}
           {job.locationType && (

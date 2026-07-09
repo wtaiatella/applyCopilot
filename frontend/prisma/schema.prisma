@@ -312,7 +312,7 @@ model JobListing {
   externalJobId            String
   title                    String
   company                  String
-  location                 String?
+  location                 String[]  @default([])
   url                      String
   isFullDescriptionFetched Boolean   @default(false)
   fullDescription          String?   @db.Text
@@ -329,7 +329,7 @@ model JobListing {
   classificationError      String?
 
   locationType             String?
-  countries                String?
+  countries                String[]  @default([])
   jobType                  String?
   experienceLevel          String?
   postedAt                 DateTime?

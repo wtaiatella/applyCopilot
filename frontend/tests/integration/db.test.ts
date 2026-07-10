@@ -5,6 +5,20 @@ import "dotenv/config";
 import { prisma, pool } from "@/lib/db/prisma";
 
 describe("Database Integration Tests (Prisma + pgvector)", () => {
+  beforeAll(async () => {
+    // Seed system config values required by these assertions to prevent dirty DB state failures
+    await prisma.systemConfig.upsert({
+      where: { key: "AI_PROVIDER_DEFAULT" },
+      update: { value: "gemini" },
+      create: { key: "AI_PROVIDER_DEFAULT", value: "gemini" },
+    });
+    await prisma.systemConfig.upsert({
+      where: { key: "AI_PROVIDER_PARSING" },
+      update: { value: "gemini" },
+      create: { key: "AI_PROVIDER_PARSING", value: "gemini" },
+    });
+  });
+
   // Clean up connection pools after tests complete
   afterAll(async () => {
     await prisma.$disconnect();

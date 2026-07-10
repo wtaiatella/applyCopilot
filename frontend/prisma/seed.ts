@@ -21,14 +21,19 @@ async function main() {
     { key: "CLASSIFIER_BATCH_SIZE", value: "20" },
     { key: "CLASSIFIER_MAX_ATTEMPTS", value: "3" },
     { key: "CLASSIFIER_COOLDOWN_MINUTES", value: "60" },
-
   ];
 
-  console.log("Seeding SystemConfig...");
+  // Check if "--overwrite" or "-all" was passed to the seed command
+  const shouldOverwrite = process.argv.includes("--overwrite") || process.argv.includes("-all");
+
+  console.log(
+    `Seeding SystemConfig (${shouldOverwrite ? "OVERWRITE ALL" : "INSERT MISSING ONLY"})...`
+  );
+
   for (const config of configs) {
     await prisma.systemConfig.upsert({
       where: { key: config.key },
-      update: { value: config.value },
+      update: shouldOverwrite ? { value: config.value } : {}, // empty update leaves existing values untouched
       create: { key: config.key, value: config.value },
     });
   }

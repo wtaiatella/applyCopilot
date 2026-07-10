@@ -21,7 +21,14 @@ export async function GET() {
     const configs = await prisma.systemConfig.findMany({
       where: {
         key: {
-          in: ["AI_PROVIDER_DEFAULT", "AI_PROVIDER_PARSING", "AI_PROVIDER_SUMMARIES"],
+          in: [
+            "AI_PROVIDER_DEFAULT",
+            "AI_PROVIDER_PARSING",
+            "AI_PROVIDER_SUMMARIES",
+            "AI_PROVIDER_DEFAULT_BLOCKED_UNTIL",
+            "AI_PROVIDER_PARSING_BLOCKED_UNTIL",
+            "AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL",
+          ],
         },
       },
     });
@@ -31,6 +38,15 @@ export async function GET() {
     const defaultProvider = (configMap.get("AI_PROVIDER_DEFAULT") || "ollama") as LLMProvider;
     const parsingProvider = (configMap.get("AI_PROVIDER_PARSING") || "ollama") as LLMProvider;
     const summariesProvider = (configMap.get("AI_PROVIDER_SUMMARIES") || "gemini") as LLMProvider;
+
+    const defaultBlockedUntil = configMap.get("AI_PROVIDER_DEFAULT_BLOCKED_UNTIL");
+    const parsingBlockedUntil = configMap.get("AI_PROVIDER_PARSING_BLOCKED_UNTIL");
+    const summariesBlockedUntil = configMap.get("AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL");
+
+    const now = new Date();
+    const defaultBlocked = defaultBlockedUntil ? new Date(defaultBlockedUntil) > now : false;
+    const parsingBlocked = parsingBlockedUntil ? new Date(parsingBlockedUntil) > now : false;
+    const summariesBlocked = summariesBlockedUntil ? new Date(summariesBlockedUntil) > now : false;
 
     const ollamaUrl = process.env.OLLAMA_BASE_URL;
     const geminiKey = process.env.GEMINI_API_KEY;
@@ -52,11 +68,55 @@ export async function GET() {
         parsingProvider,
         summariesProvider,
       },
+      blockedStatus: {
+        defaultProvider: defaultBlocked ? defaultBlockedUntil : null,
+        parsingProvider: parsingBlocked ? parsingBlockedUntil : null,
+        summariesProvider: summariesBlocked ? summariesBlockedUntil : null,
+      },
       credentialStatus,
     });
   } catch (error) {
     logger.error("Failed to load configuration", { error });
     return NextResponse.json({ error: "Failed to load configuration" }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (session.user.role !== "ADMIN") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const { key } = body;
+    if (!["AI_PROVIDER_DEFAULT", "AI_PROVIDER_PARSING", "AI_PROVIDER_SUMMARIES"].includes(key)) {
+      return NextResponse.json({ error: "Invalid provider key" }, { status: 400 });
+    }
+
+    const { resetProviderBlock } = await import("@/lib/ai/circuit-breaker");
+    await resetProviderBlock(key);
+
+    logger.info("LLM provider block reset manually by admin", {
+      userId: session.user.id,
+      email: session.user.email,
+      providerKey: key,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    logger.error("Failed to reset provider block", { error });
+    return NextResponse.json({ error: "Failed to reset provider block" }, { status: 500 });
   }
 }
 

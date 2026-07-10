@@ -42,5 +42,15 @@ export async function register() {
     } catch (error) {
       console.error("[instrumentation] Classification worker failed to start:", error);
     }
+
+    try {
+      // Pre-warm local TensorFlow.js USE model
+      const { warmUpModel } = await import("@/lib/ai/tensorflow-model");
+      warmUpModel().catch((err) => {
+        console.error("[instrumentation] TensorFlow model warmup failed:", err);
+      });
+    } catch (error) {
+      console.warn("[instrumentation] TensorFlow module not available for warmup", error);
+    }
   }
 }

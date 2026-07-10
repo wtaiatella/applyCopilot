@@ -46,10 +46,25 @@ export default async function SettingsPage() {
     claude: !!(claudeKey && claudeKey.length > 0),
   };
 
+  const defaultBlockedUntil = configMap.get("AI_PROVIDER_DEFAULT_BLOCKED_UNTIL");
+  const parsingBlockedUntil = configMap.get("AI_PROVIDER_PARSING_BLOCKED_UNTIL");
+  const summariesBlockedUntil = configMap.get("AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL");
+
+  const now = new Date();
+  const defaultBlocked = defaultBlockedUntil ? new Date(defaultBlockedUntil) > now : false;
+  const parsingBlocked = parsingBlockedUntil ? new Date(parsingBlockedUntil) > now : false;
+  const summariesBlocked = summariesBlockedUntil ? new Date(summariesBlockedUntil) > now : false;
+
   const config = {
     defaultProvider,
     parsingProvider,
     summariesProvider,
+  };
+
+  const blockedStatus = {
+    defaultProvider: defaultBlocked ? defaultBlockedUntil || null : null,
+    parsingProvider: parsingBlocked ? parsingBlockedUntil || null : null,
+    summariesProvider: summariesBlocked ? summariesBlockedUntil || null : null,
   };
 
   return (
@@ -80,7 +95,11 @@ export default async function SettingsPage() {
           </div>
         </div>
 
-        <LLMSettingsPanel config={config} credentialStatus={credentialStatus} />
+        <LLMSettingsPanel
+          config={config}
+          credentialStatus={credentialStatus}
+          blockedStatus={blockedStatus}
+        />
         <DatabasePanel />
       </div>
     </div>

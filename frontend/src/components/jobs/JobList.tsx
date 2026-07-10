@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Select, Button, Space, Typography, Spin, Alert, Empty } from "antd";
 import { RefreshCw, SlidersHorizontal, Sparkles } from "lucide-react";
 import JobCard from "./JobCard";
-import JobDetail from "./JobDetail";
+import JobDetailsPanel from "./JobDetailsPanel";
 
 const { Text, Title } = Typography;
 
@@ -170,7 +170,7 @@ export default function JobList() {
         {/* Right Side: Selected Job Detail (Col-span 7) */}
         <div className="lg:col-span-7 h-full min-h-0 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
           {selectedJob ? (
-            <JobDetail job={selectedJob} />
+            <JobDetailsPanel job={selectedJob} />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-zinc-950/10 border border-zinc-900/60 rounded-2xl border-dashed">
               <Sparkles size={40} className="text-zinc-700 animate-pulse mb-3" />

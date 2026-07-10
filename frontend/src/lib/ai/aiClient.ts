@@ -102,7 +102,7 @@ export async function generateText(
       model,
       contents: [{
         role: "user",
-        parts: [{ text: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt }]
+        parts: [{ text: contentPrompt }]
       }],
     });
     return response.text || "";

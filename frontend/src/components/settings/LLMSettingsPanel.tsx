@@ -2,17 +2,68 @@
 
 import { useState } from "react";
 import { Form, Select, Button, Collapse, Tag, Tooltip, App } from "antd";
+import { AlertCircle } from "lucide-react";
 import { LLMProviderConfig, CredentialStatus } from "@/types/admin";
 
 interface LLMSettingsPanelProps {
   config: LLMProviderConfig;
   credentialStatus: CredentialStatus;
+  blockedStatus: Record<string, string | null>;
 }
 
-export default function LLMSettingsPanel({ config, credentialStatus }: LLMSettingsPanelProps) {
+export default function LLMSettingsPanel({ config, credentialStatus, blockedStatus }: LLMSettingsPanelProps) {
   const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(false);
+  const [currentBlockedStatus, setCurrentBlockedStatus] = useState<Record<string, string | null>>(
+    blockedStatus || {}
+  );
+  const [resetting, setResetting] = useState<Record<string, boolean>>({});
   const [form] = Form.useForm();
+
+  const handleResetBlock = async (capabilityKey: string, dbKey: string) => {
+    setResetting((prev) => ({ ...prev, [capabilityKey]: true }));
+    try {
+      const res = await fetch("/api/admin/llm-config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: dbKey }),
+      });
+      if (!res.ok) throw new Error("Failed to reset provider block");
+
+      setCurrentBlockedStatus((prev) => ({ ...prev, [capabilityKey]: null }));
+      message.success("LLM provider block cleared successfully!");
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Failed to reset provider block";
+      message.error(errMsg);
+    } finally {
+      setResetting((prev) => ({ ...prev, [capabilityKey]: false }));
+    }
+  };
+
+  const renderBlockedStatus = (capabilityKey: string, dbKey: string) => {
+    const blockedUntil = currentBlockedStatus[capabilityKey];
+    if (!blockedUntil) return null;
+
+    const untilDate = new Date(blockedUntil);
+    return (
+      <div className="mt-1.5 mb-3 flex items-center justify-between bg-red-950/20 border border-red-900/60 p-2.5 rounded-lg text-xs text-red-300">
+        <span className="flex items-center gap-1.5 font-medium">
+          <AlertCircle size={14} className="text-red-400" />
+          Provider is BLOCKED by circuit breaker until {untilDate.toLocaleTimeString()} ({untilDate.toLocaleDateString()})
+        </span>
+        <Button
+          type="primary"
+          danger
+          size="small"
+          loading={resetting[capabilityKey]}
+          onClick={() => handleResetBlock(capabilityKey, dbKey)}
+          className="text-xs h-7 px-3 bg-red-600 hover:bg-red-500 border-0"
+        >
+          Reset Block
+        </Button>
+      </div>
+    );
+  };
 
   const saveConfig = async (values: LLMProviderConfig) => {
     setLoading(true);
@@ -128,25 +179,31 @@ export default function LLMSettingsPanel({ config, credentialStatus }: LLMSettin
             name="defaultProvider"
             label={<span className="text-zinc-300">Default Provider</span>}
             tooltip="The fallback provider used for generic AI tasks when a task-specific provider is not specified"
+            className="mb-2"
           >
             <Select options={providerOptions} size="large" />
           </Form.Item>
+          {renderBlockedStatus("defaultProvider", "AI_PROVIDER_DEFAULT")}
 
           <Form.Item
             name="parsingProvider"
             label={<span className="text-zinc-300">Parsing Provider</span>}
             tooltip="The provider used for extracting data from uploaded CVs"
+            className="mb-2"
           >
             <Select options={providerOptions} size="large" />
           </Form.Item>
+          {renderBlockedStatus("parsingProvider", "AI_PROVIDER_PARSING")}
 
           <Form.Item
             name="summariesProvider"
             label={<span className="text-zinc-300">Summaries Provider</span>}
             tooltip="The provider used for generating summaries"
+            className="mb-2"
           >
             <Select options={providerOptions} size="large" />
           </Form.Item>
+          {renderBlockedStatus("summariesProvider", "AI_PROVIDER_SUMMARIES")}
 
           <Form.Item className="mb-0 mt-6">
             <Button

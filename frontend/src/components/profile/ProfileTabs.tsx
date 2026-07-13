@@ -4,102 +4,24 @@ import React, { useState, useEffect, useRef } from "react";
 import { 
   Tabs, 
   Form, 
-  Input, 
   Button, 
-  Card, 
-  DatePicker, 
-  Checkbox, 
-  Select, 
-  InputNumber, 
   Tooltip,
-  Typography,
-  Divider,
   Badge,
   notification
 } from "antd";
 import { 
-  PlusOutlined, 
-  DeleteOutlined, 
   CloudSyncOutlined, 
   CheckCircleOutlined, 
-  ExclamationCircleOutlined,
-  MinusCircleOutlined
+  ExclamationCircleOutlined
 } from "@ant-design/icons";
 import { useProfileContext, SaveStatus } from "../../contexts/ProfileContext";
 import dayjs from "dayjs";
-import { SkillDTO, ReferenceDTO } from "../../types/profile";
 import BasicDataForm from "./BasicDataForm";
 import ExperienceForm from "./ExperienceForm";
 import EducationForm from "./EducationForm";
 import ProjectForm from "./ProjectForm";
 import SkillsForm from "./SkillsForm";
 import ReferencesForm from "./ReferencesForm";
-
-const { Title } = Typography;
-const { TextArea } = Input;
-const { Option } = Select;
-
-// Inline Editable Tab Label Component
-interface EditableTabLabelProps {
-  value: string;
-  onSave: (val: string) => void;
-  placeholder?: string;
-}
-
-function EditableTabLabel({ value, onSave, placeholder }: EditableTabLabelProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [tempValue, setTempValue] = useState(value);
-
-  useEffect(() => {
-    Promise.resolve().then(() => setTempValue(value));
-  }, [value]);
-
-  const handleBlur = () => {
-    setIsEditing(false);
-    if (tempValue.trim() && tempValue !== value) {
-      onSave(tempValue.trim());
-    } else {
-      setTempValue(value);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleBlur();
-    } else if (e.key === "Escape") {
-      setIsEditing(false);
-      setTempValue(value);
-    }
-  };
-
-  if (isEditing) {
-    return (
-      <Input
-        size="small"
-        value={tempValue}
-        onChange={(e) => setTempValue(e.target.value)}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        autoFocus
-        style={{ width: 120, height: 22, fontSize: 12 }}
-        onClick={(e) => e.stopPropagation()}
-      />
-    );
-  }
-
-  return (
-    <span 
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        setIsEditing(true);
-      }}
-      className="cursor-pointer select-none"
-      title="Double-click to rename"
-    >
-      {value || placeholder || "Unnamed"}
-    </span>
-  );
-}
 
 // Save Status Badge Component
 function SaveStatusIndicator({ status }: { status: SaveStatus }) {
@@ -203,7 +125,7 @@ export default function ProfileTabs() {
         form.validateFields().catch(() => {});
       }
     }
-  }, [profile?.basicData, form]);
+  }, [profile, form]);
 
   // Experiences active tab sync
   const [activeExpTab, setActiveExpTab] = useState<string>();

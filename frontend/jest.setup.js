@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+/* eslint-disable @next/next/no-img-element, jsx-a11y/alt-text */
 console.log("JEST SETUP RUNNING. Node version:", process.version);
 try {
   const { TextEncoder, TextDecoder } = require('util')

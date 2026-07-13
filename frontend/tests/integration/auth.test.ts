@@ -1,6 +1,7 @@
 /**
  * @jest-environment node
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import "dotenv/config";
 import { POST as registerHandler } from "@/app/api/auth/register/route";
 import { POST as forgotPasswordHandler } from "@/app/api/auth/forgot-password/route";

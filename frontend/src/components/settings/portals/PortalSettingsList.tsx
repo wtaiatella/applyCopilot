@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Form, Input, Select, Button, Radio, Progress, Table, Switch, Tag, InputNumber, Space, Typography, Popconfirm, Collapse, Tooltip } from "antd";
 import { message as AntdMessage } from "antd";
 import { Play, Plus, Trash2, RotateCw, Settings, Activity, ShieldAlert } from "lucide-react";
@@ -35,7 +35,7 @@ export default function PortalSettingsList() {
   const [loadingTest, setLoadingTest] = useState(false);
   const [addingToWorker, setAddingToWorker] = useState(false);
   const [mode, setMode] = useState<"sync" | "async">("sync");
-  const [testResult, setTestResult] = useState<any>(null);
+  const [testResult, setTestResult] = useState<unknown>(null);
 
   // SSE states
   const [sseTask, setSseTask] = useState<StreamData | null>(null);
@@ -45,7 +45,7 @@ export default function PortalSettingsList() {
   const [configForm] = Form.useForm();
 
   // Load database portal configurations and global settings
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoadingList(true);
     setLoadingConfig(true);
     try {
@@ -60,17 +60,19 @@ export default function PortalSettingsList() {
         const cData = await cRes.json();
         configForm.setFieldsValue(cData);
       }
-    } catch (err) {
+    } catch {
       message.error("Failed to load settings data.");
     } finally {
       setLoadingList(false);
       setLoadingConfig(false);
     }
-  };
+  }, [configForm, message]);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    Promise.resolve().then(() => {
+      loadData();
+    });
+  }, [loadData]);
 
   // Run Test (synchronous or background queue with SSE)
   const handleRunTest = async () => {
@@ -153,8 +155,9 @@ export default function PortalSettingsList() {
           setLoadingTest(false);
         };
       }
-    } catch (err: any) {
-      message.error(err.message || "Please check required fields.");
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Please check required fields.";
+      message.error(errorMsg);
       setLoadingTest(false);
     }
   };
@@ -183,8 +186,9 @@ export default function PortalSettingsList() {
       }
       message.success("Search target added to worker queue!");
       loadData();
-    } catch (err: any) {
-      message.error(err.message || "Failed to register target.");
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to register target.";
+      message.error(errorMsg);
     } finally {
       setAddingToWorker(false);
     }
@@ -210,7 +214,7 @@ export default function PortalSettingsList() {
       }
       message.success(`Target ${checked ? "activated" : "deactivated"}`);
       loadData();
-    } catch (err) {
+    } catch {
       message.error("Failed to update active state");
     }
   };
@@ -225,7 +229,7 @@ export default function PortalSettingsList() {
       }
       message.success("Search target removed.");
       loadData();
-    } catch (err) {
+    } catch {
       message.error("Failed to delete target.");
     }
   };
@@ -248,12 +252,12 @@ export default function PortalSettingsList() {
         duration: 4,
       });
       loadData();
-    } catch (err) {
+    } catch {
       message.error({ content: "Failed to refresh robots.txt", key: "robots" });
     }
   };
 
-  const handleSaveConfig = async (values: any) => {
+  const handleSaveConfig = async (values: Record<string, unknown>) => {
     setLoadingConfig(true);
     try {
       const res = await fetch("/api/settings/config", {
@@ -266,7 +270,7 @@ export default function PortalSettingsList() {
       }
       message.success("Global settings saved successfully!");
       loadData();
-    } catch (err) {
+    } catch {
       message.error("Failed to update configurations");
     } finally {
       setLoadingConfig(false);
@@ -311,7 +315,7 @@ export default function PortalSettingsList() {
     {
       title: "Active",
       key: "isActive",
-      render: (_: any, record: PortalSearchUrl) => (
+      render: (_: unknown, record: PortalSearchUrl) => (
         <Space>
           <Switch
             checked={record.isActive}
@@ -328,7 +332,7 @@ export default function PortalSettingsList() {
     {
       title: "Actions",
       key: "actions",
-      render: (_: any, record: PortalSearchUrl) => (
+      render: (_: unknown, record: PortalSearchUrl) => (
         <Space size="middle">
           <Button
             size="small"
@@ -531,7 +535,7 @@ export default function PortalSettingsList() {
           )}
 
           {/* Sync result code output */}
-          {testResult && (
+          {!!testResult && (
             <div style={{ marginTop: 20, background: "#0c0c0e", padding: 15, borderRadius: 8 }} className="border border-zinc-800">
               <pre
                 style={{

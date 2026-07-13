@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Card, Form, Input, Button, Select, InputNumber, Table, Tooltip, Space, Modal } from "antd";
+import { Card, Input, Button, Select, InputNumber, Table, Modal } from "antd";
 import { PlusOutlined, DeleteOutlined, CloudSyncOutlined } from "@ant-design/icons";
 import { SkillDTO, ProficiencyLevel } from "../../types/profile";
 import { useProfileContext } from "../../contexts/ProfileContext";
@@ -27,10 +27,11 @@ export default function SkillsForm({
     try {
       setLoadingSuggest(true);
       await suggestSkills();
-    } catch (err: any) {
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "An error occurred while suggesting skills.";
       Modal.error({
         title: "Failed to extract skills",
-        content: err.message || "An error occurred while suggesting skills.",
+        content: errorMsg,
       });
     } finally {
       setLoadingSuggest(false);
@@ -66,10 +67,10 @@ export default function SkillsForm({
     updateSkillsState(updated);
   };
 
-  const handleUpdateSkillField = (id: string, field: string, value: any) => {
+  const handleUpdateSkillField = (id: string, field: keyof SkillDTO, value: unknown) => {
     const updated = skills.map((s) => {
       if (s.id === id) {
-        return { ...s, [field]: value };
+        return { ...s, [field]: value } as SkillDTO;
       }
       return s;
     });
@@ -120,7 +121,7 @@ export default function SkillsForm({
       title: "Action",
       key: "action",
       width: 80,
-      render: (_: any, record: SkillDTO) => (
+      render: (_: unknown, record: SkillDTO) => (
         <Button
           type="text"
           danger

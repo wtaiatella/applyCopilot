@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Card, Form, Input, Button, Divider, Alert, Tooltip, Switch, Badge } from "antd";
+import { Card, Form, Input, Button, Tooltip, Switch, FormInstance } from "antd";
 import { 
   PlusOutlined, 
   ThunderboltOutlined, 
@@ -109,11 +109,10 @@ interface BasicDataFormProps {
   basicData: BasicDataDTO;
   summaries: SummaryDTO[];
   updateBasicDataState: (data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }) => void;
-  form: any;
+  form: FormInstance;
 }
 
 export default function BasicDataForm({
-  basicData,
   summaries = [],
   updateBasicDataState,
   form,
@@ -202,11 +201,11 @@ export default function BasicDataForm({
           form={form}
           layout="vertical"
           onValuesChange={(changedValues) => {
-            const cleanedValues: any = {};
+            const cleanedValues: Record<string, unknown> = {};
             for (const key of Object.keys(changedValues)) {
               cleanedValues[key] = changedValues[key] === "" ? null : changedValues[key];
             }
-            updateBasicDataState(cleanedValues);
+            updateBasicDataState(cleanedValues as Partial<BasicDataDTO>);
           }}
           className="grid grid-cols-1 md:grid-cols-2 gap-4"
         >
@@ -346,7 +345,7 @@ export default function BasicDataForm({
 
           {summaries.length === 0 ? (
             <div className="text-center text-zinc-600 py-6 bg-zinc-950/20 border border-dashed border-zinc-800 rounded-lg text-sm">
-              No custom summaries added yet. Click "AI Generate" or "Add Pitch" above.
+              No custom summaries added yet. Click &quot;AI Generate&quot; or &quot;Add Pitch&quot; above.
             </div>
           ) : (
             <DndContext

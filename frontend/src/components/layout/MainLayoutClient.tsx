@@ -91,6 +91,11 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
       label: <Link href="/dashboard">Dashboard</Link>,
     },
     {
+      key: "/jobs",
+      icon: <Briefcase className="h-5 w-5" />,
+      label: <Link href="/jobs">Jobs Matching</Link>,
+    },
+    {
       key: "/profile",
       icon: <User className="h-5 w-5" />,
       label: <Link href="/profile">Profile</Link>,
@@ -230,6 +235,8 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
                 <Title level={5} style={{ margin: 0, color: titleColor }}>
                   {pathname === "/dashboard"
                     ? "Dashboard"
+                    : pathname === "/jobs"
+                    ? "Job Matching"
                     : pathname === "/profile"
                     ? "Profile Settings"
                     : pathname === "/settings"

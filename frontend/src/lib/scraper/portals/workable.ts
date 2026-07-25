@@ -40,14 +40,28 @@ export const workableStrategy: ScraperStrategy = {
 
         const mdDescription = fullDescription ? convertHtmlToMarkdown(fullDescription) : undefined;
 
+        const rawLocations = Array.isArray(job.locations) ? job.locations : [];
+        const cleanLocations = rawLocations
+          .map((loc: any) => String(loc).trim())
+          .filter((loc: string) => loc && loc !== "TELECOMMUTE");
+        
+        if (cleanLocations.length === 0 && job.location?.countryName) {
+          cleanLocations.push(job.location.countryName);
+        }
+
+        const countriesList = job.location?.countryName ? [job.location.countryName] : [];
+        const postedAtDate = job.created ? new Date(job.created) : undefined;
+
         results.push({
           externalJobId,
           title: job.title,
           company: job.company.title,
           url: job.url || `https://jobs.workable.com/view/${externalJobId}`,
-          location: job.location?.countryName || job.locations?.join(", ") || undefined,
+          location: cleanLocations,
           locationType: job.workplace || undefined,
+          countries: countriesList,
           jobType: job.employmentType || undefined,
+          postedAt: postedAtDate,
           fullDescription: mdDescription,
           isFullDescriptionFetched: !!mdDescription,
         });

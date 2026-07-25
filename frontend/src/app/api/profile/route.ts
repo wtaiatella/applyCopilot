@@ -100,6 +100,12 @@ export async function GET() {
     });
 
     if (!profile) {
+      // Verify user existence in DB to prevent foreign key errors with orphaned session cookies
+      const userExists = await prisma.user.findUnique({ where: { id: userId } });
+      if (!userExists) {
+        return NextResponse.json({ error: "Unauthorized: User session invalid or deleted" }, { status: 401 });
+      }
+
       // Fallback in case profile is not initialized
       profile = await prisma.userProfile.create({
         data: { userId },
@@ -305,6 +311,8 @@ export async function GET() {
         s3Key: cv.s3Key,
         createdAt: cv.createdAt.toISOString(),
       })),
+      embeddingSyncedAt: profile.embeddingSyncedAt ? profile.embeddingSyncedAt.toISOString() : null,
+      aiCleanedText: profile.aiCleanedText,
     };
 
     return NextResponse.json(responseData);

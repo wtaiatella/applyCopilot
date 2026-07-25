@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+/* eslint-disable @next/next/no-img-element, jsx-a11y/alt-text */
 console.log("JEST SETUP RUNNING. Node version:", process.version);
 try {
   const { TextEncoder, TextDecoder } = require('util')
@@ -9,9 +11,51 @@ try {
   global.WritableStream = streamWeb.WritableStream
   global.TransformStream = streamWeb.TransformStream
 
-  const { MessageChannel, MessagePort } = require('worker_threads')
-  global.MessageChannel = MessageChannel
-  global.MessagePort = MessagePort
+  // Pure JS mock for MessageChannel to avoid node worker_threads keeping Event Loop active
+  class MessagePortMock {
+    constructor() {
+      this.onmessage = null;
+      this.onmessageerror = null;
+    }
+    postMessage(data) {
+      if (this.onmessage) {
+        setTimeout(() => {
+          if (this.onmessage) this.onmessage({ data });
+        }, 0);
+      }
+    }
+    addEventListener(event, listener) {
+      if (event === 'message') this.onmessage = listener;
+    }
+    removeEventListener(event, listener) {
+      if (event === 'message' && this.onmessage === listener) this.onmessage = null;
+    }
+    start() {}
+    close() {}
+  }
+  class MessageChannelMock {
+    constructor() {
+      this.port1 = new MessagePortMock();
+      this.port2 = new MessagePortMock();
+      // Cross-wire postMessage
+      this.port1.postMessage = (data) => {
+        if (this.port2.onmessage) {
+          setTimeout(() => {
+            if (this.port2.onmessage) this.port2.onmessage({ data });
+          }, 0);
+        }
+      };
+      this.port2.postMessage = (data) => {
+        if (this.port1.onmessage) {
+          setTimeout(() => {
+            if (this.port1.onmessage) this.port1.onmessage({ data });
+          }, 0);
+        }
+      };
+    }
+  }
+  global.MessageChannel = MessageChannelMock;
+  global.MessagePort = MessagePortMock;
 
   const timers = require('timers')
   global.setImmediate = timers.setImmediate

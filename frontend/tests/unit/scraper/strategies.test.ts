@@ -45,7 +45,7 @@ describe("Scraper Strategies - Example Strategy", () => {
         externalJobId: "job-1",
         title: "Frontend Engineer",
         company: "Google",
-        location: "Remote",
+        location: ["Remote"],
         url: "https://example.com/jobs/job-1",
       })
     );
@@ -108,7 +108,8 @@ describe("Scraper Strategies - Workable Strategy", () => {
                         "company": { "title": "Workable Company" },
                         "location": { "countryName": "United States" },
                         "workplace": "remote",
-                        "employmentType": "Full-time"
+                        "employmentType": "Full-time",
+                        "created": "2026-07-06T12:25:50.986Z"
                       }
                     ],
                     "nextPageToken": ""
@@ -134,10 +135,12 @@ describe("Scraper Strategies - Workable Strategy", () => {
         title: "React Developer",
         company: "Workable Company",
         url: "https://jobs.workable.com/view/workable-1/remote-react-dev",
-        location: "United States",
+        location: ["United States"],
         locationType: "remote",
+        countries: ["United States"],
         jobType: "Full-time",
         isFullDescriptionFetched: true,
+        postedAt: new Date("2026-07-06T12:25:50.986Z"),
       })
     );
     expect(results[0].fullDescription).toContain("React job description");

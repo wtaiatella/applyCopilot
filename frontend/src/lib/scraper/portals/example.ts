@@ -18,7 +18,7 @@ export const exampleStrategy: ScraperStrategy = {
           title,
           company,
           url,
-          location: $(el).find(".location").text().trim() || undefined,
+          location: $(el).find(".location").text().trim() ? [$(el).find(".location").text().trim()] : [],
         });
       }
     });
@@ -30,9 +30,9 @@ export const exampleStrategy: ScraperStrategy = {
         title: "Software Engineer (Example)",
         company: "Example Corp",
         url: "https://example.com/jobs/ex-1",
-        location: "Remote, CA",
+        location: ["Remote, CA"],
         locationType: "Remote",
-        countries: "United States",
+        countries: ["United States"],
         jobType: "Full-time",
         experienceLevel: "Senior",
         postedAt: new Date(),

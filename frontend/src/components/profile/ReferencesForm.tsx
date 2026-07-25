@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Card, Form, Input, Button, Table, Checkbox, Space } from "antd";
+import { Card, Input, Button, Table, Checkbox } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import { ReferenceDTO } from "../../types/profile";
 
@@ -50,10 +50,10 @@ export default function ReferencesForm({
     updateReferencesState(updated);
   };
 
-  const handleUpdateReferenceField = (id: string, field: string, value: any) => {
+  const handleUpdateReferenceField = (id: string, field: keyof ReferenceDTO, value: unknown) => {
     const updated = references.map((r) => {
       if (r.id === id) {
-        return { ...r, [field]: value };
+        return { ...r, [field]: value } as ReferenceDTO;
       }
       return r;
     });
@@ -82,7 +82,7 @@ export default function ReferencesForm({
     {
       title: "Contact Info",
       key: "contactInfo",
-      render: (_: any, record: ReferenceDTO) => (
+      render: (_: unknown, record: ReferenceDTO) => (
         <div className="text-zinc-400 text-xs space-y-0.5">
           {record.email && <div>{record.email}</div>}
           {record.phone && <div>{record.phone}</div>}
@@ -109,7 +109,7 @@ export default function ReferencesForm({
       title: "Action",
       key: "action",
       width: 80,
-      render: (_: any, record: ReferenceDTO) => (
+      render: (_: unknown, record: ReferenceDTO) => (
         <Button
           type="text"
           danger

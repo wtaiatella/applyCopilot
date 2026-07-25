@@ -40,6 +40,8 @@ interface ProfileContextType {
   updateSkillsState: (skills: SkillDTO[]) => void;
   suggestSkills: () => Promise<void>;
   updateReferencesState: (references: ReferenceDTO[]) => void;
+  syncProfile: () => Promise<void>;
+  isSyncOutOfDate: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlePartialData: (phase: string, data: any) => void;
 }
@@ -51,11 +53,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [isSyncOutOfDate, setIsSyncOutOfDate] = useState<boolean>(false);
 
   // Track pending save operations
   const activeSavesRef = useRef<Set<string>>(new Set());
   const timeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  const pendingBasicDataChangesRef = useRef<Partial<BasicDataDTO> & { summaries?: any[] }>({});
+  const pendingBasicDataChangesRef = useRef<Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }>({});
 
   // Clean up timeouts on unmount
   useEffect(() => {
@@ -96,6 +99,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
     setSaveStatus("saving");
     activeSavesRef.current.add(key);
+    setIsSyncOutOfDate(true);
 
     // 2. Set new timeout for 1.5 seconds
     const timeout = setTimeout(async () => {
@@ -156,19 +160,20 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
           delete newPendingChanges[key];
         }
       } else {
-        newPendingChanges[key] = val as any;
+        (newPendingChanges as Record<string, unknown>)[key] = val;
       }
     }
 
     if (summaries !== undefined) {
       const cleaned = summaries.map((s) => {
         if (s.id && s.id.startsWith("temp-")) {
-          const { id, ...rest } = s;
-          return rest;
+          const copy: Partial<SummaryDTO> = { ...s };
+          delete copy.id;
+          return copy;
         }
         return s;
       });
-      newPendingChanges.summaries = cleaned as any;
+      newPendingChanges.summaries = cleaned as SummaryDTO[];
     }
 
     pendingBasicDataChangesRef.current = newPendingChanges;
@@ -229,13 +234,14 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
           ...targetExp,
           bullets: targetExp.bullets.map((b) => {
             if (b.id && b.id.startsWith("temp-")) {
-              const { id: _, ...rest } = b;
-              return rest;
+              const copy: Partial<typeof b> = { ...b };
+              delete copy.id;
+              return copy;
             }
             return b;
           }),
         };
-        await ProfileService.updateExperience(id, payload as any);
+        await ProfileService.updateExperience(id, payload as Partial<ExperienceDTO>);
       });
     }
   };
@@ -303,13 +309,14 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
           ...targetEd,
           bullets: targetEd.bullets.map((b) => {
             if (b.id && b.id.startsWith("temp-")) {
-              const { id: _, ...rest } = b;
-              return rest;
+              const copy: Partial<typeof b> = { ...b };
+              delete copy.id;
+              return copy;
             }
             return b;
           }),
         };
-        await ProfileService.updateEducation(id, payload as any);
+        await ProfileService.updateEducation(id, payload as Partial<EducationDTO>);
       });
     }
   };
@@ -376,13 +383,14 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
           ...targetProj,
           bullets: targetProj.bullets.map((b) => {
             if (b.id && b.id.startsWith("temp-")) {
-              const { id: _, ...rest } = b;
-              return rest;
+              const copy: Partial<typeof b> = { ...b };
+              delete copy.id;
+              return copy;
             }
             return b;
           }),
         };
-        await ProfileService.updateProject(id, payload as any);
+        await ProfileService.updateProject(id, payload as Partial<ProjectDTO>);
       });
     }
   };
@@ -470,6 +478,21 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const syncProfile = async () => {
+    if (!profile) return;
+    try {
+      setSaveStatus("saving");
+      await ProfileService.syncProfile();
+      await refreshProfile();
+      setIsSyncOutOfDate(false);
+      setSaveStatus("saved");
+    } catch (err) {
+      console.error(err);
+      setSaveStatus("error");
+      setError(err instanceof Error ? err.message : "AI sync failed.");
+      throw err;
+    }
+  };
 
   return (
     <ProfileContext.Provider
@@ -492,6 +515,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         updateSkillsState,
         suggestSkills,
         updateReferencesState,
+        syncProfile,
+        isSyncOutOfDate,
         handlePartialData,
       }}
     >

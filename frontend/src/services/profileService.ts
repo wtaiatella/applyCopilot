@@ -247,4 +247,18 @@ export class ProfileService {
       onError(error.message || "An error occurred during CV parsing.");
     }
   }
+
+  /**
+   * Triggers the AI-powered profile synchronization (text cleaning & embedding generation)
+   */
+  static async syncProfile(): Promise<{ success: boolean; cleanedText: string }> {
+    const response = await fetch("/api/profile/sync", {
+      method: "POST",
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || `Failed to sync profile with AI: ${response.statusText}`);
+    }
+    return response.json();
+  }
 }

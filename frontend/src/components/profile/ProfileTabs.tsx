@@ -4,101 +4,24 @@ import React, { useState, useEffect, useRef } from "react";
 import { 
   Tabs, 
   Form, 
-  Input, 
   Button, 
-  Card, 
-  DatePicker, 
-  Checkbox, 
-  Select, 
-  InputNumber, 
   Tooltip,
-  Typography,
-  Divider,
-  Badge
+  Badge,
+  notification
 } from "antd";
 import { 
-  PlusOutlined, 
-  DeleteOutlined, 
   CloudSyncOutlined, 
   CheckCircleOutlined, 
-  ExclamationCircleOutlined,
-  MinusCircleOutlined
+  ExclamationCircleOutlined
 } from "@ant-design/icons";
 import { useProfileContext, SaveStatus } from "../../contexts/ProfileContext";
 import dayjs from "dayjs";
-import { SkillDTO, ReferenceDTO } from "../../types/profile";
 import BasicDataForm from "./BasicDataForm";
 import ExperienceForm from "./ExperienceForm";
 import EducationForm from "./EducationForm";
 import ProjectForm from "./ProjectForm";
 import SkillsForm from "./SkillsForm";
 import ReferencesForm from "./ReferencesForm";
-
-const { Title } = Typography;
-const { TextArea } = Input;
-const { Option } = Select;
-
-// Inline Editable Tab Label Component
-interface EditableTabLabelProps {
-  value: string;
-  onSave: (val: string) => void;
-  placeholder?: string;
-}
-
-function EditableTabLabel({ value, onSave, placeholder }: EditableTabLabelProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [tempValue, setTempValue] = useState(value);
-
-  useEffect(() => {
-    Promise.resolve().then(() => setTempValue(value));
-  }, [value]);
-
-  const handleBlur = () => {
-    setIsEditing(false);
-    if (tempValue.trim() && tempValue !== value) {
-      onSave(tempValue.trim());
-    } else {
-      setTempValue(value);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleBlur();
-    } else if (e.key === "Escape") {
-      setIsEditing(false);
-      setTempValue(value);
-    }
-  };
-
-  if (isEditing) {
-    return (
-      <Input
-        size="small"
-        value={tempValue}
-        onChange={(e) => setTempValue(e.target.value)}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        autoFocus
-        style={{ width: 120, height: 22, fontSize: 12 }}
-        onClick={(e) => e.stopPropagation()}
-      />
-    );
-  }
-
-  return (
-    <span 
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        setIsEditing(true);
-      }}
-      className="cursor-pointer select-none"
-      title="Double-click to rename"
-    >
-      {value || placeholder || "Unnamed"}
-    </span>
-  );
-}
 
 // Save Status Badge Component
 function SaveStatusIndicator({ status }: { status: SaveStatus }) {
@@ -150,10 +73,33 @@ export default function ProfileTabs() {
     updateProjectState,
     deleteProject,
     updateSkillsState,
-    updateReferencesState
+    updateReferencesState,
+    syncProfile,
+    isSyncOutOfDate
   } = useProfileContext();
 
   const [form] = Form.useForm();
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      await syncProfile();
+      notification.success({
+        message: "AI Profile Synced",
+        description: "Your profile details have been consolidated, cleaned, and vectorized for semantic matching successfully.",
+        placement: "topRight"
+      });
+    } catch (err) {
+      notification.error({
+        message: "Synchronization Failed",
+        description: err instanceof Error ? err.message : "An unexpected error occurred while syncing your profile.",
+        placement: "topRight"
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   useEffect(() => {
     if (profile?.basicData) {
@@ -179,7 +125,7 @@ export default function ProfileTabs() {
         form.validateFields().catch(() => {});
       }
     }
-  }, [profile?.basicData, form]);
+  }, [profile, form]);
 
   // Experiences active tab sync
   const [activeExpTab, setActiveExpTab] = useState<string>();
@@ -331,11 +277,64 @@ export default function ProfileTabs() {
     },
   ];
 
+  const getSyncStatus = () => {
+    if (!profile.embeddingSyncedAt) {
+      return {
+        status: "default" as const,
+        text: "IA Profile Not Synced",
+        tooltip: "Your profile has not been vectorized. Sync with AI to enable smart job matching.",
+        color: "text-zinc-400 bg-zinc-950/40 border-zinc-800/50"
+      };
+    }
+    if (isSyncOutOfDate) {
+      return {
+        status: "warning" as const,
+        text: "IA Profile Out of Date",
+        tooltip: "You modified your profile since the last sync. Re-sync recommended to update job rankings.",
+        color: "text-amber-400 bg-amber-950/40 border-amber-900/50"
+      };
+    }
+    return {
+      status: "success" as const,
+      text: "IA Profile Synced",
+      tooltip: "Your profile vector embedding is fully up to date.",
+      color: "text-emerald-400 bg-emerald-950/40 border-emerald-900/50"
+    };
+  };
+
+  const syncConfig = getSyncStatus();
+
   return (
     <div className="space-y-4">
-      {/* Auto-save Status indicator */}
-      <div className="flex justify-end pr-2">
-        <SaveStatusIndicator status={saveStatus} />
+      {/* Top Controls Bar: AI Sync & Auto-save Status */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-900/50 border border-zinc-800/80 p-4 rounded-xl">
+        <div className="flex flex-wrap items-center gap-4">
+          <Tooltip title={syncConfig.tooltip}>
+            <span className={`flex items-center gap-2 text-xs font-medium border px-3 py-1.5 rounded-full ${syncConfig.color}`}>
+              <Badge status={syncConfig.status} />
+              <span>{syncConfig.text}</span>
+            </span>
+          </Tooltip>
+
+          {profile.embeddingSyncedAt && (
+            <span className="text-zinc-500 text-xs" suppressHydrationWarning>
+              Last Synced: {dayjs(profile.embeddingSyncedAt).format("DD/MM/YYYY HH:mm")}
+            </span>
+          )}
+
+          <Button
+            type="primary"
+            icon={<CloudSyncOutlined />}
+            onClick={handleSync}
+            loading={isSyncing}
+            className="bg-blue-600 hover:bg-blue-500 border-none rounded-lg text-xs h-8 flex items-center"
+          >
+            Sync with AI
+          </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <SaveStatusIndicator status={saveStatus} />
+        </div>
       </div>
 
       <Tabs 

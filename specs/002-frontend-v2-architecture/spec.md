@@ -19,7 +19,7 @@ This specification defines the architectural decisions and implementation detail
 > - **Phase 2 - Job Scraper and Worker**
 >   - [Spec 003 (Job Discovery)](file:///Users/wagnertaiatella/repos/applyCopilot/specs/003-job-discovery/spec.md)
 > - **Phase 3 - Job classification**
->   - [Spec 004 (Job Classification)](file:///Users/wagnertaiatella/repos/applyCopilot/specs/004-application-tracking/spec.md)
+>   - [Spec 004 (Job Classification)](file:///Users/wagnertaiatella/repos/applyCopilot/specs/004-job-classification/spec.md)
 > - **Phase 4 - CV Creation**
 >   - Spec 007
 > - **Phase 5 - Job Tracking**

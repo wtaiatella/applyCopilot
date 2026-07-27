@@ -1,19 +1,37 @@
 # --- IDE & OS ---
 .idea/
 .vscode/
-.DS_Store
-*.swp
 .windsurf/
 .junie/
 
+# macOS
+.DS_Store
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+*.swp
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
 # --- Node / Frontend (Next.js, React) ---
-**/node_modules/
-**/.next/
-**/out/
-**/dist/
-**/.vercel/
-**/.turbo/
+/.next/
+/out/
+/dist/
+
+# vercel
+.vercel
+
+# production
+/build
+
+# typescript
 *.tsbuildinfo
+next-env.d.ts
 
 # --- Python ---
 **/__pycache__/
@@ -30,6 +48,12 @@
 *.db
 *.db-journal
 **/chroma_db/
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
 # --- Secrets (Crucial) ---
 .env
@@ -49,3 +73,6 @@ tests_scripts/
 
 # --- speckit ---
 .specify/sync
+
+# testing
+/coverage

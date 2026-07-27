@@ -1,0 +1,731 @@
+openapi: 3.0.3
+info:
+  title: ApplyCopilot REST API (Phase 1)
+  description: API Contracts for Authentication and CV Import pipelines in ApplyCopilot V2.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local Development Server
+paths:
+  /api/auth/register:
+    post:
+      summary: Register a new user
+      description: Creates a new user account with email and password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  minLength: 6
+                  example: securepassword123
+      responses:
+        '200':
+          description: User registered successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: User registered successfully
+        '400':
+          description: Validation errors.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  errors:
+                    type: object
+                    properties:
+                      email:
+                        type: array
+                        items:
+                          type: string
+                        example: ["Invalid email address"]
+                      password:
+                        type: array
+                        items:
+                          type: string
+                        example: ["String must contain at least 6 characters"]
+
+  /api/auth/forgot-password:
+    post:
+      summary: Request password reset link
+      description: Generates a secure hashed token and sends a reset link to the user via Resend (or logs to debug folder in dev mode). Rate limit is 3 requests per hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+      responses:
+        '200':
+          description: Link sent or simulated. For security, this is also returned if the email doesn't exist.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: If the email exists, a reset link has been sent
+        '429':
+          description: Rate limit hit.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Too many password reset requests. Please try again in an hour.
+
+  /api/auth/reset-password:
+    post:
+      summary: Reset password using token
+      description: Validates the plaintext token against the stored SHA-256 hash and updates the user's password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - password
+              properties:
+                token:
+                  type: string
+                  example: 74f493b4426b5856f7bcc7c6c8c7...
+                password:
+                  type: string
+                  minLength: 6
+                  example: newsecurepassword456
+      responses:
+        '200':
+          description: Password reset successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Password reset successfully
+        '400':
+          description: Invalid or expired token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Invalid or expired reset token
+
+  /api/profile/parse:
+    post:
+      summary: Upload CV and stream parsed AI profile segments
+      description: Server-Sent Events (SSE) endpoint. Receives PDF/DOCX file, extracts text, performs rate limit validation (max 5/day), parses career history sequentially, and returns live progress events.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The resume file (PDF or DOCX, max 5MB)
+      responses:
+        '200':
+          description: SSE Stream established. Streams chunks of `ParseProgressEvent` data.
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/event-stream
+            Cache-Control:
+              schema:
+                type: string
+                example: no-cache, no-transform
+            Connection:
+              schema:
+                type: string
+                example: keep-alive
+        '401':
+          description: Unauthorized. Active session cookie required.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Unauthorized
+        '429':
+          description: Rate limit reached.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Rate limit reached. You can only parse 5 resumes per day.
+
+  /api/admin/llm-config:
+    get:
+      summary: Retrieve LLM provider configurations
+      description: Returns the current LLM provider configuration and credential status. ADMIN role required.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Configuration retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    type: object
+                    properties:
+                      defaultProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+                      parsingProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+                      summariesProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+                  credentialStatus:
+                    type: object
+                    properties:
+                      ollama:
+                        type: boolean
+                      gemini:
+                        type: boolean
+                      claude:
+                        type: boolean
+        '401':
+          description: Unauthorized. Active session cookie required.
+        '403':
+          description: Forbidden. ADMIN role required.
+    post:
+      summary: Update LLM provider configurations
+      description: Updates the LLM provider configurations. ADMIN role required.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - defaultProvider
+                - parsingProvider
+                - summariesProvider
+              properties:
+                defaultProvider:
+                  type: string
+                  enum: [ollama, gemini, claude]
+                parsingProvider:
+                  type: string
+                  enum: [ollama, gemini, claude]
+                summariesProvider:
+                  type: string
+                  enum: [ollama, gemini, claude]
+      responses:
+        '200':
+          description: Configuration updated successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  updated:
+                    type: object
+                    properties:
+                      defaultProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+                      parsingProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+                      summariesProvider:
+                        type: string
+                        enum: [ollama, gemini, claude]
+        '400':
+          description: Validation failed.
+        '401':
+          description: Unauthorized. Active session cookie required.
+        '403':
+          description: Forbidden. ADMIN role required.
+
+  /api/profile:
+    get:
+      summary: Retrieve complete profile
+      description: Returns the user's basic data, experiences, education, projects, skills, references, active summaries, and parsed CV versions.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Complete profile retrieved successfully.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/experiences:
+    post:
+      summary: Create work experience entry
+      description: Creates a new work experience entry on the profile.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - company
+                - position
+                - startDate
+              properties:
+                company:
+                  type: string
+                position:
+                  type: string
+                startDate:
+                  type: string
+                  format: date-time
+                endDate:
+                  type: string
+                  format: date-time
+                  nullable: true
+                current:
+                  type: boolean
+                bullets:
+                  type: array
+                  items:
+                    type: object
+                freeFormContext:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Experience created.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/experiences/{id}:
+    put:
+      summary: Update experience entry
+      description: Updates the experience and reconciles its bullets.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Experience updated.
+        '401':
+          description: Unauthorized.
+    delete:
+      summary: Delete experience entry
+      description: Deletes the experience and cascade deletes its bullets.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Experience deleted.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/education:
+    post:
+      summary: Create education entry
+      description: Creates a new education entry on the profile.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Education created.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/education/{id}:
+    put:
+      summary: Update education entry
+      description: Updates the education and reconciles its bullets.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Education updated.
+        '401':
+          description: Unauthorized.
+    delete:
+      summary: Delete education entry
+      description: Deletes the education entry.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Education deleted.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/projects:
+    post:
+      summary: Create project entry
+      description: Creates a new project entry on the profile.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Project created.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/projects/{id}:
+    put:
+      summary: Update project entry
+      description: Updates the project, technology tags, and reconciles its bullets.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Project updated.
+        '401':
+          description: Unauthorized.
+    delete:
+      summary: Delete project entry
+      description: Deletes the project entry.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Project deleted.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/skills:
+    put:
+      summary: Overwrite skills list
+      description: Replaces the complete flat skills list for the profile.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+      responses:
+        '200':
+          description: Skills updated.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/skills/suggest:
+    post:
+      summary: Extract and merge skills from profile using AI
+      description: Analyzes the user's work experiences and projects to extract a list of relevant technical skills, and merges them with the user's current skills list (avoiding duplicates). Rate limit is 10 requests per hour.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Skills successfully extracted, merged, and updated list returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      example: cmqu_id_123
+                    name:
+                      type: string
+                      example: TypeScript
+                    proficiency:
+                      type: string
+                      enum: [BEGINNER, INTERMEDIATE, ADVANCED, EXPERT]
+                      example: INTERMEDIATE
+                    yearsExperience:
+                      type: integer
+                      nullable: true
+                      example: 3
+        '401':
+          description: Unauthorized. Active session cookie required.
+        '422':
+          description: Validation error. No work experiences or projects found in profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: No work experiences or projects found. Add them first so the AI can extract skills.
+        '429':
+          description: Rate limit reached.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Rate limit reached. You can only generate 10 skill suggestions per hour.
+        '500':
+          description: Internal server error.
+
+  /api/profile/references:
+    put:
+      summary: Overwrite references list
+      description: Replaces the complete references list for the profile.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+      responses:
+        '200':
+          description: References updated.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/basic:
+    put:
+      summary: Update basic profile details
+      description: Updates the user's basic profile details (e.g. name, contact, social URLs) and synchronizes active summaries.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName:
+                  type: string
+                  nullable: true
+                lastName:
+                  type: string
+                  nullable: true
+                phone:
+                  type: string
+                  nullable: true
+                location:
+                  type: string
+                  nullable: true
+                linkedin:
+                  type: string
+                  nullable: true
+                github:
+                  type: string
+                  nullable: true
+                website:
+                  type: string
+                  nullable: true
+                title:
+                  type: string
+                  nullable: true
+                summary:
+                  type: string
+                  nullable: true
+                summaries:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                      content:
+                        type: string
+                      isActive:
+                        type: boolean
+                      sortOrder:
+                        type: integer
+      responses:
+        '200':
+          description: Basic profile details updated successfully.
+        '400':
+          description: Validation errors.
+        '401':
+          description: Unauthorized.
+
+  /api/profile/summaries/generate:
+    post:
+      summary: Generate AI profile summary
+      description: Generates a professional summary using LLM based on user profile context, limited to 10 requests per user per hour.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tone
+              properties:
+                tone:
+                  type: string
+                  example: professional
+                instructions:
+                  type: string
+                  example: Focus on backend scaling experience.
+      responses:
+        '200':
+          description: Summary generated successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  title:
+                    type: string
+                    example: Staff Software Engineer
+                  content:
+                    type: string
+                    example: Experienced software leader specializing in high-performance cloud architectures.
+        '400':
+          description: Invalid input or missing tone.
+        '401':
+          description: Unauthorized.
+        '429':
+          description: Rate limit reached (max 10 requests per hour).
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: authjs.session-token
+      description: Session cookie generated by NextAuth.js

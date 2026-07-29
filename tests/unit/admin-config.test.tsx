@@ -37,6 +37,7 @@ describe("LLMSettingsPanel Unit Tests", () => {
     defaultProvider: "ollama" as const,
     parsingProvider: "ollama" as const,
     summariesProvider: "gemini" as const,
+    profileProvider: "ollama" as const,
   };
 
   const mockCredentialStatus = {
@@ -50,7 +51,13 @@ describe("LLMSettingsPanel Unit Tests", () => {
   });
 
   it("should render collapsed panel and show contents on expand", async () => {
-    render(<LLMSettingsPanel config={mockConfig} credentialStatus={mockCredentialStatus} />);
+    render(
+      <LLMSettingsPanel
+        config={mockConfig}
+        credentialStatus={mockCredentialStatus}
+        blockedStatus={{}}
+      />,
+    );
 
     // Initially collapsed, but header "LLM Models" is visible
     const header = screen.getByText("LLM Models");
@@ -63,6 +70,7 @@ describe("LLMSettingsPanel Unit Tests", () => {
     expect(screen.getByText("Default Provider")).toBeInTheDocument();
     expect(screen.getByText("Parsing Provider")).toBeInTheDocument();
     expect(screen.getByText("Summaries Provider")).toBeInTheDocument();
+    expect(screen.getByText("Profile Provider")).toBeInTheDocument();
   });
 
   it("should submit the form with new values when Save is clicked", async () => {
@@ -71,7 +79,13 @@ describe("LLMSettingsPanel Unit Tests", () => {
       json: async () => ({ success: true }),
     });
 
-    render(<LLMSettingsPanel config={mockConfig} credentialStatus={mockCredentialStatus} />);
+    render(
+      <LLMSettingsPanel
+        config={mockConfig}
+        credentialStatus={mockCredentialStatus}
+        blockedStatus={{}}
+      />,
+    );
 
     // Expand panel
     const header = screen.getByText("LLM Models");
@@ -82,7 +96,10 @@ describe("LLMSettingsPanel Unit Tests", () => {
     fireEvent.click(saveButton);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith("/api/admin/llm-config", expect.any(Object));
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/admin/llm-config",
+        expect.any(Object),
+      );
     });
 
     // Check request body matches initialValues if unchanged
@@ -90,7 +107,9 @@ describe("LLMSettingsPanel Unit Tests", () => {
     const fetchBody = JSON.parse(callArgs[1].body);
     expect(fetchBody).toEqual(mockConfig);
 
-    expect(message.success).toHaveBeenCalledWith("LLM configuration saved successfully!");
+    expect(message.success).toHaveBeenCalledWith(
+      "LLM configuration saved successfully!",
+    );
   });
 
   it("should assert badge text renders correctly for each credential status combination", () => {
@@ -99,14 +118,15 @@ describe("LLMSettingsPanel Unit Tests", () => {
       <LLMSettingsPanel
         config={mockConfig}
         credentialStatus={{ ollama: true, gemini: true, claude: true }}
-      />
+        blockedStatus={{}}
+      />,
     );
     // Expand collapse
     fireEvent.click(screen.getByText("LLM Models"));
-    
-    // We should see three "✓ Configured" badges (one for each provider option)
+
+    // We should see four "✓ Configured" badges (one for each provider option)
     const configuredBadges = screen.getAllByText("✓ Configured");
-    expect(configuredBadges.length).toBe(3);
+    expect(configuredBadges.length).toBe(4);
 
     // 2. Gemini and Claude false, but selected so they render in closed Selects
     render(
@@ -115,15 +135,23 @@ describe("LLMSettingsPanel Unit Tests", () => {
           defaultProvider: "ollama",
           parsingProvider: "gemini",
           summariesProvider: "claude",
+          profileProvider: "ollama",
         }}
         credentialStatus={{ ollama: true, gemini: false, claude: false }}
-      />
+        blockedStatus={{}}
+      />,
     );
     // Expand collapse
     fireEvent.click(screen.getAllByText("LLM Models")[1]); // click the second panel header
 
-    expect(screen.getAllByText("✓ Configured").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("⚠️ API key not set").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("❌ Not configured").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("✓ Configured").length).toBeGreaterThanOrEqual(
+      1,
+    );
+    expect(
+      screen.getAllByText("⚠️ API key not set").length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText("❌ Not configured").length,
+    ).toBeGreaterThanOrEqual(1);
   });
 });

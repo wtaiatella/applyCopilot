@@ -25,28 +25,53 @@ export async function GET() {
             "AI_PROVIDER_DEFAULT",
             "AI_PROVIDER_PARSING",
             "AI_PROVIDER_SUMMARIES",
+            "AI_PROVIDER_PROFILE",
             "AI_PROVIDER_DEFAULT_BLOCKED_UNTIL",
             "AI_PROVIDER_PARSING_BLOCKED_UNTIL",
             "AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL",
+            "AI_PROVIDER_PROFILE_BLOCKED_UNTIL",
           ],
         },
       },
     });
 
-    const configMap = new Map(configs.map(c => [c.key, c.value]));
+    const configMap = new Map(configs.map((c) => [c.key, c.value]));
 
-    const defaultProvider = (configMap.get("AI_PROVIDER_DEFAULT") || "ollama") as LLMProvider;
-    const parsingProvider = (configMap.get("AI_PROVIDER_PARSING") || "ollama") as LLMProvider;
-    const summariesProvider = (configMap.get("AI_PROVIDER_SUMMARIES") || "gemini") as LLMProvider;
+    const defaultProvider = (configMap.get("AI_PROVIDER_DEFAULT") ||
+      "ollama") as LLMProvider;
+    const parsingProvider = (configMap.get("AI_PROVIDER_PARSING") ||
+      "ollama") as LLMProvider;
+    const summariesProvider = (configMap.get("AI_PROVIDER_SUMMARIES") ||
+      "gemini") as LLMProvider;
+    const profileProvider = (configMap.get("AI_PROVIDER_PROFILE") ||
+      "ollama") as LLMProvider;
 
-    const defaultBlockedUntil = configMap.get("AI_PROVIDER_DEFAULT_BLOCKED_UNTIL");
-    const parsingBlockedUntil = configMap.get("AI_PROVIDER_PARSING_BLOCKED_UNTIL");
-    const summariesBlockedUntil = configMap.get("AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL");
+    const defaultBlockedUntil = configMap.get(
+      "AI_PROVIDER_DEFAULT_BLOCKED_UNTIL",
+    );
+    const parsingBlockedUntil = configMap.get(
+      "AI_PROVIDER_PARSING_BLOCKED_UNTIL",
+    );
+    const summariesBlockedUntil = configMap.get(
+      "AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL",
+    );
+    const profileBlockedUntil = configMap.get(
+      "AI_PROVIDER_PROFILE_BLOCKED_UNTIL",
+    );
 
     const now = new Date();
-    const defaultBlocked = defaultBlockedUntil ? new Date(defaultBlockedUntil) > now : false;
-    const parsingBlocked = parsingBlockedUntil ? new Date(parsingBlockedUntil) > now : false;
-    const summariesBlocked = summariesBlockedUntil ? new Date(summariesBlockedUntil) > now : false;
+    const defaultBlocked = defaultBlockedUntil
+      ? new Date(defaultBlockedUntil) > now
+      : false;
+    const parsingBlocked = parsingBlockedUntil
+      ? new Date(parsingBlockedUntil) > now
+      : false;
+    const summariesBlocked = summariesBlockedUntil
+      ? new Date(summariesBlockedUntil) > now
+      : false;
+    const profileBlocked = profileBlockedUntil
+      ? new Date(profileBlockedUntil) > now
+      : false;
 
     const ollamaUrl = process.env.OLLAMA_BASE_URL;
     const geminiKey = process.env.GEMINI_API_KEY;
@@ -57,7 +82,7 @@ export async function GET() {
       gemini: !!(
         geminiKey &&
         geminiKey.length > 0 &&
-        geminiKey !== 'your-gemini-api-key-here'
+        geminiKey !== "your-gemini-api-key-here"
       ),
       claude: !!(claudeKey && claudeKey.length > 0),
     };
@@ -67,17 +92,22 @@ export async function GET() {
         defaultProvider,
         parsingProvider,
         summariesProvider,
+        profileProvider,
       },
       blockedStatus: {
         defaultProvider: defaultBlocked ? defaultBlockedUntil : null,
         parsingProvider: parsingBlocked ? parsingBlockedUntil : null,
         summariesProvider: summariesBlocked ? summariesBlockedUntil : null,
+        profileProvider: profileBlocked ? profileBlockedUntil : null,
       },
       credentialStatus,
     });
   } catch (error) {
     logger.error("Failed to load configuration", { error });
-    return NextResponse.json({ error: "Failed to load configuration" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to load configuration" },
+      { status: 500 },
+    );
   }
 }
 
@@ -100,8 +130,18 @@ export async function PATCH(req: Request) {
     }
 
     const { key } = body;
-    if (!["AI_PROVIDER_DEFAULT", "AI_PROVIDER_PARSING", "AI_PROVIDER_SUMMARIES"].includes(key)) {
-      return NextResponse.json({ error: "Invalid provider key" }, { status: 400 });
+    if (
+      ![
+        "AI_PROVIDER_DEFAULT",
+        "AI_PROVIDER_PARSING",
+        "AI_PROVIDER_SUMMARIES",
+        "AI_PROVIDER_PROFILE",
+      ].includes(key)
+    ) {
+      return NextResponse.json(
+        { error: "Invalid provider key" },
+        { status: 400 },
+      );
     }
 
     const { resetProviderBlock } = await import("@/lib/ai/circuit-breaker");
@@ -116,7 +156,10 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error("Failed to reset provider block", { error });
-    return NextResponse.json({ error: "Failed to reset provider block" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to reset provider block" },
+      { status: 500 },
+    );
   }
 }
 
@@ -140,14 +183,22 @@ export async function POST(req: Request) {
 
     const result = llmConfigSchema.safeParse(body);
     if (!result.success) {
-      const details = result.error.issues.map(err => ({
-        field: err.path.join('.'),
+      const details = result.error.issues.map((err) => ({
+        field: err.path.join("."),
         message: err.message,
       }));
-      return NextResponse.json({ error: "Validation failed", details }, { status: 400 });
+      return NextResponse.json(
+        { error: "Validation failed", details },
+        { status: 400 },
+      );
     }
 
-    const { defaultProvider, parsingProvider, summariesProvider } = result.data;
+    const {
+      defaultProvider,
+      parsingProvider,
+      summariesProvider,
+      profileProvider,
+    } = result.data;
 
     await prisma.$transaction([
       prisma.systemConfig.upsert({
@@ -165,12 +216,22 @@ export async function POST(req: Request) {
         create: { key: "AI_PROVIDER_SUMMARIES", value: summariesProvider },
         update: { value: summariesProvider },
       }),
+      prisma.systemConfig.upsert({
+        where: { key: "AI_PROVIDER_PROFILE" },
+        create: { key: "AI_PROVIDER_PROFILE", value: profileProvider },
+        update: { value: profileProvider },
+      }),
     ]);
 
     logger.info("LLM config updated successfully by admin", {
       userId: session.user.id,
       email: session.user.email,
-      updates: { defaultProvider, parsingProvider, summariesProvider }
+      updates: {
+        defaultProvider,
+        parsingProvider,
+        summariesProvider,
+        profileProvider,
+      },
     });
 
     return NextResponse.json({
@@ -179,11 +240,15 @@ export async function POST(req: Request) {
         defaultProvider,
         parsingProvider,
         summariesProvider,
+        profileProvider,
       },
     });
   } catch (error) {
     console.error("POST config error:", error);
     logger.error("Failed to update configuration", { error });
-    return NextResponse.json({ error: "Failed to update configuration" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to update configuration" },
+      { status: 500 },
+    );
   }
 }

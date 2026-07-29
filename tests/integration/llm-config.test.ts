@@ -2,7 +2,10 @@
  * @jest-environment node
  */
 import "dotenv/config";
-import { GET as getConfigHandler, POST as postConfigHandler } from "@/app/api/admin/llm-config/route";
+import {
+  GET as getConfigHandler,
+  POST as postConfigHandler,
+} from "@/app/api/admin/llm-config/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 
@@ -47,7 +50,11 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
 
     it("should return config and credentialStatus for ADMIN", async () => {
       mockAuth.mockResolvedValue({
-        user: { id: "admin-user-id", email: "wtaiatella@gmail.com", role: "ADMIN" },
+        user: {
+          id: "admin-user-id",
+          email: "wtaiatella@gmail.com",
+          role: "ADMIN",
+        },
         expires: "any",
       });
 
@@ -88,6 +95,7 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
           defaultProvider: "ollama",
           parsingProvider: "gemini",
           summariesProvider: "claude",
+          profileProvider: "ollama",
         }),
       });
 
@@ -107,6 +115,7 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
           defaultProvider: "ollama",
           parsingProvider: "gemini",
           summariesProvider: "claude",
+          profileProvider: "ollama",
         }),
       });
 
@@ -116,7 +125,11 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
 
     it("should return 400 if validation fails", async () => {
       mockAuth.mockResolvedValue({
-        user: { id: "admin-user-id", email: "wtaiatella@gmail.com", role: "ADMIN" },
+        user: {
+          id: "admin-user-id",
+          email: "wtaiatella@gmail.com",
+          role: "ADMIN",
+        },
         expires: "any",
       });
 
@@ -126,6 +139,7 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
           defaultProvider: "ollama",
           parsingProvider: "invalid-provider", // invalid
           summariesProvider: "claude",
+          profileProvider: "ollama",
         }),
       });
 
@@ -139,14 +153,27 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
 
     it("should successfully update and return 200 for ADMIN", async () => {
       mockAuth.mockResolvedValue({
-        user: { id: "admin-user-id", email: "wtaiatella@gmail.com", role: "ADMIN" },
+        user: {
+          id: "admin-user-id",
+          email: "wtaiatella@gmail.com",
+          role: "ADMIN",
+        },
         expires: "any",
       });
 
       // Save current config to restore later
-      const originalDefault = await prisma.systemConfig.findUnique({ where: { key: "AI_PROVIDER_DEFAULT" } });
-      const originalParsing = await prisma.systemConfig.findUnique({ where: { key: "AI_PROVIDER_PARSING" } });
-      const originalSummaries = await prisma.systemConfig.findUnique({ where: { key: "AI_PROVIDER_SUMMARIES" } });
+      const originalDefault = await prisma.systemConfig.findUnique({
+        where: { key: "AI_PROVIDER_DEFAULT" },
+      });
+      const originalParsing = await prisma.systemConfig.findUnique({
+        where: { key: "AI_PROVIDER_PARSING" },
+      });
+      const originalSummaries = await prisma.systemConfig.findUnique({
+        where: { key: "AI_PROVIDER_SUMMARIES" },
+      });
+      const originalProfile = await prisma.systemConfig.findUnique({
+        where: { key: "AI_PROVIDER_PROFILE" },
+      });
 
       const req = new Request("http://localhost:3000/api/admin/llm-config", {
         method: "POST",
@@ -154,6 +181,7 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
           defaultProvider: "ollama",
           parsingProvider: "gemini",
           summariesProvider: "claude",
+          profileProvider: "ollama",
         }),
       });
 
@@ -164,7 +192,9 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
       expect(data.updated.parsingProvider).toBe("gemini");
 
       // Verify db updated
-      const parsingInDb = await prisma.systemConfig.findUnique({ where: { key: "AI_PROVIDER_PARSING" } });
+      const parsingInDb = await prisma.systemConfig.findUnique({
+        where: { key: "AI_PROVIDER_PARSING" },
+      });
       expect(parsingInDb?.value).toBe("gemini");
 
       // Restore DB original config
@@ -185,8 +215,21 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
       if (originalSummaries) {
         await prisma.systemConfig.upsert({
           where: { key: "AI_PROVIDER_SUMMARIES" },
-          create: { key: "AI_PROVIDER_SUMMARIES", value: originalSummaries.value },
+          create: {
+            key: "AI_PROVIDER_SUMMARIES",
+            value: originalSummaries.value,
+          },
           update: { value: originalSummaries.value },
+        });
+      }
+      if (originalProfile) {
+        await prisma.systemConfig.upsert({
+          where: { key: "AI_PROVIDER_PROFILE" },
+          create: {
+            key: "AI_PROVIDER_PROFILE",
+            value: originalProfile.value,
+          },
+          update: { value: originalProfile.value },
         });
       }
     });

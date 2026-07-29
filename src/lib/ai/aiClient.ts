@@ -17,7 +17,7 @@ interface AIResolution {
 }
 
 export async function resolveAIConfig(
-  capability: "parsing" | "summaries" | "default"
+  capability: "parsing" | "summaries" | "default" | "profile",
 ): Promise<AIResolution> {
   let providerStr = "";
   let modelStr = "";
@@ -28,7 +28,9 @@ export async function resolveAIConfig(
         ? "AI_PROVIDER_PARSING"
         : capability === "summaries"
           ? "AI_PROVIDER_SUMMARIES"
-          : "AI_PROVIDER_DEFAULT";
+          : capability === "profile"
+            ? "AI_PROVIDER_PROFILE"
+            : "AI_PROVIDER_DEFAULT";
 
     // Try fetching from database SystemConfig
     const dbProvider = await prisma.systemConfig.findUnique({
@@ -44,7 +46,10 @@ export async function resolveAIConfig(
       providerStr = dbDefault?.value || "";
     }
   } catch (error) {
-    logger.warn("Database config resolution failed, falling back to env variables", { error });
+    logger.warn(
+      "Database config resolution failed, falling back to env variables",
+      { error },
+    );
   }
 
   // Fallback to environment variables
@@ -54,10 +59,13 @@ export async function resolveAIConfig(
         ? process.env.AI_PROVIDER_PARSING
         : capability === "summaries"
           ? process.env.AI_PROVIDER_SUMMARIES
-          : process.env.AI_PROVIDER_DEFAULT) || "ollama";
+          : capability === "profile"
+            ? process.env.AI_PROVIDER_PROFILE
+            : process.env.AI_PROVIDER_DEFAULT) || "ollama";
   }
 
-  const provider = (providerStr.toLowerCase() as "ollama" | "gemini" | "claude") || "ollama";
+  const provider =
+    (providerStr.toLowerCase() as "ollama" | "gemini" | "claude") || "ollama";
 
   // Resolve model based on resolved provider
   try {
@@ -90,20 +98,26 @@ export async function resolveAIConfig(
 
 export async function generateText(
   prompt: string,
-  capability: "parsing" | "summaries" | "default",
-  systemPrompt?: string
+  capability: "parsing" | "summaries" | "default" | "profile",
+  systemPrompt?: string,
 ): Promise<string> {
   const { provider, model } = await resolveAIConfig(capability);
-  logger.info(`Routing AI request: ${capability} -> ${provider} using ${model}`);
+  logger.info(
+    `Routing AI request: ${capability} -> ${provider} using ${model}`,
+  );
 
   if (provider === "gemini") {
-    const contentPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
+    const contentPrompt = systemPrompt
+      ? `${systemPrompt}\n\n${prompt}`
+      : prompt;
     const response = await googleGenAI.models.generateContent({
       model,
-      contents: [{
-        role: "user",
-        parts: [{ text: contentPrompt }]
-      }],
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: contentPrompt }],
+        },
+      ],
     });
     return response.text || "";
   }
@@ -127,7 +141,9 @@ export async function generateText(
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Claude API request failed: ${response.statusText} - ${errorText}`);
+      throw new Error(
+        `Claude API request failed: ${response.statusText} - ${errorText}`,
+      );
     }
 
     const data = await response.json();
@@ -151,11 +167,13 @@ export async function generateText(
 
 export async function generateJSON<T>(
   prompt: string,
-  capability: "parsing" | "summaries" | "default",
-  systemPrompt?: string
+  capability: "parsing" | "summaries" | "default" | "profile",
+  systemPrompt?: string,
 ): Promise<T> {
   const { provider, model } = await resolveAIConfig(capability);
-  logger.info(`Routing AI JSON request: ${capability} -> ${provider} using ${model}`);
+  logger.info(
+    `Routing AI JSON request: ${capability} -> ${provider} using ${model}`,
+  );
 
   const jsonSystemPrompt = systemPrompt
     ? `${systemPrompt}\nReturn ONLY valid JSON. Do not include markdown wraps or extra commentary.`
@@ -173,7 +191,11 @@ export async function generateJSON<T>(
     });
     responseText = response.text || "";
   } else if (provider === "claude") {
-    responseText = await generateText(prompt, capability, `${jsonSystemPrompt}\nRespond ONLY in raw JSON format.`);
+    responseText = await generateText(
+      prompt,
+      capability,
+      `${jsonSystemPrompt}\nRespond ONLY in raw JSON format.`,
+    );
   } else {
     // Ollama
     const messages = [];
@@ -206,7 +228,13 @@ export async function generateJSON<T>(
   try {
     return JSON.parse(cleanedText) as T;
   } catch (error) {
-    logger.error("Failed to parse AI JSON response", { error, rawResponse: responseText, cleanedText });
-    throw new Error(`AI generated invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error("Failed to parse AI JSON response", {
+      error,
+      rawResponse: responseText,
+      cleanedText,
+    });
+    throw new Error(
+      `AI generated invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }

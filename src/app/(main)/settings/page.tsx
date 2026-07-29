@@ -20,16 +20,26 @@ export default async function SettingsPage() {
   const configs = await prisma.systemConfig.findMany({
     where: {
       key: {
-        in: ["AI_PROVIDER_DEFAULT", "AI_PROVIDER_PARSING", "AI_PROVIDER_SUMMARIES"],
+        in: [
+          "AI_PROVIDER_DEFAULT",
+          "AI_PROVIDER_PARSING",
+          "AI_PROVIDER_SUMMARIES",
+          "AI_PROVIDER_PROFILE",
+        ],
       },
     },
   });
 
-  const configMap = new Map(configs.map(c => [c.key, c.value]));
+  const configMap = new Map(configs.map((c) => [c.key, c.value]));
 
-  const defaultProvider = (configMap.get("AI_PROVIDER_DEFAULT") || "ollama") as LLMProvider;
-  const parsingProvider = (configMap.get("AI_PROVIDER_PARSING") || "ollama") as LLMProvider;
-  const summariesProvider = (configMap.get("AI_PROVIDER_SUMMARIES") || "gemini") as LLMProvider;
+  const defaultProvider = (configMap.get("AI_PROVIDER_DEFAULT") ||
+    "ollama") as LLMProvider;
+  const parsingProvider = (configMap.get("AI_PROVIDER_PARSING") ||
+    "ollama") as LLMProvider;
+  const summariesProvider = (configMap.get("AI_PROVIDER_SUMMARIES") ||
+    "gemini") as LLMProvider;
+  const profileProvider = (configMap.get("AI_PROVIDER_PROFILE") ||
+    "ollama") as LLMProvider;
 
   // Detect credential status
   const ollamaUrl = process.env.OLLAMA_BASE_URL;
@@ -41,36 +51,58 @@ export default async function SettingsPage() {
     gemini: !!(
       geminiKey &&
       geminiKey.length > 0 &&
-      geminiKey !== 'your-gemini-api-key-here'
+      geminiKey !== "your-gemini-api-key-here"
     ),
     claude: !!(claudeKey && claudeKey.length > 0),
   };
 
-  const defaultBlockedUntil = configMap.get("AI_PROVIDER_DEFAULT_BLOCKED_UNTIL");
-  const parsingBlockedUntil = configMap.get("AI_PROVIDER_PARSING_BLOCKED_UNTIL");
-  const summariesBlockedUntil = configMap.get("AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL");
+  const defaultBlockedUntil = configMap.get(
+    "AI_PROVIDER_DEFAULT_BLOCKED_UNTIL",
+  );
+  const parsingBlockedUntil = configMap.get(
+    "AI_PROVIDER_PARSING_BLOCKED_UNTIL",
+  );
+  const summariesBlockedUntil = configMap.get(
+    "AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL",
+  );
+  const profileBlockedUntil = configMap.get(
+    "AI_PROVIDER_PROFILE_BLOCKED_UNTIL",
+  );
 
   const now = new Date();
-  const defaultBlocked = defaultBlockedUntil ? new Date(defaultBlockedUntil) > now : false;
-  const parsingBlocked = parsingBlockedUntil ? new Date(parsingBlockedUntil) > now : false;
-  const summariesBlocked = summariesBlockedUntil ? new Date(summariesBlockedUntil) > now : false;
+  const defaultBlocked = defaultBlockedUntil
+    ? new Date(defaultBlockedUntil) > now
+    : false;
+  const parsingBlocked = parsingBlockedUntil
+    ? new Date(parsingBlockedUntil) > now
+    : false;
+  const summariesBlocked = summariesBlockedUntil
+    ? new Date(summariesBlockedUntil) > now
+    : false;
+  const profileBlocked = profileBlockedUntil
+    ? new Date(profileBlockedUntil) > now
+    : false;
 
   const config = {
     defaultProvider,
     parsingProvider,
     summariesProvider,
+    profileProvider,
   };
 
   const blockedStatus = {
     defaultProvider: defaultBlocked ? defaultBlockedUntil || null : null,
     parsingProvider: parsingBlocked ? parsingBlockedUntil || null : null,
     summariesProvider: summariesBlocked ? summariesBlockedUntil || null : null,
+    profileProvider: profileBlocked ? profileBlockedUntil || null : null,
   };
 
   return (
     <div className="mx-auto max-w-4xl py-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-extrabold text-white">Administration Settings</h1>
+        <h1 className="text-3xl font-extrabold text-white">
+          Administration Settings
+        </h1>
         <p className="text-zinc-400 text-sm mt-2">
           Configure system-wide settings, model providers, and API connections.
         </p>
@@ -81,9 +113,12 @@ export default async function SettingsPage() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 hover:border-blue-500 transition-colors">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white">Job Scraper Portal Settings</h2>
+              <h2 className="text-xl font-bold text-white">
+                Job Scraper Portal Settings
+              </h2>
               <p className="text-zinc-400 text-sm mt-1">
-                Configure automated background scraping tasks, portal URLs, rate-limit delays, and test scraping strategies.
+                Configure automated background scraping tasks, portal URLs,
+                rate-limit delays, and test scraping strategies.
               </p>
             </div>
             <Link

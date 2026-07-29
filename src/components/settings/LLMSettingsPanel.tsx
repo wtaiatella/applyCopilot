@@ -11,12 +11,16 @@ interface LLMSettingsPanelProps {
   blockedStatus: Record<string, string | null>;
 }
 
-export default function LLMSettingsPanel({ config, credentialStatus, blockedStatus }: LLMSettingsPanelProps) {
+export default function LLMSettingsPanel({
+  config,
+  credentialStatus,
+  blockedStatus,
+}: LLMSettingsPanelProps) {
   const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(false);
-  const [currentBlockedStatus, setCurrentBlockedStatus] = useState<Record<string, string | null>>(
-    blockedStatus || {}
-  );
+  const [currentBlockedStatus, setCurrentBlockedStatus] = useState<
+    Record<string, string | null>
+  >(blockedStatus || {});
   const [resetting, setResetting] = useState<Record<string, boolean>>({});
   const [form] = Form.useForm();
 
@@ -33,7 +37,8 @@ export default function LLMSettingsPanel({ config, credentialStatus, blockedStat
       setCurrentBlockedStatus((prev) => ({ ...prev, [capabilityKey]: null }));
       message.success("LLM provider block cleared successfully!");
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : "Failed to reset provider block";
+      const errMsg =
+        err instanceof Error ? err.message : "Failed to reset provider block";
       message.error(errMsg);
     } finally {
       setResetting((prev) => ({ ...prev, [capabilityKey]: false }));
@@ -49,7 +54,8 @@ export default function LLMSettingsPanel({ config, credentialStatus, blockedStat
       <div className="mt-1.5 mb-3 flex items-center justify-between bg-red-950/20 border border-red-900/60 p-2.5 rounded-lg text-xs text-red-300">
         <span className="flex items-center gap-1.5 font-medium">
           <AlertCircle size={14} className="text-red-400" />
-          Provider is BLOCKED by circuit breaker until {untilDate.toLocaleTimeString()} ({untilDate.toLocaleDateString()})
+          Provider is BLOCKED by circuit breaker until{" "}
+          {untilDate.toLocaleTimeString()} ({untilDate.toLocaleDateString()})
         </span>
         <Button
           type="primary"
@@ -82,7 +88,8 @@ export default function LLMSettingsPanel({ config, credentialStatus, blockedStat
 
       message.success("LLM configuration saved successfully!");
     } catch (error: unknown) {
-      const errMsg = error instanceof Error ? error.message : "Failed to save configuration";
+      const errMsg =
+        error instanceof Error ? error.message : "Failed to save configuration";
       message.error(errMsg);
     } finally {
       setLoading(false);
@@ -91,17 +98,33 @@ export default function LLMSettingsPanel({ config, credentialStatus, blockedStat
 
   const onFinish = async (values: LLMProviderConfig) => {
     const unconfigured: string[] = [];
-    if (values.defaultProvider === "gemini" && !credentialStatus.gemini) unconfigured.push("Gemini (Default)");
-    if (values.defaultProvider === "claude" && !credentialStatus.claude) unconfigured.push("Claude (Default)");
-    if (values.defaultProvider === "ollama" && !credentialStatus.ollama) unconfigured.push("Ollama (Default)");
+    if (values.defaultProvider === "gemini" && !credentialStatus.gemini)
+      unconfigured.push("Gemini (Default)");
+    if (values.defaultProvider === "claude" && !credentialStatus.claude)
+      unconfigured.push("Claude (Default)");
+    if (values.defaultProvider === "ollama" && !credentialStatus.ollama)
+      unconfigured.push("Ollama (Default)");
 
-    if (values.parsingProvider === "gemini" && !credentialStatus.gemini) unconfigured.push("Gemini (Parsing)");
-    if (values.parsingProvider === "claude" && !credentialStatus.claude) unconfigured.push("Claude (Parsing)");
-    if (values.parsingProvider === "ollama" && !credentialStatus.ollama) unconfigured.push("Ollama (Parsing)");
+    if (values.parsingProvider === "gemini" && !credentialStatus.gemini)
+      unconfigured.push("Gemini (Parsing)");
+    if (values.parsingProvider === "claude" && !credentialStatus.claude)
+      unconfigured.push("Claude (Parsing)");
+    if (values.parsingProvider === "ollama" && !credentialStatus.ollama)
+      unconfigured.push("Ollama (Parsing)");
 
-    if (values.summariesProvider === "gemini" && !credentialStatus.gemini) unconfigured.push("Gemini (Summaries)");
-    if (values.summariesProvider === "claude" && !credentialStatus.claude) unconfigured.push("Claude (Summaries)");
-    if (values.summariesProvider === "ollama" && !credentialStatus.ollama) unconfigured.push("Ollama (Summaries)");
+    if (values.summariesProvider === "gemini" && !credentialStatus.gemini)
+      unconfigured.push("Gemini (Summaries)");
+    if (values.summariesProvider === "claude" && !credentialStatus.claude)
+      unconfigured.push("Claude (Summaries)");
+    if (values.summariesProvider === "ollama" && !credentialStatus.ollama)
+      unconfigured.push("Ollama (Summaries)");
+
+    if (values.profileProvider === "gemini" && !credentialStatus.gemini)
+      unconfigured.push("Gemini (Profile)");
+    if (values.profileProvider === "claude" && !credentialStatus.claude)
+      unconfigured.push("Claude (Profile)");
+    if (values.profileProvider === "ollama" && !credentialStatus.ollama)
+      unconfigured.push("Ollama (Profile)");
 
     if (unconfigured.length > 0) {
       modal.confirm({
@@ -127,24 +150,38 @@ export default function LLMSettingsPanel({ config, credentialStatus, blockedStat
       isConfigured = credentialStatus.ollama;
       badgeText = isConfigured ? "✓ Configured" : "❌ Not configured";
       badgeColor = isConfigured ? "success" : "error";
-      tooltipText = "Requires OLLAMA_BASE_URL (default: http://localhost:11434) to be configured and local service running.";
+      tooltipText =
+        "Requires OLLAMA_BASE_URL (default: http://localhost:11434) to be configured and local service running.";
     } else if (value === "gemini") {
       isConfigured = credentialStatus.gemini;
       badgeText = isConfigured ? "✓ Configured" : "⚠️ API key not set";
       badgeColor = isConfigured ? "success" : "warning";
-      tooltipText = "Requires GEMINI_API_KEY from Google AI Studio. The current value must not be the default placeholder.";
+      tooltipText =
+        "Requires GEMINI_API_KEY from Google AI Studio. The current value must not be the default placeholder.";
     } else if (value === "claude") {
       isConfigured = credentialStatus.claude;
       badgeText = isConfigured ? "✓ Configured" : "❌ Not configured";
       badgeColor = isConfigured ? "success" : "error";
-      tooltipText = "Requires CLAUDE_API_KEY from Anthropic Console to be added to environment variables.";
+      tooltipText =
+        "Requires CLAUDE_API_KEY from Anthropic Console to be added to environment variables.";
     }
 
     return (
-      <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+      <span
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          width: "100%",
+        }}
+      >
         <span>{name}</span>
         <Tooltip title={tooltipText} mouseEnterDelay={0.1}>
-          <Tag color={badgeColor} style={{ marginLeft: 8, marginRight: 0 }} className="cursor-help">
+          <Tag
+            color={badgeColor}
+            style={{ marginLeft: 8, marginRight: 0 }}
+            className="cursor-help"
+          >
             {badgeText}
           </Tag>
         </Tooltip>
@@ -161,7 +198,9 @@ export default function LLMSettingsPanel({ config, credentialStatus, blockedStat
   const collapseItems = [
     {
       key: "llm-models",
-      label: <span className="text-white font-semibold text-base">LLM Models</span>,
+      label: (
+        <span className="text-white font-semibold text-base">LLM Models</span>
+      ),
       children: (
         <Form
           form={form}
@@ -170,6 +209,7 @@ export default function LLMSettingsPanel({ config, credentialStatus, blockedStat
             defaultProvider: config.defaultProvider,
             parsingProvider: config.parsingProvider,
             summariesProvider: config.summariesProvider,
+            profileProvider: config.profileProvider,
           }}
           onFinish={onFinish}
           requiredMark={false}
@@ -204,6 +244,16 @@ export default function LLMSettingsPanel({ config, credentialStatus, blockedStat
             <Select options={providerOptions} size="large" />
           </Form.Item>
           {renderBlockedStatus("summariesProvider", "AI_PROVIDER_SUMMARIES")}
+
+          <Form.Item
+            name="profileProvider"
+            label={<span className="text-zinc-300">Profile Provider</span>}
+            tooltip="The provider used for AI-assisted bullet generation, review, and merging in the Profile section"
+            className="mb-2"
+          >
+            <Select options={providerOptions} size="large" />
+          </Form.Item>
+          {renderBlockedStatus("profileProvider", "AI_PROVIDER_PROFILE")}
 
           <Form.Item className="mb-0 mt-6">
             <Button

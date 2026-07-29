@@ -59,7 +59,9 @@ jest.mock("@dnd-kit/core", () => ({
   DndContext: ({ children, onDragEnd }: any) => (
     <div
       data-testid="mock-dnd-context"
-      onClick={() => onDragEnd && onDragEnd({ active: { id: "b-1" }, over: { id: "b-2" } })}
+      onClick={() =>
+        onDragEnd && onDragEnd({ active: { id: "b-1" }, over: { id: "b-2" } })
+      }
     >
       {children}
     </div>
@@ -138,19 +140,21 @@ describe("ExperienceForm UI Behavior", () => {
         addExperience={mockAddExperience}
         updateExperienceState={mockUpdateExperienceState}
         deleteExperience={mockDeleteExperience}
-      />
+      />,
     );
 
-    // Find the select inside the bullet container containing "Active Bullet 1"
+    // Find the type-toggle button inside the bullet container containing "Active Bullet 1"
     const bulletTextarea = screen.getByDisplayValue("Active Bullet 1");
     const bulletContainer = bulletTextarea.closest(".flex");
     expect(bulletContainer).toBeInTheDocument();
-    
-    const bulletTypeSelect = bulletContainer!.querySelector("select");
-    expect(bulletTypeSelect).not.toBeNull();
 
-    // Trigger select change directly
-    fireEvent.change(bulletTypeSelect!, { target: { value: "PARAGRAPH" } });
+    const bulletTypeToggle = bulletContainer!.querySelector(
+      'button[aria-label="Toggle type: currently bullet"]',
+    );
+    expect(bulletTypeToggle).not.toBeNull();
+
+    // Click the toggle button to switch the bullet type
+    fireEvent.click(bulletTypeToggle!);
 
     await waitFor(() => {
       expect(mockUpdateExperienceState).toHaveBeenCalledWith(
@@ -162,7 +166,7 @@ describe("ExperienceForm UI Behavior", () => {
               type: "PARAGRAPH",
             }),
           ]),
-        })
+        }),
       );
     });
   });
@@ -174,10 +178,12 @@ describe("ExperienceForm UI Behavior", () => {
         addExperience={mockAddExperience}
         updateExperienceState={mockUpdateExperienceState}
         deleteExperience={mockDeleteExperience}
-      />
+      />,
     );
 
-    const checkbox = screen.getByLabelText("I currently work here") as HTMLInputElement;
+    const checkbox = screen.getByLabelText(
+      "I currently work here",
+    ) as HTMLInputElement;
     expect(checkbox).toBeInTheDocument();
     expect(checkbox.checked).toBe(false);
 
@@ -189,7 +195,7 @@ describe("ExperienceForm UI Behavior", () => {
         expect.objectContaining({
           current: true,
           endDate: null,
-        })
+        }),
       );
     });
   });
@@ -201,7 +207,7 @@ describe("ExperienceForm UI Behavior", () => {
         addExperience={mockAddExperience}
         updateExperienceState={mockUpdateExperienceState}
         deleteExperience={mockDeleteExperience}
-      />
+      />,
     );
 
     // Simulate drag end by clicking the mock-dnd-context div
@@ -216,7 +222,7 @@ describe("ExperienceForm UI Behavior", () => {
             expect.objectContaining({ id: "b-2", sortOrder: 0 }),
             expect.objectContaining({ id: "b-1", sortOrder: 1 }),
           ],
-        })
+        }),
       );
     });
   });

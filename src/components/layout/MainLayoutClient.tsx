@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Briefcase,
+  FileText,
 } from "lucide-react";
 
 const { Header, Content } = Layout;
@@ -29,7 +30,10 @@ interface MainLayoutClientProps {
   };
 }
 
-export default function MainLayoutClient({ children, user }: MainLayoutClientProps) {
+export default function MainLayoutClient({
+  children,
+  user,
+}: MainLayoutClientProps) {
   const pathname = usePathname();
   const { themeMode } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
@@ -96,6 +100,11 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
       label: <Link href="/jobs">Jobs Matching</Link>,
     },
     {
+      key: "/cv-composer",
+      icon: <FileText className="h-5 w-5" />,
+      label: <Link href="/cv-composer">CV Composer</Link>,
+    },
+    {
       key: "/profile",
       icon: <User className="h-5 w-5" />,
       label: <Link href="/profile">Profile</Link>,
@@ -158,7 +167,13 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
               onClick={toggleSidebar}
               shape="circle"
               size="small"
-              icon={collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              icon={
+                collapsed ? (
+                  <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronLeft className="h-4 w-4" />
+                )
+              }
               style={{
                 position: "absolute",
                 right: -12,
@@ -236,12 +251,12 @@ export default function MainLayoutClient({ children, user }: MainLayoutClientPro
                   {pathname === "/dashboard"
                     ? "Dashboard"
                     : pathname === "/jobs"
-                    ? "Job Matching"
-                    : pathname === "/profile"
-                    ? "Profile Settings"
-                    : pathname === "/settings"
-                    ? "Administration Settings"
-                    : "System"}
+                      ? "Job Matching"
+                      : pathname === "/profile"
+                        ? "Profile Settings"
+                        : pathname === "/settings"
+                          ? "Administration Settings"
+                          : "System"}
                 </Title>
               </div>
 

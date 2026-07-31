@@ -1,7 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, Space, Tag, Typography, Spin, Button, List, Divider } from "antd";
+import { useRouter } from "next/navigation";
+import {
+  Card,
+  Space,
+  Tag,
+  Typography,
+  Spin,
+  Button,
+  List,
+  Divider,
+} from "antd";
 import {
   MapPin,
   Briefcase,
@@ -13,6 +23,7 @@ import {
   XCircle,
   AlertTriangle,
   Lightbulb,
+  FileText,
 } from "lucide-react";
 
 const { Title, Text, Paragraph } = Typography;
@@ -44,6 +55,7 @@ interface AnalysisData {
 }
 
 export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
+  const router = useRouter();
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
   const [checkingCache, setCheckingCache] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -92,7 +104,8 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
       const result = await response.json();
       setAnalysis(result);
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : "Failed to generate analysis";
+      const errMsg =
+        err instanceof Error ? err.message : "Failed to generate analysis";
       setError(errMsg);
     } finally {
       setAnalyzing(false);
@@ -139,16 +152,25 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
             <Title level={2} style={{ color: "#fff", margin: 0 }}>
               {job.title}
             </Title>
-            {job.url && (
-              <a
-                href={job.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-400 hover:text-blue-300 hover:underline shrink-0 mt-2"
+            <Space size="middle" className="shrink-0">
+              <Button
+                type="primary"
+                icon={<FileText size={14} />}
+                onClick={() => router.push(`/jobs/${job.id}/cv-composer`)}
               >
-                View Original Listing
-              </a>
-            )}
+                Create CV
+              </Button>
+              {job.url && (
+                <a
+                  href={job.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-400 hover:text-blue-300 hover:underline mt-2"
+                >
+                  View Original Listing
+                </a>
+              )}
+            </Space>
           </div>
           <Text className="text-blue-400 text-lg font-medium block mt-1">
             {job.company}
@@ -166,7 +188,10 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
           {job.locationType && (
             <span className="flex items-center gap-1.5">
               <Globe size={16} />
-              <Tag color="cyan" className="m-0 border-0 bg-cyan-950/50 text-cyan-400 uppercase text-xs">
+              <Tag
+                color="cyan"
+                className="m-0 border-0 bg-cyan-950/50 text-cyan-400 uppercase text-xs"
+              >
                 {job.locationType}
               </Tag>
             </span>
@@ -174,7 +199,10 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
           {job.jobType && (
             <span className="flex items-center gap-1.5">
               <Briefcase size={16} />
-              <Tag color="blue" className="m-0 border-0 bg-blue-950/50 text-blue-400 uppercase text-xs">
+              <Tag
+                color="blue"
+                className="m-0 border-0 bg-blue-950/50 text-blue-400 uppercase text-xs"
+              >
                 {job.jobType}
               </Tag>
             </span>
@@ -197,7 +225,9 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
               </Title>
             </div>
             {analysis && (
-              <Tag className={`m-0 border uppercase font-bold text-xs ${verdictDetails?.bgColor}`}>
+              <Tag
+                className={`m-0 border uppercase font-bold text-xs ${verdictDetails?.bgColor}`}
+              >
                 {analysis.verdict}
               </Tag>
             )}
@@ -206,16 +236,24 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
           {checkingCache ? (
             <div className="flex items-center justify-center py-8">
               <Spin size="small" />
-              <span className="text-zinc-500 text-xs ml-2">Loading match status...</span>
+              <span className="text-zinc-500 text-xs ml-2">
+                Loading match status...
+              </span>
             </div>
           ) : analysis ? (
             <div className="space-y-4">
               {/* Verdict Banner */}
-              <div className={`flex items-start gap-3 p-4 rounded-xl border ${verdictDetails?.bgColor}`}>
+              <div
+                className={`flex items-start gap-3 p-4 rounded-xl border ${verdictDetails?.bgColor}`}
+              >
                 {verdictDetails?.icon}
                 <div className="space-y-1">
-                  <div className="font-bold text-sm text-white">{verdictDetails?.text}</div>
-                  <div className="text-xs leading-relaxed text-zinc-300">{analysis.justification}</div>
+                  <div className="font-bold text-sm text-white">
+                    {verdictDetails?.text}
+                  </div>
+                  <div className="text-xs leading-relaxed text-zinc-300">
+                    {analysis.justification}
+                  </div>
                 </div>
               </div>
 
@@ -238,7 +276,9 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
                       )}
                     />
                   ) : (
-                    <div className="text-xs text-zinc-500">None identified.</div>
+                    <div className="text-xs text-zinc-500">
+                      None identified.
+                    </div>
                   )}
                 </div>
 
@@ -259,7 +299,9 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
                       )}
                     />
                   ) : (
-                    <div className="text-xs text-zinc-500">None identified.</div>
+                    <div className="text-xs text-zinc-500">
+                      None identified.
+                    </div>
                   )}
                 </div>
               </div>
@@ -284,14 +326,17 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-xs text-zinc-500">All technical requirements matched.</div>
+                  <div className="text-xs text-zinc-500">
+                    All technical requirements matched.
+                  </div>
                 )}
               </div>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
               <p className="text-xs text-zinc-400 max-w-sm m-0">
-                Perform a deep comparative match analysis to extract your strengths, weaknesses, gaps, and candidacy recommendation.
+                Perform a deep comparative match analysis to extract your
+                strengths, weaknesses, gaps, and candidacy recommendation.
               </p>
               <Button
                 type="primary"
@@ -319,7 +364,10 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
 
         {/* Job Description Card */}
         <Card className="bg-zinc-900 border-zinc-800 p-2 rounded-xl">
-          <Title level={4} style={{ color: "#fff", marginTop: 0, marginBottom: 16 }}>
+          <Title
+            level={4}
+            style={{ color: "#fff", marginTop: 0, marginBottom: 16 }}
+          >
             Job Description
           </Title>
 
@@ -327,17 +375,30 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
             <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
               <Spin size="large" />
               <div className="space-y-1">
-                <Paragraph style={{ color: "#fff", fontWeight: 600, fontSize: 16 }} className="flex items-center justify-center gap-2 m-0">
-                  <AlertCircle size={18} className="text-blue-400 animate-pulse" />
+                <Paragraph
+                  style={{ color: "#fff", fontWeight: 600, fontSize: 16 }}
+                  className="flex items-center justify-center gap-2 m-0"
+                >
+                  <AlertCircle
+                    size={18}
+                    className="text-blue-400 animate-pulse"
+                  />
                   Description Pending Retrieval
                 </Paragraph>
-                <Paragraph style={{ color: "#a1a1aa", fontSize: 12 }} className="max-w-sm m-0">
-                  The full job description is currently being retrieved from the portal. Please check back shortly.
+                <Paragraph
+                  style={{ color: "#a1a1aa", fontSize: 12 }}
+                  className="max-w-sm m-0"
+                >
+                  The full job description is currently being retrieved from the
+                  portal. Please check back shortly.
                 </Paragraph>
               </div>
             </div>
           ) : (
-            <Paragraph style={{ color: "#d4d4d8", fontSize: 14 }} className="whitespace-pre-wrap leading-relaxed">
+            <Paragraph
+              style={{ color: "#d4d4d8", fontSize: 14 }}
+              className="whitespace-pre-wrap leading-relaxed"
+            >
               {job.fullDescription || "No description available."}
             </Paragraph>
           )}

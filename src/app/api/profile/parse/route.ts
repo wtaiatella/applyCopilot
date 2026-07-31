@@ -5,16 +5,14 @@ import { DocumentExtractor } from "@/lib/parsing/documentExtract";
 import { ProfileMergeService } from "@/lib/merge/profileMergeService";
 import { generateJSON } from "@/lib/ai/aiClient";
 import { logger } from "@/lib/logging/logger";
-import { 
-  BasicDataDTO, 
-  ExperienceDTO, 
+import {
+  BasicDataDTO,
+  ExperienceDTO,
   ProjectDTO,
-  EducationDTO, 
+  EducationDTO,
   SkillDTO,
-  ParseProgressEvent 
+  ParseProgressEvent,
 } from "@/types/profile";
-
-
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +24,9 @@ export const dynamic = "force-dynamic";
 function toArray<T>(value: unknown): T[] {
   if (Array.isArray(value)) return value as T[];
   if (value && typeof value === "object") {
-    const firstArray = Object.values(value as Record<string, unknown>).find(Array.isArray);
+    const firstArray = Object.values(value as Record<string, unknown>).find(
+      Array.isArray,
+    );
     if (firstArray) return firstArray as T[];
   }
   return [];
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       logger.warn(`User ${userId} hit parsing rate limit`, { parseCount });
       return NextResponse.json(
         { error: "Rate limit reached. You can only parse 50 resumes per day." },
-        { status: 429 }
+        { status: 429 },
       );
     }
 
@@ -94,20 +94,33 @@ export async function POST(req: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         const sendEvent = (event: ParseProgressEvent) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+          );
         };
 
         try {
           // STEP 1: Upload & Extract text (20%)
-          sendEvent({ phase: "upload", progress: 20, status: "Extracting text from document..." });
-          const extractedText = await DocumentExtractor.extractText(buffer, filename);
-          
+          sendEvent({
+            phase: "upload",
+            progress: 20,
+            status: "Extracting text from document...",
+          });
+          const extractedText = await DocumentExtractor.extractText(
+            buffer,
+            filename,
+          );
+
           if (!extractedText.trim()) {
             throw new Error("Could not extract any text from the document.");
           }
 
           // STEP 2: General info / basic data (40%)
-          sendEvent({ phase: "basic", progress: 40, status: "Extracting contact and summary details..." });
+          sendEvent({
+            phase: "basic",
+            progress: 40,
+            status: "Extracting contact and summary details...",
+          });
           const basicPrompt = `You are an expert resume parser. Read the resume text below and extract personal contact info and a summary.
 Return ONLY valid JSON matching this schema:
 {
@@ -125,12 +138,24 @@ Return ONLY valid JSON matching this schema:
 Resume Text:
 ${extractedText}`;
 
-          const parsedBasic = await generateJSON<BasicDataDTO>(basicPrompt, "parsing");
+          const parsedBasic = await generateJSON<BasicDataDTO>(
+            basicPrompt,
+            "parsing",
+          );
           await ProfileMergeService.mergeBasicData(profileId, parsedBasic);
-          sendEvent({ phase: "basic", progress: 40, status: "General info saved.", data: parsedBasic });
+          sendEvent({
+            phase: "basic",
+            progress: 40,
+            status: "General info saved.",
+            data: parsedBasic,
+          });
 
           // STEP 3: Experiences (60%)
-          sendEvent({ phase: "experiences", progress: 60, status: "Extracting work history..." });
+          sendEvent({
+            phase: "experiences",
+            progress: 60,
+            status: "Extracting work history...",
+          });
           // NOTE: freeFormContext is intentionally omitted — it is a user-authored field
           // that should never be auto-populated from the CV. Bullets from the CV are imported
           // as PARAGRAPH type since they represent narrative text from the source document.
@@ -155,16 +180,31 @@ Return ONLY valid JSON as an array of objects matching this schema:
 Resume Text:
 ${extractedText}`;
 
-          const rawExperiences = await generateJSON<unknown>(experiencesPrompt, "parsing");
+          const rawExperiences = await generateJSON<unknown>(
+            experiencesPrompt,
+            "parsing",
+          );
           const parsedExperiences = toArray<ExperienceDTO>(rawExperiences);
           logger.info(`Parsed ${parsedExperiences.length} experiences from CV`);
-          await ProfileMergeService.mergeExperiences(profileId, parsedExperiences);
-          sendEvent({ phase: "experiences", progress: 60, status: "Work history saved.", data: parsedExperiences });
+          await ProfileMergeService.mergeExperiences(
+            profileId,
+            parsedExperiences,
+          );
+          sendEvent({
+            phase: "experiences",
+            progress: 60,
+            status: "Work history saved.",
+            data: parsedExperiences,
+          });
 
           // STEP 4: Projects (80%) — only explicit projects listed in the CV are imported.
           // The AI fallback that inferred projects from work experiences has been removed;
           // users can generate project suggestions manually via the profile page.
-          sendEvent({ phase: "projects", progress: 80, status: "Extracting projects..." });
+          sendEvent({
+            phase: "projects",
+            progress: 80,
+            status: "Extracting projects...",
+          });
           const projectsPrompt = `You are an expert resume parser. Read the resume text below and extract side projects or major initiatives explicitly listed in a dedicated projects section.
 Do NOT infer or derive projects from the work experience section.
 Return ONLY valid JSON as an array of objects matching this schema:
@@ -188,13 +228,26 @@ If no explicit projects section exists, return an empty array [].
 Resume Text:
 ${extractedText}`;
 
-          const parsedProjects = toArray<ProjectDTO>(await generateJSON<unknown>(projectsPrompt, "parsing"));
-          logger.info(`Parsed ${parsedProjects.length} explicit projects from CV`);
+          const parsedProjects = toArray<ProjectDTO>(
+            await generateJSON<unknown>(projectsPrompt, "parsing"),
+          );
+          logger.info(
+            `Parsed ${parsedProjects.length} explicit projects from CV`,
+          );
           await ProfileMergeService.mergeProjects(profileId, parsedProjects);
-          sendEvent({ phase: "projects", progress: 80, status: "Projects saved.", data: parsedProjects });
+          sendEvent({
+            phase: "projects",
+            progress: 80,
+            status: "Projects saved.",
+            data: parsedProjects,
+          });
 
           // STEP 5: Education & Skills (100%)
-          sendEvent({ phase: "education", progress: 100, status: "Extracting education and skills..." });
+          sendEvent({
+            phase: "education",
+            progress: 100,
+            status: "Extracting education and skills...",
+          });
           // NOTE: freeFormContext intentionally omitted from education bullets — user-authored field only.
           const edSkillsPrompt = `You are an expert resume parser. Read the resume text below and extract education credentials and key skills.
 Return ONLY valid JSON matching this schema:
@@ -233,21 +286,34 @@ ${extractedText}`;
             skills: SkillDTO[];
           }
 
-          let parsedEdSkills = await generateJSON<EdSkillsResponse>(edSkillsPrompt, "parsing");
+          let parsedEdSkills = await generateJSON<EdSkillsResponse>(
+            edSkillsPrompt,
+            "parsing",
+          );
 
           // Normalize: LLM may return education/skills wrapped or as bare arrays
           if (parsedEdSkills) {
             if (!Array.isArray(parsedEdSkills.education)) {
-              parsedEdSkills.education = toArray<EducationDTO>(parsedEdSkills.education as unknown);
+              parsedEdSkills.education = toArray<EducationDTO>(
+                parsedEdSkills.education as unknown,
+              );
             }
             if (!Array.isArray(parsedEdSkills.skills)) {
-              parsedEdSkills.skills = toArray<SkillDTO>(parsedEdSkills.skills as unknown);
+              parsedEdSkills.skills = toArray<SkillDTO>(
+                parsedEdSkills.skills as unknown,
+              );
             }
           }
 
           // AI Fallback for skills
-          if (!parsedEdSkills || !parsedEdSkills.skills || parsedEdSkills.skills.length === 0) {
-            logger.info("Main parsing returned empty skills. Triggering fallback skill extraction prompt.");
+          if (
+            !parsedEdSkills ||
+            !parsedEdSkills.skills ||
+            parsedEdSkills.skills.length === 0
+          ) {
+            logger.info(
+              "Main parsing returned empty skills. Triggering fallback skill extraction prompt.",
+            );
             const skillFallbackPrompt = `Extract all technical and soft skills from the following CV as a flat list. For each skill, estimate proficiency level (BEGINNER/INTERMEDIATE/ADVANCED/EXPERT) based on context and years of use.
 Return ONLY valid JSON matching this schema:
 [
@@ -260,7 +326,9 @@ Return ONLY valid JSON matching this schema:
 
 Resume Text:
 ${extractedText}`;
-            const fallbackSkills = toArray<SkillDTO>(await generateJSON<unknown>(skillFallbackPrompt, "parsing"));
+            const fallbackSkills = toArray<SkillDTO>(
+              await generateJSON<unknown>(skillFallbackPrompt, "parsing"),
+            );
             if (!parsedEdSkills) {
               parsedEdSkills = { education: [], skills: fallbackSkills };
             } else {
@@ -268,29 +336,31 @@ ${extractedText}`;
             }
           }
 
-          await ProfileMergeService.mergeEducation(profileId, parsedEdSkills.education);
-          await ProfileMergeService.mergeSkills(profileId, parsedEdSkills.skills);
+          await ProfileMergeService.mergeEducation(
+            profileId,
+            parsedEdSkills.education,
+          );
+          await ProfileMergeService.mergeSkills(
+            profileId,
+            parsedEdSkills.skills,
+          );
 
-          // Save the CV version record
-          await prisma.cV.create({
-            data: {
-              profileId,
-              name: `Imported from ${filename}`,
-            },
+          sendEvent({
+            phase: "education",
+            progress: 100,
+            status: "Resume parsing and import completed successfully!",
+            data: parsedEdSkills,
           });
 
-          sendEvent({ 
-            phase: "education", 
-            progress: 100, 
-            status: "Resume parsing and import completed successfully!", 
-            data: parsedEdSkills 
-          });
-          
           controller.close();
         } catch (error) {
           const err = error as Error;
           logger.error("SSE Parsing failed", { error: err.message });
-          sendEvent({ phase: "error", progress: 0, error: err.message || "CV parsing failed." });
+          sendEvent({
+            phase: "error",
+            progress: 0,
+            error: err.message || "CV parsing failed.",
+          });
           controller.close();
         }
       },
@@ -300,13 +370,18 @@ ${extractedText}`;
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
-        "Connection": "keep-alive",
+        Connection: "keep-alive",
         "X-Accel-Buffering": "no", // Disable buffering in Nginx
       },
     });
   } catch (error) {
     const err = error as Error;
-    logger.error("Failed to start CV parsing SSE handler", { error: err.message });
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    logger.error("Failed to start CV parsing SSE handler", {
+      error: err.message,
+    });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

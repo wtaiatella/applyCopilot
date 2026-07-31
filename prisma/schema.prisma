@@ -164,10 +164,14 @@ model Skill {
   name            String
   proficiency     ProficiencyLevel
   yearsExperience Int?
-  
-  profile         UserProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  isActive        Boolean          @default(true)
+  isArchived      Boolean          @default(false)
 
-  @@unique([profileId, name])
+  profile         UserProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  usedInCVs       CVBullet[]
+
+  // @@unique([profileId, name]) removed — replaced by a partial unique index
+  // (profileId, name) WHERE "isArchived" = false, added via raw SQL migration.
 }
 
 model Reference {
@@ -192,19 +196,33 @@ model ProfileSummary {
   isActive      Boolean     @default(false)
   sortOrder     Int         @default(0)
   createdAt     DateTime    @default(now())
-  
+
   profile       UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  usedInCVs     CVBullet[]
+}
+
+enum CVStatus {
+  DRAFT
+  APPLIED
 }
 
 model CV {
-  id        String     @id @default(cuid())
-  profileId String
-  name      String
-  s3Key     String?
-  createdAt DateTime   @default(now())
-  
-  profile   UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  bullets   CVBullet[]
+  id           String     @id @default(cuid())
+  profileId    String
+  jobListingId String
+  name         String
+  s3Key        String?
+  status       CVStatus   @default(DRAFT)
+  snapshotData Json
+  appliedAt    DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  profile      UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  jobListing   JobListing  @relation(fields: [jobListingId], references: [id], onDelete: Cascade)
+  bullets      CVBullet[]
+
+  @@unique([profileId, jobListingId])
 }
 
 model CVBullet {
@@ -213,12 +231,20 @@ model CVBullet {
   experienceBulletId String?
   projectBulletId    String?
   educationBulletId  String?
+  summaryId          String?           // NEW — marks a ProfileSummary as used/locked by this CV
+  skillId            String?           // NEW — marks a Skill as used/locked by this CV
   renderedText       String            // Persists CV bullet content even if original profile bullet is deleted
 
   cv               CV                @relation(fields: [cvId], references: [id], onDelete: Cascade)
   experienceBullet ExperienceBullet? @relation(fields: [experienceBulletId], references: [id], onDelete: SetNull)
   projectBullet    ProjectBullet?    @relation(fields: [projectBulletId], references: [id], onDelete: SetNull)
   educationBullet  EducationBullet?  @relation(fields: [educationBulletId], references: [id], onDelete: SetNull)
+  summary          ProfileSummary?   @relation(fields: [summaryId], references: [id], onDelete: SetNull)
+  skill            Skill?            @relation(fields: [skillId], references: [id], onDelete: SetNull)
+
+  // Application-level invariant (also enforced via raw-SQL CHECK in the migration, see
+  // Migration & Rollback): exactly one of experienceBulletId/projectBulletId/educationBulletId/
+  // summaryId/skillId is non-null per row.
 }
 
 model Session {
@@ -342,6 +368,7 @@ model JobListing {
 
   // Relations
   analyses                 JobAnalysis[]
+  cvs                      CV[]
 
   @@unique([portalId, externalJobId])
 }

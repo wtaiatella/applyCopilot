@@ -282,8 +282,22 @@ describe("AI Bullet Route Handlers Integration Tests", () => {
         bullets: [{ text: "Original bullet", sortOrder: 0 }],
       });
 
+      const jobListing = await prisma.jobListing.create({
+        data: {
+          portalId: "test-portal",
+          externalJobId: `test-job-${Date.now()}`,
+          title: "Test Job",
+          company: "Test Company",
+          url: "https://example.com/job",
+        },
+      });
       const cv = await prisma.cV.create({
-        data: { profileId: testProfileId, name: "Test CV" },
+        data: {
+          profileId: testProfileId,
+          jobListingId: jobListing.id,
+          name: "Test CV",
+          snapshotData: {},
+        },
       });
       await prisma.cVBullet.create({
         data: {
@@ -372,8 +386,22 @@ describe("AI Bullet Route Handlers Integration Tests", () => {
         ],
       });
 
+      const jobListing = await prisma.jobListing.create({
+        data: {
+          portalId: "test-portal",
+          externalJobId: `test-job-${Date.now()}-merge`,
+          title: "Test Job",
+          company: "Test Company",
+          url: "https://example.com/job",
+        },
+      });
       const cv = await prisma.cV.create({
-        data: { profileId: testProfileId, name: "Merge CV" },
+        data: {
+          profileId: testProfileId,
+          jobListingId: jobListing.id,
+          name: "Merge CV",
+          snapshotData: {},
+        },
       });
       await prisma.cVBullet.create({
         data: {

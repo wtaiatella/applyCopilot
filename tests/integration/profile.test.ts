@@ -5,11 +5,20 @@
 import "dotenv/config";
 import { GET as getProfileHandler } from "@/app/api/profile/route";
 import { POST as createExperienceHandler } from "@/app/api/profile/experiences/route";
-import { PUT as updateExperienceHandler, DELETE as deleteExperienceHandler } from "@/app/api/profile/experiences/[id]/route";
+import {
+  PUT as updateExperienceHandler,
+  DELETE as deleteExperienceHandler,
+} from "@/app/api/profile/experiences/[id]/route";
 import { POST as createEducationHandler } from "@/app/api/profile/education/route";
-import { PUT as updateEducationHandler, DELETE as deleteEducationHandler } from "@/app/api/profile/education/[id]/route";
+import {
+  PUT as updateEducationHandler,
+  DELETE as deleteEducationHandler,
+} from "@/app/api/profile/education/[id]/route";
 import { POST as createProjectHandler } from "@/app/api/profile/projects/route";
-import { PUT as updateProjectHandler, DELETE as deleteProjectHandler } from "@/app/api/profile/projects/[id]/route";
+import {
+  PUT as updateProjectHandler,
+  DELETE as deleteProjectHandler,
+} from "@/app/api/profile/projects/[id]/route";
 import { PUT as updateSkillsHandler } from "@/app/api/profile/skills/route";
 import { PUT as updateReferencesHandler } from "@/app/api/profile/references/route";
 import { PUT as updateBasicDataHandler } from "@/app/api/profile/basic/route";
@@ -51,9 +60,11 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
   afterAll(async () => {
     // Clean up database records
     if (testUserId) {
-      await prisma.user.delete({
-        where: { id: testUserId },
-      }).catch(() => {});
+      await prisma.user
+        .delete({
+          where: { id: testUserId },
+        })
+        .catch(() => {});
     }
 
     await prisma.$disconnect();
@@ -99,7 +110,9 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
         position: "Software Engineer",
         startDate: new Date("2024-01-01").toISOString(),
         current: true,
-        bullets: [{ text: "Initial highlight bullet", type: "BULLET", sortOrder: 0 }],
+        bullets: [
+          { text: "Initial highlight bullet", type: "BULLET", sortOrder: 0 },
+        ],
       };
 
       const req = new Request("http://localhost:3000/api/profile/experiences", {
@@ -115,7 +128,7 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       expect(data.company).toBe("Google");
       expect(data.bullets).toHaveLength(1);
       expect(data.bullets[0].text).toBe("Initial highlight bullet");
-      
+
       experienceId = data.id;
     });
 
@@ -133,17 +146,33 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
         current: true,
         bullets: [
           // Keep and update existing bullet by passing its ID
-          { id: createdBullets[0].id, text: "Updated highlight bullet", type: "BULLET", sortOrder: 0, isActive: true, isArchived: false },
+          {
+            id: createdBullets[0].id,
+            text: "Updated highlight bullet",
+            type: "BULLET",
+            sortOrder: 0,
+            isActive: true,
+            isArchived: false,
+          },
           // Add a new bullet
-          { text: "Brand new highlight bullet", type: "BULLET", sortOrder: 1, isActive: true, isArchived: false }
+          {
+            text: "Brand new highlight bullet",
+            type: "BULLET",
+            sortOrder: 1,
+            isActive: true,
+            isArchived: false,
+          },
           // The old bullet is not deleted since it was updated, but any omitted ones would be
         ],
       };
 
-      const req = new Request(`http://localhost:3000/api/profile/experiences/${experienceId}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
+      const req = new Request(
+        `http://localhost:3000/api/profile/experiences/${experienceId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        },
+      );
 
       const params = Promise.resolve({ id: experienceId });
       const res = await updateExperienceHandler(req, { params });
@@ -153,8 +182,12 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       expect(data.company).toBe("Google LLC");
       expect(data.position).toBe("Senior Software Engineer");
       expect(data.bullets).toHaveLength(2);
-      expect(data.bullets.map((b: any) => b.text)).toContain("Updated highlight bullet");
-      expect(data.bullets.map((b: any) => b.text)).toContain("Brand new highlight bullet");
+      expect(data.bullets.map((b: any) => b.text)).toContain(
+        "Updated highlight bullet",
+      );
+      expect(data.bullets.map((b: any) => b.text)).toContain(
+        "Brand new highlight bullet",
+      );
     });
 
     it("should soft-delete bullets that are used in CVs, and hard-delete those that are not", async () => {
@@ -168,10 +201,22 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       const bulletNotUsed = bullets[1];
 
       // 2. Create a test CV and associate it with bulletUsed
+      const jobListing = await prisma.jobListing.create({
+        data: {
+          portalId: "test-portal",
+          externalJobId: `test-job-${Date.now()}`,
+          title: "Test Job",
+          company: "Test Company",
+          url: "https://example.com/job",
+        },
+      });
+
       const cv = await prisma.cV.create({
         data: {
           profileId: testProfileId,
+          jobListingId: jobListing.id,
           name: "Test CV",
+          snapshotData: {},
         },
       });
 
@@ -192,10 +237,13 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
         bullets: [], // Omit both
       };
 
-      const req = new Request(`http://localhost:3000/api/profile/experiences/${experienceId}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
+      const req = new Request(
+        `http://localhost:3000/api/profile/experiences/${experienceId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        },
+      );
 
       const params = Promise.resolve({ id: experienceId });
       const res = await updateExperienceHandler(req, { params });
@@ -219,7 +267,9 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       const getRes = await getProfileHandler();
       expect(getRes.status).toBe(200);
       const getProfileData = await getRes.json();
-      const expFromGet = getProfileData.experiences.find((e: any) => e.id === experienceId);
+      const expFromGet = getProfileData.experiences.find(
+        (e: any) => e.id === experienceId,
+      );
       expect(expFromGet).toBeDefined();
       expect(expFromGet.bullets).toHaveLength(0); // Should be empty since the only remaining bullet is archived
 
@@ -231,17 +281,24 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
 
     it("should delete experience and cascade delete bullets", async () => {
       const params = Promise.resolve({ id: experienceId });
-      const req = new Request(`http://localhost:3000/api/profile/experiences/${experienceId}`, {
-        method: "DELETE",
-      });
+      const req = new Request(
+        `http://localhost:3000/api/profile/experiences/${experienceId}`,
+        {
+          method: "DELETE",
+        },
+      );
 
       const res = await deleteExperienceHandler(req, { params });
       expect(res.status).toBe(200);
 
-      const expInDb = await prisma.experience.findUnique({ where: { id: experienceId } });
+      const expInDb = await prisma.experience.findUnique({
+        where: { id: experienceId },
+      });
       expect(expInDb).toBeNull();
 
-      const bulletsInDb = await prisma.experienceBullet.findMany({ where: { experienceId } });
+      const bulletsInDb = await prisma.experienceBullet.findMany({
+        where: { experienceId },
+      });
       expect(bulletsInDb).toHaveLength(0);
     });
   });
@@ -276,14 +333,19 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
 
     it("should update and delete education", async () => {
       const params = Promise.resolve({ id: educationId });
-      const deleteReq = new Request(`http://localhost:3000/api/profile/education/${educationId}`, {
-        method: "DELETE",
-      });
+      const deleteReq = new Request(
+        `http://localhost:3000/api/profile/education/${educationId}`,
+        {
+          method: "DELETE",
+        },
+      );
 
       const res = await deleteEducationHandler(deleteReq, { params });
       expect(res.status).toBe(200);
 
-      const eduInDb = await prisma.education.findUnique({ where: { id: educationId } });
+      const eduInDb = await prisma.education.findUnique({
+        where: { id: educationId },
+      });
       expect(eduInDb).toBeNull();
     });
   });
@@ -295,7 +357,9 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       const payload = {
         name: "AI Copilot Project",
         technologies: ["Next.js", "Prisma", "PostgreSQL"],
-        bullets: [{ text: "Built state manager context", type: "BULLET", sortOrder: 0 }],
+        bullets: [
+          { text: "Built state manager context", type: "BULLET", sortOrder: 0 },
+        ],
       };
 
       const req = new Request("http://localhost:3000/api/profile/projects", {
@@ -314,14 +378,19 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
 
     it("should delete project", async () => {
       const params = Promise.resolve({ id: projectId });
-      const deleteReq = new Request(`http://localhost:3000/api/profile/projects/${projectId}`, {
-        method: "DELETE",
-      });
+      const deleteReq = new Request(
+        `http://localhost:3000/api/profile/projects/${projectId}`,
+        {
+          method: "DELETE",
+        },
+      );
 
       const res = await deleteProjectHandler(deleteReq, { params });
       expect(res.status).toBe(200);
 
-      const projInDb = await prisma.project.findUnique({ where: { id: projectId } });
+      const projInDb = await prisma.project.findUnique({
+        where: { id: projectId },
+      });
       expect(projInDb).toBeNull();
     });
   });
@@ -346,13 +415,22 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       expect(data.map((s: any) => s.name)).toContain("TypeScript");
       expect(data.map((s: any) => s.proficiency)).toContain("EXPERT");
 
-      const skillsInDb = await prisma.skill.findMany({ where: { profileId: testProfileId } });
+      const skillsInDb = await prisma.skill.findMany({
+        where: { profileId: testProfileId },
+      });
       expect(skillsInDb).toHaveLength(2);
     });
 
     it("should successfully overwrite references list", async () => {
       const payload = [
-        { name: "Manager One", company: "Company A", relationship: "Manager", email: "mgr1@example.com", phone: "123", canContact: true },
+        {
+          name: "Manager One",
+          company: "Company A",
+          relationship: "Manager",
+          email: "mgr1@example.com",
+          phone: "123",
+          canContact: true,
+        },
       ];
 
       const req = new Request("http://localhost:3000/api/profile/references", {
@@ -367,7 +445,9 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       expect(data).toHaveLength(1);
       expect(data[0].name).toBe("Manager One");
 
-      const refsInDb = await prisma.reference.findMany({ where: { profileId: testProfileId } });
+      const refsInDb = await prisma.reference.findMany({
+        where: { profileId: testProfileId },
+      });
       expect(refsInDb).toHaveLength(1);
     });
   });
@@ -414,8 +494,20 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
         firstName: "Wagner",
         lastName: "Taiatella",
         summaries: [
-          { title: "Standard Resume Summary", content: "Experience building Next.js apps.", isActive: true, isAIGenerated: false, sortOrder: 0 },
-          { title: "Alternative Summary", content: "Passionate engineer.", isActive: false, isAIGenerated: false, sortOrder: 1 },
+          {
+            title: "Standard Resume Summary",
+            content: "Experience building Next.js apps.",
+            isActive: true,
+            isAIGenerated: false,
+            sortOrder: 0,
+          },
+          {
+            title: "Alternative Summary",
+            content: "Passionate engineer.",
+            isActive: false,
+            isAIGenerated: false,
+            sortOrder: 1,
+          },
         ],
       };
 

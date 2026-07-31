@@ -1,25 +1,25 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const createJestConfig = require('next/jest')({
-  dir: './',
-})
+const createJestConfig = require("next/jest")({
+  dir: "./",
+});
 
 const customJestConfig = {
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
-  testEnvironment: 'jest-environment-jsdom',
+  setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
+  testEnvironment: "jest-environment-jsdom",
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1',
+    "^@/(.*)$": "<rootDir>/src/$1",
   },
   testPathIgnorePatterns: [
-    '<rootDir>/.next/',
-    '<rootDir>/node_modules/',
-    '<rootDir>/tests/e2e/',
+    "<rootDir>/.next/",
+    "<rootDir>/node_modules/",
+    "<rootDir>/tests/e2e/",
   ],
   collectCoverageFrom: [
-    'src/**/*.{js,jsx,ts,tsx}',
-    '!src/**/*.d.ts',
-    '!src/app/layout.tsx',
-    '!src/app/globals.css',
-    '!src/**/*.stories.{js,jsx,ts,tsx}',
+    "src/**/*.{js,jsx,ts,tsx}",
+    "!src/**/*.d.ts",
+    "!src/app/layout.tsx",
+    "!src/app/globals.css",
+    "!src/**/*.stories.{js,jsx,ts,tsx}",
   ],
   coverageThreshold: {
     global: {
@@ -30,10 +30,10 @@ const customJestConfig = {
     },
   },
   testMatch: [
-    '<rootDir>/tests/*.test.{js,jsx,ts,tsx}',
-    '<rootDir>/tests/unit/**/*.test.{js,jsx,ts,tsx}',
-    '<rootDir>/tests/integration/**/*.test.{js,jsx,ts,tsx}',
+    "<rootDir>/tests/*.test.{js,jsx,ts,tsx}",
+    "<rootDir>/tests/unit/**/*.test.{js,jsx,ts,tsx}",
+    "<rootDir>/tests/integration/**/*.test.{js,jsx,ts,tsx}",
   ],
-}
+};
 
-module.exports = createJestConfig(customJestConfig)
+module.exports = createJestConfig(customJestConfig);

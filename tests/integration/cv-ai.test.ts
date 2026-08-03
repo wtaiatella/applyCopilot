@@ -9,6 +9,7 @@ import { POST as generateSummaryHandler } from "@/app/api/cv/[cvId]/ai/generate-
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import { generateJSON } from "@/lib/ai/aiClient";
+import { buildCVJobContext, loadOwnedCV } from "@/lib/db/cvEntityAccess";
 import type { CVSnapshotData } from "@/types/cv";
 
 jest.mock("@/lib/auth/auth", () => ({
@@ -179,6 +180,7 @@ describe("CV Composer job-aware AI routes (Phase 5, US3)", () => {
     it("includes cached Deep Analysis weaknesses/missingSkills when present", async () => {
       const analysis = await prisma.jobAnalysis.create({
         data: {
+          profileId: testProfileId,
           jobId: jobListingId,
           strengths: ["Strong Node.js background"],
           weaknesses: ["No prior fintech experience"],
@@ -443,6 +445,72 @@ describe("CV Composer job-aware AI routes (Phase 5, US3)", () => {
         params: Promise.resolve({ cvId }),
       });
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe("buildCVJobContext cross-tenant isolation (Phase 3, US2)", () => {
+    const testEmailB = `cv-ai-test-b-${Date.now()}@example.com`;
+    let testUserIdB: string;
+    let testProfileIdB: string;
+    let cvIdB: string;
+    let analysisAId: string;
+
+    beforeAll(async () => {
+      const userB = await prisma.user.create({
+        data: {
+          email: testEmailB,
+          password: "hashedpassword123",
+          profile: { create: { firstName: "Bob", lastName: "Smith" } },
+        },
+        include: { profile: true },
+      });
+      testUserIdB = userB.id;
+      testProfileIdB = userB.profile!.id;
+
+      const cvB = await prisma.cV.create({
+        data: {
+          profileId: testProfileIdB,
+          jobListingId,
+          name: "User B's CV",
+          status: "DRAFT",
+          snapshotData: makeSnapshot() as unknown as object,
+        },
+      });
+      cvIdB = cvB.id;
+
+      // User A runs Deep Analysis for the shared job; User B never runs their own.
+      const analysisA = await prisma.jobAnalysis.create({
+        data: {
+          profileId: testProfileId,
+          jobId: jobListingId,
+          strengths: ["Strong Node.js background"],
+          weaknesses: ["No prior fintech experience"],
+          missingSkills: ["Kafka"],
+          verdict: "CAUTION",
+          justification: "Good technical fit, some domain gaps.",
+        },
+      });
+      analysisAId = analysisA.id;
+    });
+
+    afterAll(async () => {
+      await prisma.jobAnalysis
+        .delete({ where: { id: analysisAId } })
+        .catch(() => {});
+      await prisma.user.delete({ where: { id: testUserIdB } }).catch(() => {});
+    });
+
+    it("falls back to reduced-context mode for User B rather than returning User A's cached analysis", async () => {
+      const ownedCvB = await loadOwnedCV(cvIdB, testUserIdB);
+      expect(ownedCvB).not.toBeNull();
+
+      const context = await buildCVJobContext(ownedCvB!);
+
+      expect(context.weaknesses).toBeUndefined();
+      expect(context.missingSkills).toBeUndefined();
+      expect(context).not.toHaveProperty("weaknesses", [
+        "No prior fintech experience",
+      ]);
     });
   });
 });

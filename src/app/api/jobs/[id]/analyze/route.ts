@@ -6,7 +6,7 @@ import { logger } from "@/lib/logging/logger";
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id: jobId } = await params;
@@ -16,8 +16,16 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const profile = await prisma.userProfile.findUnique({
+      where: { userId: session.user.id },
+    });
+
+    if (!profile) {
+      return NextResponse.json({ cached: false });
+    }
+
     const cachedAnalysis = await prisma.jobAnalysis.findUnique({
-      where: { jobId },
+      where: { profileId_jobId: { profileId: profile.id, jobId } },
     });
 
     if (cachedAnalysis) {
@@ -33,7 +41,7 @@ export async function GET(
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id: jobId } = await params;
@@ -58,22 +66,13 @@ export async function POST(
     });
 
     if (!job) {
-      return NextResponse.json({ error: "Job Listing not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Job Listing not found" },
+        { status: 404 },
+      );
     }
 
-    // 3. Check cache
-    const cachedAnalysis = await prisma.jobAnalysis.findUnique({
-      where: { jobId: job.id },
-    });
-
-    if (cachedAnalysis) {
-      logger.info(`[DeepAnalysisAPI] Cache HIT for job: ${job.id}`);
-      return NextResponse.json(cachedAnalysis);
-    }
-
-    logger.info(`[DeepAnalysisAPI] Cache MISS for job: ${job.id}. Performing LLM deep analysis...`);
-
-    // 4. Fetch User Profile with all relevant relationships
+    // 3. Fetch User Profile with all relevant relationships
     const profile = await prisma.userProfile.findUnique({
       where: { userId },
       include: {
@@ -91,9 +90,23 @@ export async function POST(
     if (!profile) {
       return NextResponse.json(
         { error: "User profile not found. Please create a profile first." },
-        { status: 400 }
+        { status: 400 },
       );
     }
+
+    // 4. Check cache
+    const cachedAnalysis = await prisma.jobAnalysis.findUnique({
+      where: { profileId_jobId: { profileId: profile.id, jobId: job.id } },
+    });
+
+    if (cachedAnalysis) {
+      logger.info(`[DeepAnalysisAPI] Cache HIT for job: ${job.id}`);
+      return NextResponse.json(cachedAnalysis);
+    }
+
+    logger.info(
+      `[DeepAnalysisAPI] Cache MISS for job: ${job.id}. Performing LLM deep analysis...`,
+    );
 
     // 5. Run LLM deep analysis
     const analysis = await runDeepAnalysis(profile, job);
@@ -101,6 +114,7 @@ export async function POST(
     // 6. Persist to cache
     const newAnalysis = await prisma.jobAnalysis.create({
       data: {
+        profileId: profile.id,
         jobId: job.id,
         strengths: analysis.strengths,
         weaknesses: analysis.weaknesses,
@@ -116,7 +130,7 @@ export async function POST(
     logger.error("[DeepAnalysisAPI] Deep analysis failed", { error: errMsg });
     return NextResponse.json(
       { error: errMsg || "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -70,6 +70,7 @@ model UserProfile {
   references      Reference[]
   summaries       ProfileSummary[]
   cvs             CV[]
+  jobAnalyses     JobAnalysis[]
 }
 
 model Experience {
@@ -390,13 +391,14 @@ enum RecommendationVerdict {
 
 model JobAnalysis {
   id            String                @id @default(cuid())
-  jobId         String                @unique // 1-to-1 cache per job
-  
+  profileId     String
+  jobId         String                // 1-to-1 cache per (profile, job) — see @@unique below
+
   // LLM generated detailed matching points
   strengths     String[]              @default([]) // Strengths matching profile
   weaknesses    String[]              @default([]) // Weaknesses / Misalignments
   missingSkills String[]              @default([]) // Skills required by job but missing on profile
-  
+
   // Recommendation details
   verdict       RecommendationVerdict @default(CAUTION)
   justification String                @db.Text
@@ -405,6 +407,9 @@ model JobAnalysis {
   updatedAt     DateTime              @updatedAt
 
   // Relations
+  profile       UserProfile           @relation(fields: [profileId], references: [id], onDelete: Cascade)
   job           JobListing            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, jobId])
 }
 

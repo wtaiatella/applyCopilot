@@ -38,7 +38,9 @@ export async function loadOwnedCV(
  */
 export async function buildCVJobContext(cv: OwnedCV): Promise<AIJobContext> {
   const analysis = await prisma.jobAnalysis.findUnique({
-    where: { jobId: cv.jobListingId },
+    where: {
+      profileId_jobId: { profileId: cv.profileId, jobId: cv.jobListingId },
+    },
   });
 
   return {

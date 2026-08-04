@@ -132,7 +132,7 @@ describe("CV Composer job-aware AI — reduced-context mode (AC.6, FR-10)", () =
 
   it("succeeds using only the job description as context — no Deep Analysis, no free-form notes", async () => {
     // Confirm precondition: no cached Deep Analysis exists for this job.
-    const analysis = await prisma.jobAnalysis.findUnique({
+    const analysis = await prisma.jobAnalysis.findFirst({
       where: { jobId: jobListingId },
     });
     expect(analysis).toBeNull();

@@ -8,14 +8,25 @@ import { prisma } from "@/lib/db/prisma";
 import { NextRequest } from "next/server";
 
 describe("Scraper API Route Handlers", () => {
-  beforeEach(async () => {
-    await prisma.scrapeTask.deleteMany();
-    await prisma.portalSearchUrl.deleteMany();
+  // Track only the rows this test file creates so cleanup never touches
+  // pre-existing/real data (registered scraper URLs, job listings, etc.).
+  let taskIds: string[] = [];
+  let portalIds: string[] = [];
+
+  afterEach(async () => {
+    if (taskIds.length) {
+      await prisma.scrapeTask.deleteMany({ where: { id: { in: taskIds } } });
+    }
+    if (portalIds.length) {
+      await prisma.portalSearchUrl.deleteMany({
+        where: { id: { in: portalIds } },
+      });
+    }
+    taskIds = [];
+    portalIds = [];
   });
 
   afterAll(async () => {
-    await prisma.scrapeTask.deleteMany();
-    await prisma.portalSearchUrl.deleteMany();
     await prisma.$disconnect();
     const { pool } = await import("@/lib/db/prisma");
     await pool.end();
@@ -46,6 +57,7 @@ describe("Scraper API Route Handlers", () => {
 
     const data = await res.json();
     expect(data.taskId).toBeDefined();
+    taskIds.push(data.taskId);
 
     const task = await prisma.scrapeTask.findUnique({
       where: { id: data.taskId },
@@ -65,17 +77,21 @@ describe("Scraper API Route Handlers", () => {
         progress: 100,
       },
     });
+    taskIds.push(task.id);
 
-    const req = new NextRequest(`http://localhost/api/scrape/stream?taskId=${task.id}`, {
-      method: "GET",
-    });
+    const req = new NextRequest(
+      `http://localhost/api/scrape/stream?taskId=${task.id}`,
+      {
+        method: "GET",
+      },
+    );
     const res = await streamHandler(req);
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("text/event-stream");
 
     const reader = res.body?.getReader();
     expect(reader).toBeDefined();
-    
+
     const { value } = await reader!.read();
     const text = new TextDecoder().decode(value);
     expect(text).toContain('"status":"COMPLETED"');

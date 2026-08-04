@@ -28,16 +28,24 @@ beforeAll(() => {
 });
 
 describe("Scraper Engine - Deduplication & runTask Integration", () => {
-  beforeEach(async () => {
-    await prisma.scrapeTask.deleteMany();
-    await prisma.jobListing.deleteMany();
-    await prisma.portalSearchUrl.deleteMany();
+  // Track only the rows this test file creates so cleanup never touches
+  // pre-existing/real data (registered scraper URLs, job listings, etc.).
+  let taskIds: string[] = [];
+
+  afterEach(async () => {
+    if (taskIds.length) {
+      await prisma.scrapeTask.deleteMany({ where: { id: { in: taskIds } } });
+    }
+    // runTask() creates JobListing rows tagged with this test's unique
+    // externalJobId, so we can scope cleanup precisely without a where-less
+    // deleteMany.
+    await prisma.jobListing.deleteMany({
+      where: { portalId: "example", externalJobId: "dedup-1" },
+    });
+    taskIds = [];
   });
 
   afterAll(async () => {
-    await prisma.scrapeTask.deleteMany();
-    await prisma.jobListing.deleteMany();
-    await prisma.portalSearchUrl.deleteMany();
     await prisma.$disconnect();
     const { pool } = await import("@/lib/db/prisma");
     await pool.end();
@@ -52,6 +60,7 @@ describe("Scraper Engine - Deduplication & runTask Integration", () => {
         searchUrl: "https://example.com/dedup-search",
       },
     });
+    taskIds.push(task.id);
 
     // First list extraction run
     await runTask(task.id);
@@ -70,6 +79,7 @@ describe("Scraper Engine - Deduplication & runTask Integration", () => {
         searchUrl: "https://example.com/dedup-search",
       },
     });
+    taskIds.push(secondTask.id);
 
     // Second list extraction run
     await runTask(secondTask.id);

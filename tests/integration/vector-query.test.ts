@@ -10,10 +10,9 @@ describe("Vector Similarity Search Integration Tests", () => {
 
   beforeAll(async () => {
     // Make sure we have the pgvector extension enabled (just in case)
-    await prisma.$executeRawUnsafe("CREATE EXTENSION IF NOT EXISTS vector;").catch(() => {});
-
-    // Clean up any existing job listings that might interfere
-    await prisma.jobListing.deleteMany().catch(() => {});
+    await prisma
+      .$executeRawUnsafe("CREATE EXTENSION IF NOT EXISTS vector;")
+      .catch(() => {});
 
     // Helper to generate a 512-dimension vector with a specific bias
     const makeVector = (bias: number) => {
@@ -40,7 +39,7 @@ describe("Vector Similarity Search Integration Tests", () => {
     await prisma.$executeRawUnsafe(
       `UPDATE "JobListing" SET embedding = $1::vector WHERE id = $2`,
       makeVector(0.9),
-      job1.id
+      job1.id,
     );
 
     // Job 2: status=COMPLETED, postedAt=today, less similar (vector first element = -0.9)
@@ -60,7 +59,7 @@ describe("Vector Similarity Search Integration Tests", () => {
     await prisma.$executeRawUnsafe(
       `UPDATE "JobListing" SET embedding = $1::vector WHERE id = $2`,
       makeVector(-0.9),
-      job2.id
+      job2.id,
     );
 
     // Job 3: status=PENDING, postedAt=today, identical vector to job 1 but NOT completed
@@ -80,7 +79,7 @@ describe("Vector Similarity Search Integration Tests", () => {
     await prisma.$executeRawUnsafe(
       `UPDATE "JobListing" SET embedding = $1::vector WHERE id = $2`,
       makeVector(0.9),
-      job3.id
+      job3.id,
     );
 
     // Job 4: status=COMPLETED, postedAt=30 days ago (outside 15-day window), highly similar
@@ -102,28 +101,42 @@ describe("Vector Similarity Search Integration Tests", () => {
     await prisma.$executeRawUnsafe(
       `UPDATE "JobListing" SET embedding = $1::vector WHERE id = $2`,
       makeVector(0.9),
-      job4.id
+      job4.id,
     );
   });
 
   afterAll(async () => {
     // Cleanup created jobs
     if (createdJobIds.length > 0) {
-      await prisma.jobListing.deleteMany({
-        where: { id: { in: createdJobIds } },
-      }).catch(() => {});
+      await prisma.jobListing
+        .deleteMany({
+          where: { id: { in: createdJobIds } },
+        })
+        .catch(() => {});
     }
 
     await prisma.$disconnect();
     await pool.end();
   });
 
+  // The query under test intentionally scans the whole JobListing table with
+  // no portalId scoping, and this suite runs against the same database as
+  // local dev (no separate test DB / no destructive table wipe — see
+  // beforeAll above). To stay isolated from any pre-existing/real rows, we
+  // request a generously large limit and then filter the results down to
+  // just the rows this test created before asserting on count/order.
+  const onlyOurJobs = (
+    results: Awaited<ReturnType<typeof getJobsWithSimilarity>>,
+  ) => results.filter((r) => createdJobIds.includes(r.id));
+
   it("should rank jobs by similarity when query embedding is provided, filtering by date and status", async () => {
     // Query embedding similar to Job 1 (bias = 0.8)
     const queryEmbedding = new Array(512).fill(0.1);
     queryEmbedding[0] = 0.8;
 
-    const results = await getJobsWithSimilarity(queryEmbedding, 15, 10);
+    const results = onlyOurJobs(
+      await getJobsWithSimilarity(queryEmbedding, 15, 1000),
+    );
 
     // Should return Job 1 and Job 2, but NOT Job 3 (PENDING) and NOT Job 4 (too old)
     expect(results).toHaveLength(2);
@@ -139,11 +152,11 @@ describe("Vector Similarity Search Integration Tests", () => {
   });
 
   it("should return jobs ordered chronologically with null matchScore when query embedding is null", async () => {
-    const results = await getJobsWithSimilarity(null, 15, 10);
+    const results = onlyOurJobs(await getJobsWithSimilarity(null, 15, 1000));
 
     // Should return completed jobs inside 15-day range: Job 1 and Job 2
     expect(results).toHaveLength(2);
-    expect(results.every(r => r.matchScore === null)).toBe(true);
+    expect(results.every((r) => r.matchScore === null)).toBe(true);
 
     // Should be ordered by postedAt / createdAt descending (they were created in order, so the latest is returned)
     expect(results[0].title).toBeDefined();
@@ -154,10 +167,12 @@ describe("Vector Similarity Search Integration Tests", () => {
     queryEmbedding[0] = 0.8;
 
     // Use 40 days limit to include the old completed job (Job 4)
-    const results = await getJobsWithSimilarity(queryEmbedding, 40, 10);
+    const results = onlyOurJobs(
+      await getJobsWithSimilarity(queryEmbedding, 40, 1000),
+    );
 
     // Should return Job 1, Job 2, and Job 4 (Job 3 is still skipped because of status=PENDING)
     expect(results).toHaveLength(3);
-    expect(results.map(r => r.title)).toContain("Old Completed Job");
+    expect(results.map((r) => r.title)).toContain("Old Completed Job");
   });
 });

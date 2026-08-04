@@ -6,17 +6,30 @@ import { scheduleListTasks, enqueueDeepTasks } from "@/lib/scraper/queue";
 import { handleTaskFailure } from "@/lib/scraper/engine";
 
 describe("Scraper Queue Manager & Engine Integration", () => {
-  beforeEach(async () => {
-    // Clear scraper related tables to ensure test isolation
-    await prisma.scrapeTask.deleteMany();
-    await prisma.jobListing.deleteMany();
-    await prisma.portalSearchUrl.deleteMany();
+  // Track only the rows this test file creates so cleanup never touches
+  // pre-existing/real data (registered scraper URLs, job listings, etc.).
+  let taskIds: string[] = [];
+  let portalIds: string[] = [];
+  let jobIds: string[] = [];
+
+  afterEach(async () => {
+    if (taskIds.length) {
+      await prisma.scrapeTask.deleteMany({ where: { id: { in: taskIds } } });
+    }
+    if (jobIds.length) {
+      await prisma.jobListing.deleteMany({ where: { id: { in: jobIds } } });
+    }
+    if (portalIds.length) {
+      await prisma.portalSearchUrl.deleteMany({
+        where: { id: { in: portalIds } },
+      });
+    }
+    taskIds = [];
+    portalIds = [];
+    jobIds = [];
   });
 
   afterAll(async () => {
-    await prisma.scrapeTask.deleteMany();
-    await prisma.jobListing.deleteMany();
-    await prisma.portalSearchUrl.deleteMany();
     await prisma.$disconnect();
     const { pool } = await import("@/lib/db/prisma");
     await pool.end();
@@ -33,13 +46,15 @@ describe("Scraper Queue Manager & Engine Integration", () => {
         status: "ACTIVE",
       },
     });
+    portalIds.push(config.id);
 
     await scheduleListTasks();
 
     // Check if task was scheduled
     const tasks = await prisma.scrapeTask.findMany({
-      where: { portalId: "example", type: "LIST" },
+      where: { portalId: "example", type: "LIST", searchUrl: config.url },
     });
+    taskIds.push(...tasks.map((t) => t.id));
 
     expect(tasks).toHaveLength(1);
     expect(tasks[0].searchUrl).toBe(config.url);
@@ -47,7 +62,7 @@ describe("Scraper Queue Manager & Engine Integration", () => {
   });
 
   it("should not schedule a LIST task if configuration is BROKEN or DISABLED", async () => {
-    await prisma.portalSearchUrl.create({
+    const config = await prisma.portalSearchUrl.create({
       data: {
         portalId: "example",
         name: "Broken Portal",
@@ -56,18 +71,20 @@ describe("Scraper Queue Manager & Engine Integration", () => {
         status: "BROKEN",
       },
     });
+    portalIds.push(config.id);
 
     await scheduleListTasks();
 
     const tasks = await prisma.scrapeTask.findMany({
-      where: { portalId: "example", type: "LIST" },
+      where: { portalId: "example", type: "LIST", searchUrl: config.url },
     });
+    taskIds.push(...tasks.map((t) => t.id));
 
     expect(tasks).toHaveLength(0);
   });
 
   it("should enqueue a DEEP task for job listings missing full descriptions", async () => {
-    await prisma.jobListing.create({
+    const jobListing = await prisma.jobListing.create({
       data: {
         portalId: "example",
         externalJobId: "job-99",
@@ -77,12 +94,14 @@ describe("Scraper Queue Manager & Engine Integration", () => {
         isFullDescriptionFetched: false,
       },
     });
+    jobIds.push(jobListing.id);
 
     await enqueueDeepTasks();
 
     const tasks = await prisma.scrapeTask.findMany({
-      where: { portalId: "example", type: "DEEP" },
+      where: { portalId: "example", type: "DEEP", searchUrl: jobListing.url },
     });
+    taskIds.push(...tasks.map((t) => t.id));
 
     expect(tasks).toHaveLength(1);
     expect(tasks[0].searchUrl).toBe("https://example.com/jobs/job-99");
@@ -98,6 +117,7 @@ describe("Scraper Queue Manager & Engine Integration", () => {
         attempts: 0,
       },
     });
+    taskIds.push(task.id);
 
     // Run failure handler
     await handleTaskFailure(task, "Network connection timeout");
@@ -122,6 +142,7 @@ describe("Scraper Queue Manager & Engine Integration", () => {
         status: "ACTIVE",
       },
     });
+    portalIds.push(config.id);
 
     const task = await prisma.scrapeTask.create({
       data: {
@@ -132,6 +153,7 @@ describe("Scraper Queue Manager & Engine Integration", () => {
         searchUrl: portalUrl,
       },
     });
+    taskIds.push(task.id);
 
     await handleTaskFailure(task, "Anti-bot protection triggered");
 

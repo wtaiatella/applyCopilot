@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Table, Tag, Typography, Spin, Alert, Empty } from "antd";
 import { Star } from "lucide-react";
 import type { TrackerListRow } from "@/types/application";
+import ApplicationDetailModal from "./ApplicationDetailModal";
 
 const { Text } = Typography;
 
@@ -39,6 +40,11 @@ export default function TrackerListView() {
   const [rows, setRows] = useState<TrackerListRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Detail modal — same pattern as KanbanBoard's (FR-16/US-5), so both List and Board open the
+  // same job-detail experience consistently instead of one navigating away and one overlaying.
+  const [detailJobListingId, setDetailJobListingId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -72,6 +78,31 @@ export default function TrackerListView() {
     };
   }, []);
 
+  // Same optimistic toggle pattern as JobCard.tsx's Favorite star (Jobs Matching), reused here
+  // so the star is togglable from this list too, not just from Jobs Matching.
+  const toggleFavorite = async (jobId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const current = rows.find((r) => r.jobId === jobId);
+    if (!current) return;
+    const next = !current.favorite;
+
+    setRows((prev) =>
+      prev.map((r) => (r.jobId === jobId ? { ...r, favorite: next } : r)),
+    );
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/favorite`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favorite: next }),
+      });
+      if (!res.ok) throw new Error("Failed to update favorite");
+    } catch {
+      setRows((prev) =>
+        prev.map((r) => (r.jobId === jobId ? { ...r, favorite: !next } : r)),
+      );
+    }
+  };
+
   const columns = [
     {
       title: "Job",
@@ -87,12 +118,20 @@ export default function TrackerListView() {
       title: "Favorite",
       dataIndex: "favorite",
       key: "favorite",
-      render: (favorite: boolean) => (
-        <Star
-          size={16}
-          className={favorite ? "text-yellow-400" : "text-zinc-600"}
-          fill={favorite ? "currentColor" : "none"}
-        />
+      render: (favorite: boolean, record: TrackerListRow) => (
+        <button
+          type="button"
+          onClick={(e) => toggleFavorite(record.jobId, e)}
+          aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
+          aria-pressed={favorite}
+          className="inline-flex items-center justify-center bg-transparent border-0 p-0 cursor-pointer"
+        >
+          <Star
+            size={16}
+            className={favorite ? "text-yellow-400" : "text-zinc-600"}
+            fill={favorite ? "currentColor" : "none"}
+          />
+        </button>
       ),
     },
     {
@@ -145,11 +184,22 @@ export default function TrackerListView() {
   }
 
   return (
-    <Table
-      rowKey="jobId"
-      columns={columns}
-      dataSource={rows}
-      pagination={false}
-    />
+    <>
+      <Table
+        rowKey="jobId"
+        columns={columns}
+        dataSource={rows}
+        pagination={false}
+        onRow={(row) => ({
+          onClick: () => setDetailJobListingId(row.jobId),
+          style: { cursor: "pointer" },
+        })}
+      />
+
+      <ApplicationDetailModal
+        jobListingId={detailJobListingId}
+        onClose={() => setDetailJobListingId(null)}
+      />
+    </>
   );
 }

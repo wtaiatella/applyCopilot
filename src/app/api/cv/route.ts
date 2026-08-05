@@ -9,9 +9,14 @@ import { buildSnapshotFromProfile } from "@/services/cvSnapshotService";
 /**
  * POST /api/cv — idempotent create-or-get (FR-1, AC.1, AC.2, NFR "Concurrency").
  *
- * Attempts `prisma.cV.create` first; on a unique-constraint violation (profileId+jobListingId,
- * @@unique in schema) catches it and `findFirst`s the existing row instead of racing a
- * pre-check, per Technical Decisions.
+ * Checks for an existing row first (the common case — re-opening a job that already has a CV,
+ * exercised on every Application Tracker card/row click since 009-aplication-tracker) and only
+ * attempts `prisma.cV.create` when none is found. On a unique-constraint violation
+ * (profileId+jobListingId, @@unique in schema) — the rare true concurrent-create race — catches
+ * it and `findFirst`s the row a second time instead of failing, per Technical Decisions'
+ * concurrency guarantee. This ordering avoids using an expected-and-caught exception as the
+ * normal control flow for the by-far-most-common case, which otherwise logs a scary (but
+ * harmless) Prisma error on every reopen of an existing CV.
  */
 export async function POST(req: Request) {
   try {
@@ -58,6 +63,29 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "Job listing not found" },
         { status: 404 },
+      );
+    }
+
+    const alreadyExisting = await prisma.cV.findFirst({
+      where: { profileId: profile.id, jobListingId },
+    });
+    if (alreadyExisting) {
+      logger.info("cv_create_idempotent_hit", {
+        profileId: profile.id,
+        jobListingId,
+        cvId: alreadyExisting.id,
+      });
+      return NextResponse.json(
+        {
+          id: alreadyExisting.id,
+          jobListingId: alreadyExisting.jobListingId,
+          status: alreadyExisting.status,
+          appliedAt: alreadyExisting.appliedAt
+            ? alreadyExisting.appliedAt.toISOString()
+            : null,
+          createdAt: alreadyExisting.createdAt.toISOString(),
+        },
+        { status: 200 },
       );
     }
 

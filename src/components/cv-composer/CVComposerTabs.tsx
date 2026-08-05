@@ -24,6 +24,7 @@ import {
 import { useCVComposer } from "@/contexts/CVComposerContext";
 import CVEditor from "./CVEditor";
 import CVViewer from "./CVViewer";
+import ApplicationTab from "@/components/application-tracker/ApplicationTab";
 
 const { Title, Paragraph } = Typography;
 
@@ -338,8 +339,9 @@ function JobDescriptionTab({ jobListingId }: { jobListingId: string }) {
 }
 
 /**
- * 4-tab shell: Tab 1 (Job Description, read-only), Tab 2 (Deep Analysis), Tab 3 (CV Editor),
- * Tab 4 (CV Viewer — Print PDF / Calculate Match Score, FR-5/FR-12/FR-13).
+ * 5-tab shell: Tab 1 (Job Description, read-only), Tab 2 (Deep Analysis), Tab 3 (CV Editor),
+ * Tab 4 (CV Viewer — Print PDF / Calculate Match Score, FR-5/FR-12/FR-13), Tab 5 (Application —
+ * chat-style timeline, FR-12).
  */
 export default function CVComposerTabs({
   jobListingId,
@@ -412,6 +414,11 @@ export default function CVComposerTabs({
           onApply={applyCV}
         />
       ),
+    },
+    {
+      key: "application",
+      label: "Application",
+      children: <ApplicationTab cvId={cv.id} />,
     },
   ];
 

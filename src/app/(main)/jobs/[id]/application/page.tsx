@@ -13,9 +13,9 @@ interface CVComposerPageProps {
 }
 
 /**
- * Route entry: loads/creates the CV for this job (idempotent create-or-get, AC.1/AC.2) and
- * mounts the 4-tab shell (`CVComposerTabs`). Tab 2 (Deep Analysis) and Tab 4 (CV Viewer) are
- * still placeholder stubs there — their real implementations are later phases (US3/US4).
+ * Route entry (renamed from `/jobs/[id]/cv-composer`, FR-13, AC.10): loads/creates the CV for
+ * this job (idempotent create-or-get, AC.1/AC.2) and mounts the tab shell (`CVComposerTabs`).
+ * Identical body to the superseded `cv-composer/page.tsx` — no behavior change, URL only.
  */
 function CVComposerShell({ jobListingId }: { jobListingId: string }) {
   const { loading, error, loadOrCreateCV } = useCVComposer();

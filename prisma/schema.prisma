@@ -71,6 +71,8 @@ model UserProfile {
   summaries       ProfileSummary[]
   cvs             CV[]
   jobAnalyses     JobAnalysis[]
+  applications    Application[]
+  jobFavorites    JobFavorite[]
 }
 
 model Experience {
@@ -222,6 +224,7 @@ model CV {
   profile      UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   jobListing   JobListing  @relation(fields: [jobListingId], references: [id], onDelete: Cascade)
   bullets      CVBullet[]
+  application  Application?
 
   @@unique([profileId, jobListingId])
 }
@@ -370,6 +373,8 @@ model JobListing {
   // Relations
   analyses                 JobAnalysis[]
   cvs                      CV[]
+  applications             Application[]
+  favorites                JobFavorite[]
 
   @@unique([portalId, externalJobId])
 }
@@ -411,5 +416,80 @@ model JobAnalysis {
   job           JobListing            @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, jobId])
+}
+
+// --- Application Tracker (009) ---
+
+enum ApplicationStage {
+  APPLIED
+  SCREENING
+  TECH_INTERVIEW
+  OFFER
+  FINAL
+}
+
+enum ApplicationOutcome {
+  NOT_APPROVED
+  NO_RESPONSE
+  DECLINED_BY_COMPANY
+  DECLINED_BY_CANDIDATE
+  HIRED
+}
+
+enum ApplicationEventType {
+  STAGE_CHANGE
+  NOTE
+  MEETING
+  COMPANY_RESPONSE
+}
+
+model Application {
+  id           String              @id @default(cuid())
+  cvId         String              @unique   // 1:1 with CV — see spectech.md Technical Decisions
+  profileId    String                          // denormalized, mirrors CV.profileId (query convenience)
+  jobListingId String                          // denormalized, mirrors CV.jobListingId
+  stage        ApplicationStage    @default(APPLIED)
+  outcome      ApplicationOutcome?             // set only while stage = FINAL (FR-6)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  cv         CV          @relation(fields: [cvId], references: [id], onDelete: Cascade)
+  profile    UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  jobListing JobListing  @relation(fields: [jobListingId], references: [id], onDelete: Cascade)
+  events     ApplicationEvent[]
+
+  @@index([profileId, stage])
+}
+
+model ApplicationEvent {
+  id            String               @id @default(cuid())
+  applicationId String
+  type          ApplicationEventType
+  fromStage     ApplicationStage?    // STAGE_CHANGE only
+  toStage       ApplicationStage?    // STAGE_CHANGE only
+  title         String?              // MEETING only
+  eventAt       DateTime?            // MEETING only — candidate-entered meeting date/time (display field only)
+  content       String?              @db.Text // NOTE / COMPANY_RESPONSE required; MEETING optional notes
+  createdAt     DateTime             @default(now()) // authoritative chronological-order field for ALL types
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // Application-level invariant (also enforced via raw-SQL CHECK in the migration, see
+  // Migration & Rollback): STAGE_CHANGE requires toStage set and title/eventAt/content null;
+  // NOTE/COMPANY_RESPONSE require content set and fromStage/toStage/title/eventAt null;
+  // MEETING requires title+eventAt set and fromStage/toStage null.
+  @@index([applicationId, createdAt])
+}
+
+model JobFavorite {
+  id           String   @id @default(cuid())
+  profileId    String
+  jobListingId String
+  createdAt    DateTime @default(now())
+
+  profile    UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  jobListing JobListing  @relation(fields: [jobListingId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, jobListingId])
 }
 

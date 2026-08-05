@@ -21,6 +21,7 @@ export interface Job {
   postedAt: string | Date | null;
   createdAt: string | Date | null;
   matchScore: number | null;
+  favorite?: boolean;
 }
 
 export default function JobList() {
@@ -58,7 +59,9 @@ export default function JobList() {
         setSelectedJob(null);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred");
+      setError(
+        err instanceof Error ? err.message : "An unexpected error occurred",
+      );
     } finally {
       setLoading(false);
     }
@@ -80,7 +83,9 @@ export default function JobList() {
           </span>
 
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">Published Within</span>
+            <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">
+              Published Within
+            </span>
             <Select
               value={days}
               onChange={setDays}
@@ -97,7 +102,9 @@ export default function JobList() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">Minimum Match %</span>
+            <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">
+              Minimum Match %
+            </span>
             <Select
               value={minMatch}
               onChange={setMinMatch}
@@ -116,7 +123,9 @@ export default function JobList() {
 
         <Button
           type="primary"
-          icon={<RefreshCw size={15} className={loading ? "animate-spin" : ""} />}
+          icon={
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+          }
           onClick={fetchJobs}
           loading={loading}
           className="bg-blue-600 hover:bg-blue-500 border-0 text-white font-bold h-10 px-5 rounded-xl shadow-lg shadow-blue-950/20"
@@ -126,7 +135,10 @@ export default function JobList() {
       </div>
 
       {/* Main Grid: Job Cards left, Details right */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0" style={{ height: "calc(100vh - 200px)" }}>
+      <div
+        className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0"
+        style={{ height: "calc(100vh - 200px)" }}
+      >
         {/* Left Side: Job Cards List (Col-span 5) */}
         <div className="lg:col-span-5 flex flex-col h-full min-h-0">
           {error && (
@@ -143,7 +155,9 @@ export default function JobList() {
             {loading && jobs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 space-y-4">
                 <Spin size="large" />
-                <Text className="text-zinc-400 font-medium">Scanning vectors and retrieving jobs...</Text>
+                <Text className="text-zinc-400 font-medium">
+                  Scanning vectors and retrieving jobs...
+                </Text>
               </div>
             ) : jobs.length === 0 ? (
               <Empty
@@ -173,12 +187,16 @@ export default function JobList() {
             <JobDetailsPanel job={selectedJob} />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-zinc-950/10 border border-zinc-900/60 rounded-2xl border-dashed">
-              <Sparkles size={40} className="text-zinc-700 animate-pulse mb-3" />
+              <Sparkles
+                size={40}
+                className="text-zinc-700 animate-pulse mb-3"
+              />
               <Title level={4} style={{ color: "#71717a", margin: 0 }}>
                 No Job Selected
               </Title>
               <Text className="text-zinc-500 text-sm mt-1 max-w-xs block">
-                Select a job card from the listing to read the full description and dynamic match details.
+                Select a job card from the listing to read the full description
+                and dynamic match details.
               </Text>
             </div>
           )}

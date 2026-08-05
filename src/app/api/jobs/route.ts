@@ -34,7 +34,9 @@ export async function GET(request: Request) {
       try {
         profileEmbedding = JSON.parse(dbVectorStr);
       } catch (err) {
-        logger.error("Failed to parse user profile embedding vector from DB", { err });
+        logger.error("Failed to parse user profile embedding vector from DB", {
+          err,
+        });
       }
     }
 
@@ -43,15 +45,45 @@ export async function GET(request: Request) {
 
     // Apply minMatch filter if specified and matchScore is calculated
     if (minMatch !== null && !isNaN(minMatch)) {
-      jobs = jobs.filter((job) => job.matchScore === null || job.matchScore >= minMatch);
+      jobs = jobs.filter(
+        (job) => job.matchScore === null || job.matchScore >= minMatch,
+      );
     }
 
-    return NextResponse.json(jobs);
+    // One additional batched JobFavorite lookup (not per-row) merged into the ranked-jobs
+    // response — two total queries for the whole page load, not one per job (US-7, FR-17).
+    const profile = await prisma.userProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    let favoritedJobIds = new Set<string>();
+    if (profile && jobs.length > 0) {
+      const favorites = await prisma.jobFavorite.findMany({
+        where: {
+          profileId: profile.id,
+          jobListingId: { in: jobs.map((job) => job.id) },
+        },
+        select: { jobListingId: true },
+      });
+      favoritedJobIds = new Set(favorites.map((f) => f.jobListingId));
+    }
+
+    const jobsWithFavorite = jobs.map((job) => ({
+      ...job,
+      favorite: favoritedJobIds.has(job.id),
+    }));
+
+    return NextResponse.json(jobsWithFavorite);
   } catch (error) {
-    logger.error("Error fetching ranked jobs", { error: error instanceof Error ? error.message : String(error) });
+    logger.error("Error fetching ranked jobs", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal Server Error" },
-      { status: 500 }
+      {
+        error: error instanceof Error ? error.message : "Internal Server Error",
+      },
+      { status: 500 },
     );
   }
 }

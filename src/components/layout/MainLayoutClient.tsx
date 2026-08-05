@@ -100,9 +100,9 @@ export default function MainLayoutClient({
       label: <Link href="/jobs">Jobs Matching</Link>,
     },
     {
-      key: "/cv-composer",
+      key: "/application-tracker",
       icon: <FileText className="h-5 w-5" />,
-      label: <Link href="/cv-composer">CV Composer</Link>,
+      label: <Link href="/application-tracker">Application Tracker</Link>,
     },
     {
       key: "/profile",

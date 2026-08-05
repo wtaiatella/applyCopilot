@@ -156,7 +156,7 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
               <Button
                 type="primary"
                 icon={<FileText size={14} />}
-                onClick={() => router.push(`/jobs/${job.id}/cv-composer`)}
+                onClick={() => router.push(`/jobs/${job.id}/application`)}
               >
                 Create CV
               </Button>

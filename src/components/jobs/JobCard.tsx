@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Card, Typography, Space } from "antd";
-import { MapPin, Calendar, Building2 } from "lucide-react";
+import { MapPin, Calendar, Building2, Star } from "lucide-react";
 import MatchBadge from "./MatchBadge";
 
 const { Text } = Typography;
@@ -16,18 +16,45 @@ export interface JobCardProps {
     postedAt: string | Date | null;
     createdAt: string | Date | null;
     matchScore: number | null;
+    favorite?: boolean;
   };
   isSelected: boolean;
   onClick: () => void;
 }
 
 export default function JobCard({ job, isSelected, onClick }: JobCardProps) {
-  const displayDate = job.postedAt ? new Date(job.postedAt) : new Date(job.createdAt!);
+  const displayDate = job.postedAt
+    ? new Date(job.postedAt)
+    : new Date(job.createdAt!);
   const formattedDate = displayDate.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
+
+  const [favorite, setFavorite] = useState(Boolean(job.favorite));
+  const [togglingFavorite, setTogglingFavorite] = useState(false);
+
+  const toggleFavorite = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (togglingFavorite) return;
+
+    const next = !favorite;
+    setFavorite(next); // optimistic
+    setTogglingFavorite(true);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/favorite`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favorite: next }),
+      });
+      if (!res.ok) throw new Error("Failed to update favorite");
+    } catch {
+      setFavorite(!next); // revert on failure
+    } finally {
+      setTogglingFavorite(false);
+    }
+  };
 
   return (
     <Card
@@ -53,13 +80,32 @@ export default function JobCard({ job, isSelected, onClick }: JobCardProps) {
               </Text>
             </div>
           </div>
-          <MatchBadge score={job.matchScore} />
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={toggleFavorite}
+              aria-label={
+                favorite ? "Remove from favorites" : "Add to favorites"
+              }
+              aria-pressed={favorite}
+              className="p-0.5 rounded hover:bg-zinc-800/60 transition-colors"
+            >
+              <Star
+                size={16}
+                className={favorite ? "text-yellow-400" : "text-zinc-600"}
+                fill={favorite ? "currentColor" : "none"}
+              />
+            </button>
+            <MatchBadge score={job.matchScore} />
+          </div>
         </div>
 
         <div className="flex items-center justify-between mt-3 text-xs text-zinc-500 border-t border-zinc-900/80 pt-2.5">
           <span className="flex items-center gap-1 truncate max-w-[150px]">
             <MapPin size={13} className="text-zinc-600" />
-            {(Array.isArray(job.location) && job.location.length > 0) ? job.location.join(", ") : "Remote / Unspecified"}
+            {Array.isArray(job.location) && job.location.length > 0
+              ? job.location.join(", ")
+              : "Remote / Unspecified"}
           </span>
           <span className="flex items-center gap-1 shrink-0">
             <Calendar size={13} className="text-zinc-600" />

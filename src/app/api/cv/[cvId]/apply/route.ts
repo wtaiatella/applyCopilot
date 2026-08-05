@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
 import { reconcileCVApply } from "@/services/cvReconciliationService";
+import { createApplicationForCV } from "@/services/applicationService";
 import type { CVSnapshotData } from "@/types/cv";
 
 interface Params {
@@ -56,9 +57,10 @@ export async function POST(_req: Request, props: Params) {
     }
 
     const appliedAt = new Date();
+    let applicationId: string;
 
     try {
-      await prisma.$transaction(
+      const application = await prisma.$transaction(
         async (tx) => {
           // Atomic conditional update — the FIRST statement in the transaction, closing the
           // TOCTOU window between a pre-transaction status check and the commit.
@@ -79,9 +81,22 @@ export async function POST(_req: Request, props: Params) {
               snapshotData: cv.snapshotData as unknown as CVSnapshotData,
             },
           );
+
+          // LAST statement in the transaction (see applicationService.ts, spectech's
+          // Implementation Notes): a reconciliation failure above still rolls back cleanly with
+          // no orphaned Application, since this hasn't run yet.
+          return createApplicationForCV(
+            tx as unknown as Parameters<typeof createApplicationForCV>[0],
+            {
+              id: cv.id,
+              profileId: cv.profileId,
+              jobListingId: cv.jobListingId,
+            },
+          );
         },
         { timeout: 10_000 },
       );
+      applicationId = application.id;
     } catch (reconcileError) {
       if (reconcileError instanceof AlreadyAppliedError) {
         return NextResponse.json(
@@ -102,12 +117,13 @@ export async function POST(_req: Request, props: Params) {
       );
     }
 
-    logger.info("cv_applied", { cvId, profileId: cv.profileId });
+    logger.info("cv_applied", { cvId, profileId: cv.profileId, applicationId });
 
     return NextResponse.json({
       id: cvId,
       status: "APPLIED",
       appliedAt: appliedAt.toISOString(),
+      applicationId,
     });
   } catch (error) {
     logger.error("Failed to apply CV", { error });

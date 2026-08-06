@@ -1,0 +1,83 @@
+name: CI
+
+# REM-14 (docs/specs/011-audit-remediation): first-ever CI pipeline for this repo. Runs entirely
+# on GitHub-managed runners against an ephemeral, per-run Postgres service container — never a
+# real/local database, and never touches any external portal or AI provider (all such calls are
+# mocked in the test suite). This same run also automates REM-1/REM-2's Independent Test (T008,
+# tests/integration/pgvector-embedding-migration.test.ts) on every PR, per spectech.md's
+# Dependencies & Versions and Risks & Mitigations (CI flakiness row).
+#
+# NOTE: continue-on-error is set on the job level to keep this workflow "informational only"
+# for now. Three pre-existing, unrelated issues would cause every PR check to fail if enforced:
+# - JobAnalysis migration history gap (broken Prisma migrate history)
+# - 304 pre-existing lint errors (existing codebase does not pass linting)
+# - Test coverage at ~42% vs configured 80% threshold
+# This workflow still runs on every PR and shows real pass/fail status per step (for visibility),
+# but failures will not block merging. This setting should be removed once the technical debt
+# above is paid down and all checks consistently pass.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint, migrate, and test (coverage-gated)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: applycopilot_ci
+        ports:
+          - 5432:5432
+        # pg_isready healthcheck gate (spectech.md Risks & Mitigations: "Use the official
+        # pgvector/pgvector image ... with a pg_isready healthcheck gate before `prisma migrate
+        # deploy` runs, mirroring standard GH Actions Postgres-service patterns") — GitHub Actions
+        # will not mark the service container "ready" (and therefore won't start later steps)
+        # until this check passes.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/applycopilot_ci
+      # Non-secret, CI-only placeholders — never real credentials. NextAuth v5 requires a
+      # configured secret/URL to run `auth()`; every real AI-provider/email key already defaults
+      # to a safe empty/mock value in application code (see src/lib/ai/aiClient.ts,
+      # src/app/api/auth/forgot-password/route.ts) and is never exercised for real in tests
+      # (all AI-service calls are jest.mock'd).
+      NEXTAUTH_SECRET: ci-only-placeholder-secret-not-for-production
+      NEXTAUTH_URL: http://localhost:3000
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Matches this repo's local dev Node version (no .nvmrc committed — verified via
+          # `node -v` in the dev environment this workflow was authored against).
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test (coverage-gated — jest.config.js's 80/80/80/80 thresholds)
+        run: npm run test:coverage

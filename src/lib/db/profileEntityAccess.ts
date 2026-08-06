@@ -29,7 +29,7 @@ export interface OwnedEntityBullet {
   text: string;
   type: "BULLET" | "PARAGRAPH";
   sortOrder: number;
-  usedInCVs: Array<{ id: string; name: string }>;
+  usedInCVs: Array<{ id: string; name: string; jobListingId: string }>;
 }
 
 export interface OwnedEntity {
@@ -93,7 +93,11 @@ export async function loadOwnedEntity(
       text: b.text,
       type: b.type,
       sortOrder: b.sortOrder,
-      usedInCVs: b.usedInCVs.map((uc) => ({ id: uc.cv.id, name: uc.cv.name })),
+      usedInCVs: b.usedInCVs.map((uc) => ({
+        id: uc.cv.id,
+        name: uc.cv.name,
+        jobListingId: uc.cv.jobListingId,
+      })),
     })),
   };
 }

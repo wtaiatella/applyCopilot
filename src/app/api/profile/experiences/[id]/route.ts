@@ -25,7 +25,10 @@ export async function PUT(req: Request, props: Params) {
     });
 
     if (!experience || experience.profile.userId !== userId) {
-      return NextResponse.json({ error: "Experience not found or access denied" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Experience not found or access denied" },
+        { status: 404 },
+      );
     }
 
     let body;
@@ -41,7 +44,10 @@ export async function PUT(req: Request, props: Params) {
         field: err.path.join("."),
         message: err.message,
       }));
-      return NextResponse.json({ error: "Validation failed", details }, { status: 400 });
+      return NextResponse.json(
+        { error: "Validation failed", details },
+        { status: 400 },
+      );
     }
 
     const data = parsed.data;
@@ -52,9 +58,13 @@ export async function PUT(req: Request, props: Params) {
     });
 
     const incomingBullets = data.bullets;
-    const incomingIds = incomingBullets.filter((b) => b.id).map((b) => b.id) as string[];
+    const incomingIds = incomingBullets
+      .filter((b) => b.id)
+      .map((b) => b.id) as string[];
 
-    const bulletsToDelete = existingBullets.filter((b) => !incomingIds.includes(b.id));
+    const bulletsToDelete = existingBullets.filter(
+      (b) => !incomingIds.includes(b.id),
+    );
 
     // Update in transaction
     const updatedExp = await prisma.$transaction(async (tx) => {
@@ -156,6 +166,7 @@ export async function PUT(req: Request, props: Params) {
         usedInCVs: b.usedInCVs.map((uc) => ({
           id: uc.cv.id,
           name: uc.cv.name,
+          jobListingId: uc.cv.jobListingId,
         })),
       })),
     };
@@ -165,7 +176,10 @@ export async function PUT(req: Request, props: Params) {
     return NextResponse.json(responseData);
   } catch (error) {
     logger.error("Failed to update experience", { error });
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
@@ -186,11 +200,40 @@ export async function DELETE(req: Request, props: Params) {
     });
 
     if (!experience || experience.profile.userId !== userId) {
-      return NextResponse.json({ error: "Experience not found or access denied" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Experience not found or access denied" },
+        { status: 404 },
+      );
     }
 
-    await prisma.experience.delete({
-      where: { id },
+    // Archive (not hard-delete) any bullet still referenced by a CV so the CV's rendered
+    // content survives; unreferenced bullets hard-delete normally — mirrors the PUT handler's
+    // own inline `usedCount` check above (REM-3, spectech.md Decision 3).
+    await prisma.$transaction(async (tx) => {
+      const bullets = await tx.experienceBullet.findMany({
+        where: { experienceId: id },
+      });
+
+      for (const bullet of bullets) {
+        const usedCount = await tx.cVBullet.count({
+          where: { experienceBulletId: bullet.id },
+        });
+
+        if (usedCount > 0) {
+          await tx.experienceBullet.update({
+            where: { id: bullet.id },
+            data: { isArchived: true, isActive: false, experienceId: null },
+          });
+        } else {
+          await tx.experienceBullet.delete({
+            where: { id: bullet.id },
+          });
+        }
+      }
+
+      await tx.experience.delete({
+        where: { id },
+      });
     });
 
     logger.info("Experience deleted successfully", { experienceId: id });
@@ -198,6 +241,9 @@ export async function DELETE(req: Request, props: Params) {
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error("Failed to delete experience", { error });
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

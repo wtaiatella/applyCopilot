@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
-import { ProfileDTO, BasicDataDTO, ExperienceDTO, EducationDTO, ProjectDTO } from "@/types/profile";
+import {
+  ProfileDTO,
+  BasicDataDTO,
+  ExperienceDTO,
+  EducationDTO,
+  ProjectDTO,
+} from "@/types/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -101,9 +107,14 @@ export async function GET() {
 
     if (!profile) {
       // Verify user existence in DB to prevent foreign key errors with orphaned session cookies
-      const userExists = await prisma.user.findUnique({ where: { id: userId } });
+      const userExists = await prisma.user.findUnique({
+        where: { id: userId },
+      });
       if (!userExists) {
-        return NextResponse.json({ error: "Unauthorized: User session invalid or deleted" }, { status: 401 });
+        return NextResponse.json(
+          { error: "Unauthorized: User session invalid or deleted" },
+          { status: 401 },
+        );
       }
 
       // Fallback in case profile is not initialized
@@ -222,6 +233,7 @@ export async function GET() {
         usedInCVs: b.usedInCVs.map((uc) => ({
           id: uc.cv.id,
           name: uc.cv.name,
+          jobListingId: uc.cv.jobListingId,
         })),
       })),
       freeFormContext: exp.freeFormContext,
@@ -247,6 +259,7 @@ export async function GET() {
         usedInCVs: b.usedInCVs.map((uc) => ({
           id: uc.cv.id,
           name: uc.cv.name,
+          jobListingId: uc.cv.jobListingId,
         })),
       })),
       freeFormContext: edu.freeFormContext,
@@ -270,6 +283,7 @@ export async function GET() {
         usedInCVs: b.usedInCVs.map((uc) => ({
           id: uc.cv.id,
           name: uc.cv.name,
+          jobListingId: uc.cv.jobListingId,
         })),
       })),
       freeFormContext: proj.freeFormContext,
@@ -311,13 +325,18 @@ export async function GET() {
         s3Key: cv.s3Key,
         createdAt: cv.createdAt.toISOString(),
       })),
-      embeddingSyncedAt: profile.embeddingSyncedAt ? profile.embeddingSyncedAt.toISOString() : null,
+      embeddingSyncedAt: profile.embeddingSyncedAt
+        ? profile.embeddingSyncedAt.toISOString()
+        : null,
       aiCleanedText: profile.aiCleanedText,
     };
 
     return NextResponse.json(responseData);
   } catch (error) {
     logger.error("Failed to fetch profile", { error });
-    return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch profile" },
+      { status: 500 },
+    );
   }
 }

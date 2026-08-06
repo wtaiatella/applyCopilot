@@ -138,6 +138,80 @@ describe("PUT /api/jobs/[id]/favorite — idempotent per-profile set (009 US7, A
     await putFavorite(userAId, false);
   });
 
+  it("limit is clamped to 100 end-to-end through the Favorites IN(...) lookup (REM-12, AC.12)", async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: userAId, email: "unused@example.com", role: "USER" },
+      expires: "any",
+    });
+
+    const clampBatchId = `clamp-${Date.now()}`;
+    // Anchor far in the future so this batch's 102 rows always rank strictly above any other
+    // JobListing already in the shared local DB, keeping the top-100 ordering deterministic
+    // regardless of other tests' fixture data.
+    const anchor = Date.now() + 365 * 24 * 60 * 60 * 1000;
+    const listings = Array.from({ length: 102 }, (_, i) => ({
+      portalId: "test-portal",
+      externalJobId: `${clampBatchId}-${i}`,
+      title: `Clamp Test Job ${i}`,
+      company: "Test Company",
+      url: `https://example.com/job/${clampBatchId}-${i}`,
+      classificationStatus: "COMPLETED" as const,
+      // Descending postedAt so index 0 is the most recent (rank 1) and index 101 is the
+      // oldest (rank 102 — guaranteed outside a clamped-to-100 result set).
+      postedAt: new Date(anchor - i * 60_000),
+    }));
+    await prisma.jobListing.createMany({ data: listings });
+
+    const created = await prisma.jobListing.findMany({
+      where: { externalJobId: { startsWith: clampBatchId } },
+      select: { id: true, externalJobId: true },
+    });
+    const idByExternalId = new Map(created.map((j) => [j.externalJobId, j.id]));
+    const insideClampId = idByExternalId.get(`${clampBatchId}-5`)!; // rank 6 — well inside top 100
+    const outsideClampId = idByExternalId.get(`${clampBatchId}-101`)!; // rank 102 — outside top 100
+
+    const profileA = await prisma.userProfile.findUnique({
+      where: { userId: userAId },
+    });
+    await prisma.jobFavorite.createMany({
+      data: [
+        { profileId: profileA!.id, jobListingId: insideClampId },
+        { profileId: profileA!.id, jobListingId: outsideClampId },
+      ],
+    });
+
+    try {
+      const res = await getJobsHandler(
+        new Request("http://localhost:3000/api/jobs?days=3650&limit=500"),
+      );
+      expect(res.status).toBe(200);
+      const jobs = (await res.json()) as Array<{
+        id: string;
+        favorite: boolean;
+      }>;
+
+      // Clamp enforced: `limit=500` never yields more than 100 rows.
+      expect(jobs.length).toBeLessThanOrEqual(100);
+
+      // The favorited job inside the clamped top-100 window is present and correctly flagged —
+      // proves the Favorites IN(...) lookup ran correctly against the clamped result set.
+      const insideJob = jobs.find((j) => j.id === insideClampId);
+      expect(insideJob?.favorite).toBe(true);
+
+      // The favorited job that falls outside the clamped top-100 window never appears in the
+      // response — proves the clamp bounds the candidate set the IN(...) lookup itself operates
+      // on, not merely the final response shape.
+      expect(jobs.find((j) => j.id === outsideClampId)).toBeUndefined();
+    } finally {
+      await prisma.jobFavorite.deleteMany({
+        where: { jobListingId: { in: [insideClampId, outsideClampId] } },
+      });
+      await prisma.jobListing.deleteMany({
+        where: { externalJobId: { startsWith: clampBatchId } },
+      });
+    }
+  });
+
   it("404s for a jobListingId that does not exist", async () => {
     mockAuth.mockResolvedValue({
       user: { id: userAId, email: "unused@example.com", role: "USER" },

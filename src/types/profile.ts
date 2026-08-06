@@ -1,5 +1,9 @@
-export type ProficiencyLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT';
-export type BulletType = 'BULLET' | 'PARAGRAPH';
+export type ProficiencyLevel =
+  | "BEGINNER"
+  | "INTERMEDIATE"
+  | "ADVANCED"
+  | "EXPERT";
+export type BulletType = "BULLET" | "PARAGRAPH";
 
 export interface BulletDTO {
   id: string;
@@ -8,7 +12,7 @@ export interface BulletDTO {
   isArchived: boolean;
   type: BulletType;
   sortOrder: number;
-  usedInCVs: Array<{ id: string; name: string }>;  // Computed at GET time via CVBullet join
+  usedInCVs: Array<{ id: string; name: string; jobListingId: string }>; // Computed at GET time via CVBullet join
 }
 
 export interface BasicDataDTO {
@@ -20,8 +24,8 @@ export interface BasicDataDTO {
   linkedin: string | null;
   github: string | null;
   website: string | null;
-  title: string | null;    // Synced from active summary
-  summary: string | null;  // Synced from active summary
+  title: string | null; // Synced from active summary
+  summary: string | null; // Synced from active summary
 }
 
 export interface SummaryDTO {
@@ -37,12 +41,12 @@ export interface ExperienceDTO {
   id: string;
   company: string;
   position: string;
-  startDate: string;          // ISO Date string
-  endDate: string | null;     // ISO Date string or null
+  startDate: string; // ISO Date string
+  endDate: string | null; // ISO Date string or null
   current: boolean;
-  bullets: BulletDTO[];       // Always "bullets", never "description"
-  freeFormContext: string[];  // Array of user-authored AI context notes
-  tabLabel: string | null;   // Optional short display name for the tab; does not affect company
+  bullets: BulletDTO[]; // Always "bullets", never "description"
+  freeFormContext: string[]; // Array of user-authored AI context notes
+  tabLabel: string | null; // Optional short display name for the tab; does not affect company
 }
 
 export interface EducationDTO {
@@ -50,25 +54,25 @@ export interface EducationDTO {
   institution: string;
   degree: string;
   fieldOfStudy: string | null;
-  startDate: string;          // ISO Date string
-  endDate: string | null;     // ISO Date string or null
+  startDate: string; // ISO Date string
+  endDate: string | null; // ISO Date string or null
   current: boolean;
   hideEndDate: boolean;
   bullets: BulletDTO[];
-  freeFormContext: string[];  // Array of user-authored AI context notes
-  tabLabel: string | null;   // Optional short display name for the tab; does not affect institution
+  freeFormContext: string[]; // Array of user-authored AI context notes
+  tabLabel: string | null; // Optional short display name for the tab; does not affect institution
 }
 
 export interface ProjectDTO {
   id: string;
   name: string;
-  startDate: string | null;   // ISO Date string or null
-  endDate: string | null;     // ISO Date string or null
+  startDate: string | null; // ISO Date string or null
+  endDate: string | null; // ISO Date string or null
   current: boolean;
-  technologies: string[];     // Tag list
+  technologies: string[]; // Tag list
   bullets: BulletDTO[];
-  freeFormContext: string[];  // Array of user-authored AI context notes
-  tabLabel: string | null;   // Optional short display name for the tab; does not affect name
+  freeFormContext: string[]; // Array of user-authored AI context notes
+  tabLabel: string | null; // Optional short display name for the tab; does not affect name
 }
 
 export interface SkillDTO {
@@ -90,9 +94,9 @@ export interface ReferenceDTO {
 
 export interface CVVersionDTO {
   id: string;
-  name: string;               // User-defined version label
-  s3Key: string | null;       // Saved in S3 (Phase 3)
-  createdAt: string;          // ISO Date string
+  name: string; // User-defined version label
+  s3Key: string | null; // Saved in S3 (Phase 3)
+  createdAt: string; // ISO Date string
 }
 
 export interface ProfileDTO {
@@ -110,10 +114,19 @@ export interface ProfileDTO {
 }
 
 export type ParseProgressEvent =
-  | { phase: "upload";      progress: number;  status: string }
-  | { phase: "basic";       progress: number;  status: string; data?: BasicDataDTO }
-  | { phase: "experiences"; progress: number;  status: string; data?: ExperienceDTO[] }
-  | { phase: "projects";    progress: number;  status: string; data?: ProjectDTO[] }
-  | { phase: "education";   progress: number;  status: string; data?: { education: EducationDTO[]; skills: SkillDTO[] } }
-  | { phase: "error";       progress: number;  error: string };
-
+  | { phase: "upload"; progress: number; status: string }
+  | { phase: "basic"; progress: number; status: string; data?: BasicDataDTO }
+  | {
+      phase: "experiences";
+      progress: number;
+      status: string;
+      data?: ExperienceDTO[];
+    }
+  | { phase: "projects"; progress: number; status: string; data?: ProjectDTO[] }
+  | {
+      phase: "education";
+      progress: number;
+      status: string;
+      data?: { education: EducationDTO[]; skills: SkillDTO[] };
+    }
+  | { phase: "error"; progress: number; error: string };

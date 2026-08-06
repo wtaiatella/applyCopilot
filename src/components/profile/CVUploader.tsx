@@ -3,9 +3,13 @@
 import React, { useState } from "react";
 import { Upload, App, Card, Typography, Space, Progress } from "antd";
 import type { UploadProps } from "antd";
-import { InboxOutlined, FilePdfOutlined, FileWordOutlined } from "@ant-design/icons";
+import {
+  InboxOutlined,
+  FilePdfOutlined,
+  FileWordOutlined,
+} from "@ant-design/icons";
 import { ProfileService } from "../../services/profileService";
-import { ParseProgressEvent, BasicDataDTO } from "../../types/profile";
+import { ParseProgressEvent } from "../../types/profile";
 
 const { Dragger } = Upload;
 const { Title, Text, Paragraph } = Typography;
@@ -15,16 +19,21 @@ interface CVUploaderProps {
   /** Called as each SSE phase completes with partial data, enabling progressive UI updates.
    * Per spec Acceptance Scenario 2: when the 'basic' phase event (40%) arrives,
    * the BasicData tab must be immediately populated without waiting for remaining phases. */
-  onPartialData?: (phase: string, data: BasicDataDTO | unknown) => void;
+  onPartialData?: (event: ParseProgressEvent) => void;
 }
 
-export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess, onPartialData }) => {
+export const CVUploader: React.FC<CVUploaderProps> = ({
+  onUploadSuccess,
+  onPartialData,
+}) => {
   const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState("");
 
-  const handleCustomRequest = async (options: Parameters<NonNullable<UploadProps["customRequest"]>>[0]) => {
+  const handleCustomRequest = async (
+    options: Parameters<NonNullable<UploadProps["customRequest"]>>[0],
+  ) => {
     const { file, onSuccess, onError } = options;
     setLoading(true);
     setProgress(20);
@@ -41,7 +50,7 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess, onParti
             // Acceptance Scenario 2: propagate partial data as each phase completes
             // so the parent (ProfileContext) can update the UI immediately.
             if ("data" in event && event.data !== undefined) {
-              onPartialData?.(event.phase, event.data);
+              onPartialData?.(event);
             }
           } else {
             setStatusMessage(event.error);
@@ -57,17 +66,18 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess, onParti
           setProgress(100);
           setStatusMessage("CV parsed and merged successfully!");
           onSuccess?.("ok");
-          
+
           modal.success({
             title: "CV Parsing Complete",
-            content: "Your resume has been successfully parsed and merged into your profile.",
+            content:
+              "Your resume has been successfully parsed and merged into your profile.",
             okText: "View Profile",
             onOk: () => {
               onUploadSuccess();
               resetState();
             },
           });
-        }
+        },
       );
     } catch (err) {
       const error = err as Error;
@@ -90,7 +100,7 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess, onParti
       message.error("CV must be smaller than 5MB!");
       return Upload.LIST_IGNORE;
     }
-    
+
     const ext = file.name.split(".").pop()?.toLowerCase();
     const isAccepted = ext === "pdf" || ext === "docx";
     if (!isAccepted) {
@@ -102,20 +112,33 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess, onParti
   };
 
   return (
-    <Card className="mb-8 overflow-hidden shadow-sm border border-[#303030] bg-[#141414]" styles={{ body: { padding: 24 } }}>
+    <Card
+      className="mb-8 overflow-hidden shadow-sm border border-[#303030] bg-[#141414]"
+      styles={{ body: { padding: 24 } }}
+    >
       <div className="flex flex-col md:flex-row gap-8 items-center">
         <div className="flex-1 w-full">
-          <Title level={4} className="mt-0 text-white">Fast-track your Profile</Title>
+          <Title level={4} className="mt-0 text-white">
+            Fast-track your Profile
+          </Title>
           <Paragraph type="secondary" className="mb-0 text-gray-400">
-            Upload your existing CV or Resume. Our AI will automatically extract your experience, education, and skills to populate your profile in seconds.
+            Upload your existing CV or Resume. Our AI will automatically extract
+            your experience, education, and skills to populate your profile in
+            seconds.
           </Paragraph>
           <Space className="mt-4" size="middle">
-            <Text type="secondary" className="text-gray-400"><FilePdfOutlined /> PDF</Text>
-            <Text type="secondary" className="text-gray-400"><FileWordOutlined /> DOCX</Text>
-            <Text type="secondary" className="text-gray-400">Max 5MB</Text>
+            <Text type="secondary" className="text-gray-400">
+              <FilePdfOutlined /> PDF
+            </Text>
+            <Text type="secondary" className="text-gray-400">
+              <FileWordOutlined /> DOCX
+            </Text>
+            <Text type="secondary" className="text-gray-400">
+              Max 5MB
+            </Text>
           </Space>
         </div>
-        
+
         <div className="flex-1 w-full">
           <Dragger
             customRequest={handleCustomRequest}
@@ -128,14 +151,18 @@ export const CVUploader: React.FC<CVUploaderProps> = ({ onUploadSuccess, onParti
             {loading ? (
               <div className="p-4 flex flex-col items-center justify-center min-h-[120px]">
                 <Progress type="circle" percent={progress} size="small" />
-                <Text className="mt-4 text-blue-400 font-medium text-center px-4">{statusMessage}</Text>
+                <Text className="mt-4 text-blue-400 font-medium text-center px-4">
+                  {statusMessage}
+                </Text>
               </div>
             ) : (
               <div className="p-4">
                 <p className="ant-upload-drag-icon text-blue-500 text-3xl mb-2">
                   <InboxOutlined />
                 </p>
-                <p className="ant-upload-text text-white font-medium">Click or drag CV file to this area</p>
+                <p className="ant-upload-text text-white font-medium">
+                  Click or drag CV file to this area
+                </p>
                 <p className="ant-upload-hint text-gray-400 text-xs mt-2">
                   Support for PDF and DOCX files. Files are processed locally.
                 </p>

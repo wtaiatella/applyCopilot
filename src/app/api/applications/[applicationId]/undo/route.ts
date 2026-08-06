@@ -3,7 +3,11 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
 import { UndoSchema } from "@/lib/validation/applicationSchemas";
-import { undoTransition, StaleUndoError } from "@/services/applicationService";
+import {
+  undoTransition,
+  StaleUndoError,
+  OwnershipViolationError,
+} from "@/services/applicationService";
 
 interface Params {
   params: Promise<{ applicationId: string }>;
@@ -58,10 +62,20 @@ export async function POST(req: Request, props: Params) {
 
     let updated;
     try {
-      updated = await undoTransition(applicationId, parsed.data.eventId);
+      updated = await undoTransition(
+        applicationId,
+        userId,
+        parsed.data.eventId,
+      );
     } catch (error) {
       if (error instanceof StaleUndoError) {
         return NextResponse.json({ error: error.message }, { status: 409 });
+      }
+      if (error instanceof OwnershipViolationError) {
+        return NextResponse.json(
+          { error: "Application not found or access denied" },
+          { status: 404 },
+        );
       }
       throw error;
     }

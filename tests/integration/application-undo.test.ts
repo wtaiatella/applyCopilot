@@ -154,4 +154,41 @@ describe("POST /api/applications/[applicationId]/undo — revert most recent tra
     });
     expect(persisted?.stage).toBe("TECH_INTERVIEW");
   });
+
+  it("FINAL/outcome: HIRED → transition out → undo restores the prior outcome, not null (REM-4, AC.4)", async () => {
+    const application = await createApplication();
+    await transition(application.id, { stage: "FINAL", outcome: "HIRED" });
+
+    const finalPersisted = await prisma.application.findUnique({
+      where: { id: application.id },
+    });
+    expect(finalPersisted?.stage).toBe("FINAL");
+    expect(finalPersisted?.outcome).toBe("HIRED");
+
+    const { eventId } = await transition(application.id, {
+      stage: "OFFER",
+    });
+
+    const leavingFinalEvent = await prisma.applicationEvent.findUnique({
+      where: { id: eventId },
+    });
+    expect(leavingFinalEvent?.previousOutcome).toBe("HIRED");
+
+    const afterLeaving = await prisma.application.findUnique({
+      where: { id: application.id },
+    });
+    expect(afterLeaving?.outcome).toBeNull();
+
+    const res = await postUndo(application.id, eventId);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.stage).toBe("FINAL");
+    expect(body.outcome).toBe("HIRED");
+
+    const restored = await prisma.application.findUnique({
+      where: { id: application.id },
+    });
+    expect(restored?.stage).toBe("FINAL");
+    expect(restored?.outcome).toBe("HIRED");
+  });
 });

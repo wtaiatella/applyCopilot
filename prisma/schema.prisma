@@ -91,15 +91,18 @@ model Experience {
 }
 
 model ExperienceBullet {
-  id           String     @id @default(cuid())
-  experienceId String
+  id           String      @id @default(cuid())
+  // REM-3: optional + SetNull (was required + Cascade) so an archived bullet still referenced by
+  // a CV can outlive its deleted parent Experience — mirrors CVBullet.experienceBulletId's
+  // existing nullable-FK-with-SetNull pattern one level up.
+  experienceId String?
   text         String
-  isActive     Boolean    @default(true)
-  isArchived   Boolean    @default(false)
-  type         BulletType @default(BULLET)
-  sortOrder    Int        @default(0)
-  
-  experience   Experience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  isActive     Boolean     @default(true)
+  isArchived   Boolean     @default(false)
+  type         BulletType  @default(BULLET)
+  sortOrder    Int         @default(0)
+
+  experience   Experience? @relation(fields: [experienceId], references: [id], onDelete: SetNull)
   usedInCVs    CVBullet[]
 }
 
@@ -471,6 +474,9 @@ model ApplicationEvent {
   eventAt       DateTime?            // MEETING only — candidate-entered meeting date/time (display field only)
   content       String?              @db.Text // NOTE / COMPANY_RESPONSE required; MEETING optional notes
   createdAt     DateTime             @default(now()) // authoritative chronological-order field for ALL types
+  // REM-4: captures the `outcome` value being cleared when a STAGE_CHANGE moves the Application
+  // out of FINAL, so undoTransition has something to restore.
+  previousOutcome ApplicationOutcome?
 
   application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 

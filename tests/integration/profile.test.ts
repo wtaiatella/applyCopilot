@@ -22,11 +22,19 @@ import {
 import { PUT as updateSkillsHandler } from "@/app/api/profile/skills/route";
 import { PUT as updateReferencesHandler } from "@/app/api/profile/references/route";
 import { PUT as updateBasicDataHandler } from "@/app/api/profile/basic/route";
+import { POST as parseHandler } from "@/app/api/profile/parse/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
+}));
+
+// /api/profile/parse (imported below for the REM-5 rate-limit test) transitively pulls in
+// @google/genai, an ESM-only package Jest can't parse without transformation — mirrors the
+// same mock already used by ai.test.ts/profile-ai.test.ts for any route touching aiClient.ts.
+jest.mock("@/lib/ai/aiClient", () => ({
+  generateJSON: jest.fn(),
 }));
 
 describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => {
@@ -560,6 +568,78 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       expect(profileInDb!.linkedin).toBe("linkedin.com/in/wagner-taiatella/");
       expect(profileInDb!.github).toBe("github.com/wtaiatella");
       expect(profileInDb!.website).toBe("wtaiatella.com.br");
+    });
+  });
+
+  // REM-5 / T029: /api/profile/parse's rate limit is deliberately kept at 50/day (not
+  // realigned to the stale 5/day spec value) — spectech.md Decision 5. This confirms that
+  // enforced value directly, independent of the shared `aiRateLimit.ts` module the 9 REM-7
+  // routes use (parse predates and does not use that module — Decision 5's own scope note).
+  describe("POST /api/profile/parse — rate limit (REM-5, Decision 5: kept at 50/day)", () => {
+    afterEach(async () => {
+      await prisma.aIUsageLog.deleteMany({
+        where: { userId: testUserId, action: "parse" },
+      });
+    });
+
+    it("rejects the 51st parse within 24h with 429", async () => {
+      await prisma.aIUsageLog.createMany({
+        data: Array.from({ length: 50 }).map(() => ({
+          userId: testUserId,
+          action: "parse",
+        })),
+      });
+
+      // The rate-limit check runs before FormData is read, so an empty body is enough to
+      // reach (and be rejected by) it without needing a real uploaded file.
+      const req = new Request("http://localhost:3000/api/profile/parse", {
+        method: "POST",
+      });
+      const res = await parseHandler(req);
+      expect(res.status).toBe(429);
+
+      const data = await res.json();
+      expect(data.error).toBe(
+        "Rate limit reached. You can only parse 50 resumes per day.",
+      );
+
+      const count = await prisma.aIUsageLog.count({
+        where: { userId: testUserId, action: "parse" },
+      });
+      expect(count).toBe(50);
+    });
+
+    it("does not reject at 49 prior calls — the 50th is under, not at, the limit", async () => {
+      await prisma.aIUsageLog.createMany({
+        data: Array.from({ length: 49 }).map(() => ({
+          userId: testUserId,
+          action: "parse",
+        })),
+      });
+
+      const boundary = "----testboundary";
+      const body =
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="file"; filename="resume.txt"\r\n` +
+        `Content-Type: text/plain\r\n\r\n` +
+        `dummy resume content\r\n` +
+        `--${boundary}--\r\n`;
+      const req = new Request("http://localhost:3000/api/profile/parse", {
+        method: "POST",
+        headers: {
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        },
+        body,
+      });
+
+      const res = await parseHandler(req);
+      // Not rejected by the rate limit at exactly 49 prior calls — the boundary this test
+      // exists to prove (AC.5's "50th succeeds"). We assert this via "not 429" rather than
+      // "is 200": this test suite's jsdom `Blob`/`File` globals don't implement
+      // `arrayBuffer()` (a known jsdom gap, unrelated to REM-5/this route), so the handler's
+      // later, unrelated file-reading step 500s in this environment even on a request the
+      // rate limiter itself has already let through.
+      expect(res.status).not.toBe(429);
     });
   });
 });

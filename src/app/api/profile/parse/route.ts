@@ -42,7 +42,11 @@ export async function POST(req: Request) {
 
     const userId = session.user.id;
 
-    // 2. Rate limiting check (50 parses per user per day)
+    // 2. Rate limiting check (50 parses per user per day).
+    // REM-5 / spectech.md Decision 5: 50/day is the deliberate, decided value — not a drifted
+    // default. The original FR2-032 spec value (5/day) was 10x tighter with no cost-abuse
+    // evidence to justify it, and this limit already supports a legitimate use case (re-parsing
+    // an updated resume, testing different resume versions). No behavior change here.
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const parseCount = await prisma.aIUsageLog.count({
       where: {

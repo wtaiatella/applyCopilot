@@ -7,6 +7,10 @@ import {
   buildCVJobContext,
   findSnapshotEntity,
 } from "@/lib/db/cvEntityAccess";
+import {
+  assertAiRateLimit,
+  AiRateLimitExceededError,
+} from "@/lib/ai/aiRateLimit";
 import { runGenerateBullet } from "@/services/profileBulletAIService";
 import type { CVSnapshotData } from "@/types/cv";
 
@@ -33,6 +37,8 @@ export async function POST(req: Request, props: Params) {
         { status: 404 },
       );
     }
+
+    await assertAiRateLimit(userId, "cv_generate_bullet", 30);
 
     let body;
     try {
@@ -82,6 +88,9 @@ export async function POST(req: Request, props: Params) {
 
     return NextResponse.json({ revisedText: result.revisedText });
   } catch (error) {
+    if (error instanceof AiRateLimitExceededError) {
+      return NextResponse.json({ error: error.message }, { status: 429 });
+    }
     logger.error("Failed to run CV generate-bullet", { error });
     return NextResponse.json(
       { error: "AI generation failed" },

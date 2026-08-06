@@ -8,6 +8,10 @@ import {
   findSnapshotEntity,
 } from "@/lib/db/cvEntityAccess";
 import {
+  assertAiRateLimit,
+  AiRateLimitExceededError,
+} from "@/lib/ai/aiRateLimit";
+import {
   runReviewAll,
   type BulletInput,
   type BulletSuggestion,
@@ -39,6 +43,8 @@ export async function POST(req: Request, props: Params) {
         { status: 404 },
       );
     }
+
+    await assertAiRateLimit(userId, "cv_review_all", 15);
 
     let body;
     try {
@@ -140,6 +146,9 @@ export async function POST(req: Request, props: Params) {
       relevanceDecisions: relevanceDecisions ?? [],
     });
   } catch (error) {
+    if (error instanceof AiRateLimitExceededError) {
+      return NextResponse.json({ error: error.message }, { status: 429 });
+    }
     logger.error("Failed to run CV review-all", { error });
     return NextResponse.json(
       { error: "AI generation failed" },

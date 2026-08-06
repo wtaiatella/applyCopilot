@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { logger } from "@/lib/logging/logger";
 import { loadOwnedCV, buildCVJobContext } from "@/lib/db/cvEntityAccess";
+import {
+  assertAiRateLimit,
+  AiRateLimitExceededError,
+} from "@/lib/ai/aiRateLimit";
 import { runGenerateSummary } from "@/services/profileBulletAIService";
 import type { CVSnapshotData } from "@/types/cv";
 
@@ -30,6 +34,8 @@ export async function POST(_req: Request, props: Params) {
       );
     }
 
+    await assertAiRateLimit(userId, "cv_generate_summary", 20);
+
     const snapshot = cv.snapshotData as unknown as CVSnapshotData;
     const jobContext = await buildCVJobContext(cv);
 
@@ -53,6 +59,9 @@ export async function POST(_req: Request, props: Params) {
 
     return NextResponse.json({ content: result.content });
   } catch (error) {
+    if (error instanceof AiRateLimitExceededError) {
+      return NextResponse.json({ error: error.message }, { status: 429 });
+    }
     logger.error("Failed to run CV generate-summary", { error });
     return NextResponse.json(
       { error: "AI generation failed" },

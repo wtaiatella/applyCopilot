@@ -3,6 +3,10 @@ import { auth } from "@/lib/auth/auth";
 import { logger } from "@/lib/logging/logger";
 import { ReviewBulletSchema } from "@/lib/validation/aiSchemas";
 import { loadOwnedEntity } from "@/lib/db/profileEntityAccess";
+import {
+  assertAiRateLimit,
+  AiRateLimitExceededError,
+} from "@/lib/ai/aiRateLimit";
 import { runReviewBullet } from "@/services/profileBulletAIService";
 
 export async function POST(req: Request) {
@@ -47,6 +51,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
+    await assertAiRateLimit(userId, "profile_review_bullet", 30);
+
     const result = await runReviewBullet({
       bullet: {
         id: bullet.id,
@@ -62,6 +68,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ revisedText: result.revisedText });
   } catch (error) {
+    if (error instanceof AiRateLimitExceededError) {
+      return NextResponse.json({ error: error.message }, { status: 429 });
+    }
     logger.error("Failed to run review-bullet", { error });
     return NextResponse.json(
       { error: "AI generation failed" },

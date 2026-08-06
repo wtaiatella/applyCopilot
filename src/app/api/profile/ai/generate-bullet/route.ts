@@ -3,6 +3,10 @@ import { auth } from "@/lib/auth/auth";
 import { logger } from "@/lib/logging/logger";
 import { GenerateBulletSchema } from "@/lib/validation/aiSchemas";
 import { loadOwnedEntity } from "@/lib/db/profileEntityAccess";
+import {
+  assertAiRateLimit,
+  AiRateLimitExceededError,
+} from "@/lib/ai/aiRateLimit";
 import { runGenerateBullet } from "@/services/profileBulletAIService";
 
 export async function POST(req: Request) {
@@ -41,6 +45,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
+    await assertAiRateLimit(userId, "profile_generate_bullet", 30);
+
     // Guard: AI Context Notes are required to generate a new bullet
     if (entity.freeFormContext.length === 0) {
       return NextResponse.json(
@@ -61,6 +67,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ text: result.revisedText });
   } catch (error) {
+    if (error instanceof AiRateLimitExceededError) {
+      return NextResponse.json({ error: error.message }, { status: 429 });
+    }
     logger.error("Failed to run generate-bullet", { error });
     return NextResponse.json(
       { error: "AI generation failed" },

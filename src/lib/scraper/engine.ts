@@ -45,8 +45,15 @@ export interface DeepResult {
 
 export interface ScraperStrategy {
   portalId: string;
-  extractList(html: string, $: cheerio.CheerioAPI, ctx: ExtractionContext): ListResult[] | Promise<ListResult[]>;
-  extractDeep(html: string, $: cheerio.CheerioAPI): DeepResult | Promise<DeepResult>;
+  extractList(
+    html: string,
+    $: cheerio.CheerioAPI,
+    ctx: ExtractionContext,
+  ): ListResult[] | Promise<ListResult[]>;
+  extractDeep(
+    html: string,
+    $: cheerio.CheerioAPI,
+  ): DeepResult | Promise<DeepResult>;
 }
 
 // Custom Error to represent HTTP 429 Rate Limit
@@ -57,8 +64,26 @@ export class RateLimitError extends Error {
   }
 }
 
+// Custom Error to represent an anti-bot block (HTTP 403 or a challenge-page
+// redirect) — distinct from a generic failure so it never flags the
+// PortalSearchUrl as BROKEN (REM-9, spectech.md Decision 8).
+export class ScraperBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ScraperBlockedError";
+  }
+}
+
+// Small, deliberately narrow heuristic list of common challenge-page markers
+// found in a redirect target URL. Start narrow, widen when a real
+// false-negative is observed (spectech.md Decision 8 / Implementation Notes).
+const BLOCKED_REDIRECT_MARKERS = ["captcha", "challenge", "cf-"];
+
 // Fetch raw HTML with custom User-Agent header
-export async function fetchHtml(url: string, userAgent: string): Promise<string> {
+export async function fetchHtml(
+  url: string,
+  userAgent: string,
+): Promise<string> {
   logger.debug(`[Scraper Engine] fetchHtml entry: url=${url}`);
   logger.info(`[Scraper Engine] HTTP GET Request to target URL: ${url}`);
 
@@ -67,6 +92,25 @@ export async function fetchHtml(url: string, userAgent: string): Promise<string>
       "User-Agent": userAgent,
     },
   });
+
+  if (response.status === 403) {
+    logger.warn(`[Scraper Engine] Blocked on URL: ${url} (HTTP 403)`);
+    throw new ScraperBlockedError(`Blocked on URL: ${url} (HTTP 403)`);
+  }
+
+  if (
+    response.redirected &&
+    BLOCKED_REDIRECT_MARKERS.some((marker) =>
+      response.url.toLowerCase().includes(marker),
+    )
+  ) {
+    logger.warn(
+      `[Scraper Engine] Blocked on URL: ${url} (redirected to challenge page: ${response.url})`,
+    );
+    throw new ScraperBlockedError(
+      `Blocked on URL: ${url} (redirected to challenge page: ${response.url})`,
+    );
+  }
 
   if (response.status === 429) {
     logger.warn(`[Scraper Engine] Rate limited on URL: ${url} (HTTP 429)`);
@@ -78,7 +122,9 @@ export async function fetchHtml(url: string, userAgent: string): Promise<string>
   }
 
   const html = await response.text();
-  logger.debug(`[Scraper Engine] fetchHtml return: url=${url}, contentSize=${html.length} bytes`);
+  logger.debug(
+    `[Scraper Engine] fetchHtml return: url=${url}, contentSize=${html.length} bytes`,
+  );
   return html;
 }
 
@@ -91,12 +137,22 @@ const getRepoRoot = (): string => {
 };
 
 // Save raw payloads to /debug/scraper/ for developer inspection when LOG_LEVEL=debug
-export async function saveAuditPayload(portalId: string, type: string, ext: string, data: string) {
-  logger.debug(`[Scraper Engine] saveAuditPayload entry: portalId=${portalId}, type=${type}, ext=${ext}`);
-  
-  const isDebugMode = (process.env.LOG_LEVEL || "info").toLowerCase() === "debug";
+export async function saveAuditPayload(
+  portalId: string,
+  type: string,
+  ext: string,
+  data: string,
+) {
+  logger.debug(
+    `[Scraper Engine] saveAuditPayload entry: portalId=${portalId}, type=${type}, ext=${ext}`,
+  );
+
+  const isDebugMode =
+    (process.env.LOG_LEVEL || "info").toLowerCase() === "debug";
   if (!isDebugMode) {
-    logger.debug("[Scraper Engine] saveAuditPayload return (skipped because LOG_LEVEL != debug)");
+    logger.debug(
+      "[Scraper Engine] saveAuditPayload return (skipped because LOG_LEVEL != debug)",
+    );
     return;
   }
 
@@ -119,23 +175,36 @@ export async function saveAuditPayload(portalId: string, type: string, ext: stri
     }
 
     await fs.writeFile(filePath, content, "utf-8");
-    logger.debug(`[Scraper Engine] saveAuditPayload return: saved to ${filePath}`);
+    logger.debug(
+      `[Scraper Engine] saveAuditPayload return: saved to ${filePath}`,
+    );
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    logger.error(`[Scraper Engine] Failed to save audit payload: ${errMsg}`, { error: err });
+    logger.error(`[Scraper Engine] Failed to save audit payload: ${errMsg}`, {
+      error: err,
+    });
     logger.debug("[Scraper Engine] saveAuditPayload return (error)");
   }
 }
 
 // Handle task retry logic with exponential backoff on rate limit (HTTP 429)
 export async function handleRateLimitFailure(
-  task: { id: string; portalId: string; attempts: number; searchUrl: string | null },
-  errorMessage: string
+  task: {
+    id: string;
+    portalId: string;
+    attempts: number;
+    searchUrl: string | null;
+  },
+  errorMessage: string,
 ) {
-  logger.debug(`[Scraper Engine] handleRateLimitFailure entry: taskId=${task.id}`);
-  
+  logger.debug(
+    `[Scraper Engine] handleRateLimitFailure entry: taskId=${task.id}`,
+  );
+
   const nextAttempts = task.attempts + 1;
-  const maxRetriesConfig = await prisma.systemConfig.findUnique({ where: { key: "SCRAPER_MAX_RETRIES" } });
+  const maxRetriesConfig = await prisma.systemConfig.findUnique({
+    where: { key: "SCRAPER_MAX_RETRIES" },
+  });
   const maxRetries = maxRetriesConfig ? parseInt(maxRetriesConfig.value) : 3;
 
   if (nextAttempts < maxRetries) {
@@ -160,8 +229,8 @@ export async function handleRateLimitFailure(
 
     logger.warn(
       `[Scraper Engine] Task ${task.id} rate limited. Backoff: ${Math.round(
-        backoffMs / 1000
-      )}s. Re-scheduled at ${newCreatedAt.toISOString()}. Attempts: ${nextAttempts}/${maxRetries}`
+        backoffMs / 1000,
+      )}s. Re-scheduled at ${newCreatedAt.toISOString()}. Attempts: ${nextAttempts}/${maxRetries}`,
     );
   } else {
     // Permanent FAILED state when attempts exceed maxRetries
@@ -174,7 +243,9 @@ export async function handleRateLimitFailure(
         progress: 100,
       },
     });
-    logger.error(`[Scraper Engine] Task ${task.id} reached maximum retries on rate limit. Status set to FAILED.`);
+    logger.error(
+      `[Scraper Engine] Task ${task.id} reached maximum retries on rate limit. Status set to FAILED.`,
+    );
 
     // Set matching PortalSearchUrl status to BROKEN
     if (task.searchUrl) {
@@ -189,7 +260,9 @@ export async function handleRateLimitFailure(
         },
       });
       if (updatedPortals.count > 0) {
-        logger.warn(`[Scraper Engine] Flagged PortalSearchUrl configuration for portal ${task.portalId} as BROKEN.`);
+        logger.warn(
+          `[Scraper Engine] Flagged PortalSearchUrl configuration for portal ${task.portalId} as BROKEN.`,
+        );
       }
     }
   }
@@ -199,13 +272,20 @@ export async function handleRateLimitFailure(
 
 // Handle task retry logic and broken portal configuration status updates
 export async function handleTaskFailure(
-  task: { id: string; portalId: string; attempts: number; searchUrl: string | null },
-  errorMessage: string
+  task: {
+    id: string;
+    portalId: string;
+    attempts: number;
+    searchUrl: string | null;
+  },
+  errorMessage: string,
 ) {
   logger.debug(`[Scraper Engine] handleTaskFailure entry: taskId=${task.id}`);
-  
+
   const nextAttempts = task.attempts + 1;
-  const maxRetriesConfig = await prisma.systemConfig.findUnique({ where: { key: "SCRAPER_MAX_RETRIES" } });
+  const maxRetriesConfig = await prisma.systemConfig.findUnique({
+    where: { key: "SCRAPER_MAX_RETRIES" },
+  });
   const maxRetries = maxRetriesConfig ? parseInt(maxRetriesConfig.value) : 3;
 
   if (nextAttempts < maxRetries) {
@@ -219,7 +299,9 @@ export async function handleTaskFailure(
         progress: 0,
       },
     });
-    logger.warn(`[Scraper Engine] Task ${task.id} failed. Attempts: ${nextAttempts}/${maxRetries}. Re-queued as PENDING.`);
+    logger.warn(
+      `[Scraper Engine] Task ${task.id} failed. Attempts: ${nextAttempts}/${maxRetries}. Re-queued as PENDING.`,
+    );
   } else {
     // Permanent task failure
     await prisma.scrapeTask.update({
@@ -231,7 +313,9 @@ export async function handleTaskFailure(
         progress: 100,
       },
     });
-    logger.error(`[Scraper Engine] Task ${task.id} reached maximum retries (${maxRetries}). Status set to FAILED.`);
+    logger.error(
+      `[Scraper Engine] Task ${task.id} reached maximum retries (${maxRetries}). Status set to FAILED.`,
+    );
 
     // Set matching PortalSearchUrl status to BROKEN
     if (task.searchUrl) {
@@ -246,12 +330,71 @@ export async function handleTaskFailure(
         },
       });
       if (updatedPortals.count > 0) {
-        logger.warn(`[Scraper Engine] Flagged PortalSearchUrl configuration for portal ${task.portalId} as BROKEN.`);
+        logger.warn(
+          `[Scraper Engine] Flagged PortalSearchUrl configuration for portal ${task.portalId} as BROKEN.`,
+        );
       }
     }
   }
 
   logger.debug("[Scraper Engine] handleTaskFailure return");
+}
+
+// Handle task retry logic on an anti-bot block (HTTP 403 / challenge
+// redirect) — mirrors handleTaskFailure's retry/backoff bookkeeping exactly,
+// but never flags the matching PortalSearchUrl as BROKEN, since a block is
+// not evidence the configuration itself is broken (REM-9, spectech.md
+// Decision 8).
+export async function handleBlockedFailure(
+  task: {
+    id: string;
+    portalId: string;
+    attempts: number;
+    searchUrl: string | null;
+  },
+  errorMessage: string,
+) {
+  logger.debug(
+    `[Scraper Engine] handleBlockedFailure entry: taskId=${task.id}`,
+  );
+
+  const nextAttempts = task.attempts + 1;
+  const maxRetriesConfig = await prisma.systemConfig.findUnique({
+    where: { key: "SCRAPER_MAX_RETRIES" },
+  });
+  const maxRetries = maxRetriesConfig ? parseInt(maxRetriesConfig.value) : 3;
+
+  if (nextAttempts < maxRetries) {
+    // Re-queue task to be picked up again
+    await prisma.scrapeTask.update({
+      where: { id: task.id },
+      data: {
+        status: "PENDING",
+        attempts: nextAttempts,
+        errorMessage: `${errorMessage} (Blocked - retrying)`,
+        progress: 0,
+      },
+    });
+    logger.warn(
+      `[Scraper Engine] Task ${task.id} blocked (403/challenge). Attempts: ${nextAttempts}/${maxRetries}. Re-queued as PENDING.`,
+    );
+  } else {
+    // Permanent task failure — PortalSearchUrl status intentionally left unchanged
+    await prisma.scrapeTask.update({
+      where: { id: task.id },
+      data: {
+        status: "FAILED",
+        attempts: nextAttempts,
+        errorMessage: `${errorMessage} (Blocked - max retries exceeded)`,
+        progress: 100,
+      },
+    });
+    logger.warn(
+      `[Scraper Engine] Task ${task.id} blocked (403/challenge). PortalSearchUrl status left unchanged.`,
+    );
+  }
+
+  logger.debug("[Scraper Engine] handleBlockedFailure return");
 }
 
 // Main strategy execution engine runner
@@ -262,7 +405,9 @@ export async function runTask(taskId: string) {
     where: { id: taskId },
   });
   if (!task || task.status === "COMPLETED" || task.status === "FAILED") {
-    logger.debug(`[Scraper Engine] runTask return (task is null or already completed/failed)`);
+    logger.debug(
+      `[Scraper Engine] runTask return (task is null or already completed/failed)`,
+    );
     return;
   }
 
@@ -271,7 +416,9 @@ export async function runTask(taskId: string) {
     data: { status: "RUNNING", progress: 10 },
   });
 
-  const userAgentConfig = await prisma.systemConfig.findUnique({ where: { key: "SCRAPER_USER_AGENT" } });
+  const userAgentConfig = await prisma.systemConfig.findUnique({
+    where: { key: "SCRAPER_USER_AGENT" },
+  });
   const userAgent = userAgentConfig?.value || "ApplyCopilot/1.0";
 
   try {
@@ -284,19 +431,38 @@ export async function runTask(taskId: string) {
       const url = task.searchUrl;
       if (!url) throw new Error("Search URL is required for LIST task");
 
-      await prisma.scrapeTask.update({ where: { id: taskId }, data: { progress: 30 } });
+      await prisma.scrapeTask.update({
+        where: { id: taskId },
+        data: { progress: 30 },
+      });
       const html = await fetchHtml(url, userAgent);
 
       await saveAuditPayload(task.portalId, "list_html", "html", html);
 
-      await prisma.scrapeTask.update({ where: { id: taskId }, data: { progress: 50 } });
+      await prisma.scrapeTask.update({
+        where: { id: taskId },
+        data: { progress: 50 },
+      });
       const $ = cheerio.load(html);
-      const results = await strategy.extractList(html, $, { searchUrl: url, userAgent });
+      const results = await strategy.extractList(html, $, {
+        searchUrl: url,
+        userAgent,
+      });
 
-      logger.debug(`[Scraper Engine] JobList Response for task ${taskId}: extracted ${results.length} listings.`);
-      await saveAuditPayload(task.portalId, "list_result", "json", JSON.stringify(results, null, 2));
+      logger.debug(
+        `[Scraper Engine] JobList Response for task ${taskId}: extracted ${results.length} listings.`,
+      );
+      await saveAuditPayload(
+        task.portalId,
+        "list_result",
+        "json",
+        JSON.stringify(results, null, 2),
+      );
 
-      await prisma.scrapeTask.update({ where: { id: taskId }, data: { progress: 80 } });
+      await prisma.scrapeTask.update({
+        where: { id: taskId },
+        data: { progress: 80 },
+      });
 
       let jobsAdded = 0;
       for (const item of results) {
@@ -331,7 +497,8 @@ export async function runTask(taskId: string) {
             company: item.company,
             location: item.location || [],
             url: item.url,
-            isFullDescriptionFetched: item.isFullDescriptionFetched || undefined,
+            isFullDescriptionFetched:
+              item.isFullDescriptionFetched || undefined,
             fullDescription: item.fullDescription || undefined,
             locationType: item.locationType || null,
             countries: item.countries || [],
@@ -355,23 +522,37 @@ export async function runTask(taskId: string) {
           errorMessage: null,
         },
       });
-      logger.info(`[Scraper Engine] LIST task ${taskId} completed successfully. Found ${jobsAdded} jobs.`);
-
+      logger.info(
+        `[Scraper Engine] LIST task ${taskId} completed successfully. Found ${jobsAdded} jobs.`,
+      );
     } else if (task.type === "DEEP") {
       const jobUrl = task.searchUrl;
       if (!jobUrl) throw new Error("Job URL is required for DEEP task");
 
-      await prisma.scrapeTask.update({ where: { id: taskId }, data: { progress: 40 } });
+      await prisma.scrapeTask.update({
+        where: { id: taskId },
+        data: { progress: 40 },
+      });
       const html = await fetchHtml(jobUrl, userAgent);
 
       await saveAuditPayload(task.portalId, "deep_html", "html", html);
 
-      await prisma.scrapeTask.update({ where: { id: taskId }, data: { progress: 70 } });
+      await prisma.scrapeTask.update({
+        where: { id: taskId },
+        data: { progress: 70 },
+      });
       const $ = cheerio.load(html);
       const deepResult = await strategy.extractDeep(html, $);
 
-      logger.debug(`[Scraper Engine] JobDetail parsed response for DEEP task ${taskId}`);
-      await saveAuditPayload(task.portalId, "deep_result", "json", JSON.stringify(deepResult, null, 2));
+      logger.debug(
+        `[Scraper Engine] JobDetail parsed response for DEEP task ${taskId}`,
+      );
+      await saveAuditPayload(
+        task.portalId,
+        "deep_result",
+        "json",
+        JSON.stringify(deepResult, null, 2),
+      );
 
       // Save description Markdown and set completed flag on JobListing
       await prisma.jobListing.updateMany({
@@ -391,12 +572,28 @@ export async function runTask(taskId: string) {
           errorMessage: null,
         },
       });
-      logger.info(`[Scraper Engine] DEEP task ${taskId} completed successfully for URL: ${jobUrl}`);
+      logger.info(
+        `[Scraper Engine] DEEP task ${taskId} completed successfully for URL: ${jobUrl}`,
+      );
     }
   } catch (error: unknown) {
     const errorStr = error instanceof Error ? error.message : String(error);
-    if (error instanceof RateLimitError || (error && typeof error === "object" && "name" in error && error.name === "RateLimitError")) {
+    if (
+      error instanceof RateLimitError ||
+      (error &&
+        typeof error === "object" &&
+        "name" in error &&
+        error.name === "RateLimitError")
+    ) {
       await handleRateLimitFailure(task, errorStr);
+    } else if (
+      error instanceof ScraperBlockedError ||
+      (error &&
+        typeof error === "object" &&
+        "name" in error &&
+        error.name === "ScraperBlockedError")
+    ) {
+      await handleBlockedFailure(task, errorStr);
     } else {
       await handleTaskFailure(task, errorStr);
     }

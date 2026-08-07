@@ -2,23 +2,20 @@
  * @jest-environment node
  *
  * Migration verification (T008, spec 011-audit-remediation, REM-1/REM-2 — AC.1, AC.2):
- * Builds a minimal schema mirroring the real `User`/`UserProfile`/`JobListing` tables' relevant
- * columns against an isolated scratch schema (a dedicated Postgres schema inside the same
- * database, scoped via `search_path` — the DB user has no CREATEDB privilege, so a true separate
- * database is not available), then applies this ticket's
- * `fix_pgvector_embedding_columns` migration file unmodified — mirroring 008's own
- * `job-analysis-migration.test.ts` precedent (minimal hand-built FK-target tables + the real
- * migration.sql file run unmodified via search_path).
+ * Runs the repo's single squashed baseline migration
+ * (`prisma/migrations/<timestamp>_init/migration.sql`, generated from `schema.prisma` — see the
+ * 011 migration-history-squash follow-up) unmodified against an isolated scratch schema (a
+ * dedicated Postgres schema inside the same database, scoped via `search_path` — the DB user has
+ * no CREATEDB privilege, so a true separate database is not available), proving the pgvector
+ * columns and HNSW indexes this ticket's REM-1/REM-2 fixes established are present and correct in
+ * the now-single migration history.
  *
- * Deviation from a literal "replay every migration.sql in prisma/migrations/, chronologically"
- * approach: attempted during authoring and found that this repo's *pre-existing* migration
- * history (unrelated to this ticket) never contains a `CREATE TABLE "JobAnalysis"` statement —
- * `20260803111436_scope_job_analysis_by_profile/migration.sql` `ALTER`s/`DROP INDEX`s a
- * `JobAnalysis` table that no tracked migration ever creates, so full-history replay fails before
- * reaching this ticket's own migrations, on a pre-existing gap this ticket does not own or scope
- * (not one of REM-1..REM-25). Matching 008's own established, narrower pattern (minimal seed
- * schema + the specific migration file under test) avoids exercising that unrelated gap while
- * still proving this ticket's own migration file applies cleanly and produces a working schema.
+ * Updated for the migration-history squash: previously this test hand-built minimal
+ * `UserProfile`/`JobListing` tables and ran only the narrow `fix_pgvector_embedding_columns`
+ * migration file (which no longer exists as a standalone file — its effect is folded into the
+ * baseline). The baseline migration creates the full schema from scratch, including `User` (an
+ * FK target of `UserProfile.userId`), so this test now seeds a `User` row before inserting
+ * `UserProfile` instead of pre-creating a narrower table shape.
  *
  * Asserts:
  *   (a) the migration file applies cleanly with no error, producing `vector(512)` columns on both
@@ -44,9 +41,21 @@ import fs from "fs";
 import path from "path";
 import { Pool, type PoolClient } from "pg";
 
+// Resolves the single baseline migration folder dynamically (its timestamp prefix changes
+// whenever the baseline is regenerated) rather than hardcoding a name.
+const MIGRATIONS_DIR = path.join(process.cwd(), "prisma/migrations");
+const BASELINE_MIGRATION_DIR = fs
+  .readdirSync(MIGRATIONS_DIR)
+  .find((name) => name.endsWith("_init"));
+if (!BASELINE_MIGRATION_DIR) {
+  throw new Error(
+    `Could not find a single baseline "*_init" migration folder under ${MIGRATIONS_DIR}`,
+  );
+}
 const MIGRATION_SQL_PATH = path.join(
-  process.cwd(),
-  "prisma/migrations/20260805090000_fix_pgvector_embedding_columns/migration.sql",
+  MIGRATIONS_DIR,
+  BASELINE_MIGRATION_DIR,
+  "migration.sql",
 );
 
 function embeddingLiteral(seed: number): string {
@@ -79,41 +88,17 @@ describe("Embedding pgvector schema migration proof (T008, REM-1/REM-2)", () => 
     // unmodified, exactly as it runs in production (see module doc comment).
     await client.query(`SET search_path TO "${schemaName}", public`);
 
-    // Minimal pre-migration shape mirroring the real tables this migration touches — matches the
-    // 008 precedent's own minimal-FK-target-table approach.
-    await client.query(`
-      CREATE TABLE "UserProfile" (
-        "id" TEXT PRIMARY KEY,
-        "embedding" vector(1536)
-      )
-    `);
-    await client.query(`
-      CREATE TABLE "JobListing" (
-        "id" TEXT PRIMARY KEY,
-        "portalId" TEXT NOT NULL,
-        "externalJobId" TEXT NOT NULL,
-        "title" TEXT NOT NULL,
-        "company" TEXT NOT NULL,
-        "location" TEXT[] NOT NULL DEFAULT '{}',
-        "url" TEXT NOT NULL,
-        "isFullDescriptionFetched" BOOLEAN NOT NULL DEFAULT false,
-        "fullDescription" TEXT,
-        "cleanedSummary" TEXT,
-        "classificationStatus" TEXT NOT NULL DEFAULT 'PENDING',
-        "classificationAttempts" INTEGER NOT NULL DEFAULT 0,
-        "classificationError" TEXT,
-        "postedAt" TIMESTAMPTZ,
-        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
-        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
-      )
-    `);
-
+    // The baseline migration creates the full schema from scratch (it is the single migration
+    // history now) — no pre-migration table shape to hand-build here.
     const sql = fs.readFileSync(MIGRATION_SQL_PATH, "utf-8");
     await expect(client.query(sql)).resolves.toBeDefined();
 
-    // Seed rows: one UserProfile, one JobListing.
+    // Seed rows: one User (FK target of UserProfile.userId), one UserProfile, one JobListing.
     await client.query(`
-      INSERT INTO "UserProfile" (id) VALUES ('t008-profile-1')
+      INSERT INTO "User" (id, email, password) VALUES ('t008-user-1', 't008@example.com', 'x')
+    `);
+    await client.query(`
+      INSERT INTO "UserProfile" (id, "userId", "updatedAt") VALUES ('t008-profile-1', 't008-user-1', now())
     `);
     await client.query(`
       INSERT INTO "JobListing" (

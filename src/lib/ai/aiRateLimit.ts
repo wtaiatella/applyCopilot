@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
 
@@ -79,7 +80,13 @@ export async function assertAiRateLimit(
   } catch (error) {
     // If a serialization conflict occurs (Prisma error code P2034), treat as limit-exceeded
     // (fail closed, not open). Pass through other errors (including AiRateLimitExceededError).
-    if (error instanceof Error && error.message.includes("P2034")) {
+    // Checked against the structured `.code` on PrismaClientKnownRequestError (matching the
+    // precedent in src/app/api/cv/route.ts's P2002 check) rather than string-matching
+    // `error.message`, which is not a stable/structured contract.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2034"
+    ) {
       logger.warn("ai_rate_limit_serialization_conflict", { userId, action });
       throw new AiRateLimitExceededError(action, dailyLimit);
     }

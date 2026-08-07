@@ -138,4 +138,57 @@ describe("Scraper Engine - Blocked (403/challenge) Failure Classification (REM-9
     expect(updatedTask?.errorMessage).toContain("Blocked");
     expect(updatedConfig?.status).toBe("ACTIVE");
   });
+
+  it("sanitizes control characters out of the redirect URL before it reaches errorMessage (log injection guard)", async () => {
+    const portalUrl = "https://example.com/redirect-search-injection";
+    // Newline + carriage-return-laden challenge URL simulating an attempted log-injection/forging
+    // payload from a malicious/misbehaving external portal.
+    const challengeUrl =
+      "https://example.com/cf-challenge?id=1\nFAKE LOG LINE\r\nInjected: true";
+
+    const config = await prisma.portalSearchUrl.create({
+      data: {
+        portalId: "example",
+        name: "Redirect Search Injection",
+        url: portalUrl,
+        isActive: true,
+        status: "ACTIVE",
+      },
+    });
+    portalIds.push(config.id);
+
+    jest.spyOn(global, "fetch").mockImplementation(async () => {
+      return {
+        ok: true,
+        status: 200,
+        redirected: true,
+        url: challengeUrl,
+        text: async () => "",
+      } as Response;
+    });
+
+    const task = await prisma.scrapeTask.create({
+      data: {
+        type: "LIST",
+        portalId: "example",
+        status: "PENDING",
+        attempts: 2, // 3rd attempt fails => permanent FAILED
+        searchUrl: portalUrl,
+      },
+    });
+    taskIds.push(task.id);
+
+    await runTask(task.id);
+
+    const updatedTask = await prisma.scrapeTask.findUnique({
+      where: { id: task.id },
+    });
+
+    expect(updatedTask?.status).toBe("FAILED");
+    expect(updatedTask?.errorMessage).toContain("Blocked");
+    // No raw newline/carriage-return control characters survive into the stored message.
+    expect(updatedTask?.errorMessage).not.toMatch(/[\x00-\x1f\x7f]/);
+    // The rest of the URL content is still present, just without the control characters.
+    expect(updatedTask?.errorMessage).toContain("FAKE LOG LINEInjected: true");
+  });
 });

@@ -79,6 +79,14 @@ export class ScraperBlockedError extends Error {
 // false-negative is observed (spectech.md Decision 8 / Implementation Notes).
 const BLOCKED_REDIRECT_MARKERS = ["captcha", "challenge", "cf-"];
 
+// The redirect target URL is controlled by the external portal, not our own
+// users — strip control characters (newlines, carriage returns, other
+// non-printable bytes) before it is logged or persisted, and cap its length,
+// to prevent log injection/forging and unbounded log entries.
+function sanitizeUrlForLogging(url: string): string {
+  return url.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 500);
+}
+
 // Fetch raw HTML with custom User-Agent header
 export async function fetchHtml(
   url: string,
@@ -104,11 +112,12 @@ export async function fetchHtml(
       response.url.toLowerCase().includes(marker),
     )
   ) {
+    const safeRedirectUrl = sanitizeUrlForLogging(response.url);
     logger.warn(
-      `[Scraper Engine] Blocked on URL: ${url} (redirected to challenge page: ${response.url})`,
+      `[Scraper Engine] Blocked on URL: ${url} (redirected to challenge page: ${safeRedirectUrl})`,
     );
     throw new ScraperBlockedError(
-      `Blocked on URL: ${url} (redirected to challenge page: ${response.url})`,
+      `Blocked on URL: ${url} (redirected to challenge page: ${safeRedirectUrl})`,
     );
   }
 

@@ -214,12 +214,18 @@ export async function DELETE(req: Request, props: Params) {
         where: { experienceId: id },
       });
 
-      for (const bullet of bullets) {
-        const usedCount = await tx.cVBullet.count({
-          where: { experienceBulletId: bullet.id },
-        });
+      // Single aggregate query instead of one `count()` per bullet (N+1 fix).
+      const usageCounts = await tx.cVBullet.groupBy({
+        by: ["experienceBulletId"],
+        where: { experienceBulletId: { in: bullets.map((b) => b.id) } },
+        _count: true,
+      });
+      const referencedBulletIds = new Set(
+        usageCounts.map((u) => u.experienceBulletId),
+      );
 
-        if (usedCount > 0) {
+      for (const bullet of bullets) {
+        if (referencedBulletIds.has(bullet.id)) {
           await tx.experienceBullet.update({
             where: { id: bullet.id },
             data: { isArchived: true, isActive: false, experienceId: null },

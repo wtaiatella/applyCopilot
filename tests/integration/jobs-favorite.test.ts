@@ -212,6 +212,24 @@ describe("PUT /api/jobs/[id]/favorite — idempotent per-profile set (009 US7, A
     }
   });
 
+  it("falls back to the default limit (does not 500) when `limit` is non-numeric (REM follow-up: NaN guard)", async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: userAId, email: "unused@example.com", role: "USER" },
+      expires: "any",
+    });
+
+    const res = await getJobsHandler(
+      new Request("http://localhost:3000/api/jobs?days=3650&limit=abc"),
+    );
+
+    // `parseInt("abc", 10)` is NaN — must be guarded and fall back to a sane default instead of
+    // reaching Math.max/Math.min/the raw SQL LIMIT as NaN (which previously produced a 500).
+    expect(res.status).toBe(200);
+    const jobs = (await res.json()) as Array<{ id: string }>;
+    expect(Array.isArray(jobs)).toBe(true);
+    expect(jobs.length).toBeLessThanOrEqual(100);
+  });
+
   it("404s for a jobListingId that does not exist", async () => {
     mockAuth.mockResolvedValue({
       user: { id: userAId, email: "unused@example.com", role: "USER" },

@@ -27,10 +27,15 @@ export interface JobSimilarityResult {
 export async function getJobsWithSimilarity(
   profileEmbedding: number[] | null,
   daysLimit: number = 15,
-  limit: number = 50
+  limit: number = 50,
 ): Promise<JobSimilarityResult[]> {
-  const days = Math.max(1, daysLimit);
-  const maxLimit = Math.max(1, limit);
+  // Guard against a non-finite/NaN caller-supplied value reaching Math.max/Math.min (which never
+  // resolve NaN to a finite number) and, in turn, the raw SQL LIMIT/INTERVAL — fall back to this
+  // function's own defaults, matching the defaults declared on its parameters.
+  const safeDaysLimit = Number.isFinite(daysLimit) ? daysLimit : 15;
+  const safeLimit = Number.isFinite(limit) ? limit : 50;
+  const days = Math.max(1, safeDaysLimit);
+  const maxLimit = Math.max(1, safeLimit);
 
   if (profileEmbedding && profileEmbedding.length === 512) {
     const vectorStr = `[${profileEmbedding.join(",")}]`;
@@ -60,7 +65,7 @@ export async function getJobsWithSimilarity(
       `,
       vectorStr,
       days,
-      maxLimit
+      maxLimit,
     );
   } else {
     // Fallback: Return sorted by postedAt/createdAt descending, matchScore is null
@@ -87,7 +92,7 @@ export async function getJobsWithSimilarity(
       LIMIT $2;
       `,
       days,
-      maxLimit
+      maxLimit,
     );
   }
 }

@@ -58,10 +58,12 @@ describe("REM-10 rework: middleware.ts matcher regex (not just authorized())", (
     expect(matcherRegex.test("/apiary")).toBe(true);
   });
 
-  it("reaches the proxy for /api-docs (the confirmed-public page), which then relies on PUBLIC_ROUTES via authorized(), not on being matcher-excluded", () => {
+  it("reaches the proxy for /api-docs, which now requires login (not in PUBLIC_ROUTES) plus an ADMIN-role page-level guard", () => {
     // Under the OLD matcher, /api-docs was (incorrectly, coincidentally) excluded by the same
-    // unbounded "api" bug -- it happened to "work" for the wrong reason. Now it must reach the
-    // proxy and be allowed only because authConfig.PUBLIC_ROUTES explicitly lists it.
+    // unbounded "api" bug -- it happened to "work" for the wrong reason. It reaches the proxy
+    // here regardless; the 011-audit-remediation follow-up additionally removed it from
+    // PUBLIC_ROUTES (see auth.test.ts) so protect-by-default now requires login, and the page
+    // component itself enforces the ADMIN-only guard (see src/app/api-docs/page.tsx).
     expect(matcherRegex.test("/api-docs")).toBe(true);
   });
 
@@ -71,8 +73,8 @@ describe("REM-10 rework: middleware.ts matcher regex (not just authorized())", (
     expect(matcherRegex.test("/favicon.ico")).toBe(false);
   });
 
-  it("excludes /openapi.yaml from the proxy so the static file is always reachable, matching the file's real location under public/", () => {
-    expect(matcherRegex.test("/openapi.yaml")).toBe(false);
+  it("reaches the proxy for /openapi.yaml (011-audit-remediation follow-up: no longer bypasses protect-by-default, so the raw spec can't be fetched while logged out now that /api-docs is ADMIN-gated)", () => {
+    expect(matcherRegex.test("/openapi.yaml")).toBe(true);
 
     const openApiFilePath = path.join(process.cwd(), "public", "openapi.yaml");
     expect(fs.existsSync(openApiFilePath)).toBe(true);

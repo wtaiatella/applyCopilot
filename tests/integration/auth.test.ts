@@ -384,5 +384,20 @@ describe("Authentication & Password Reset Integration Tests", () => {
       const result = authorizedCallback!(buildRequestArgs(stubRoutePath, true));
       expect(result).toBe(true);
     });
+
+    it("011-audit-remediation follow-up: /api-docs is no longer in PUBLIC_ROUTES and is protected by default for an unauthenticated request", () => {
+      expect(authorizedCallback).toBeDefined();
+      expect(PUBLIC_ROUTES).not.toContain("/api-docs");
+
+      const result = authorizedCallback!(buildRequestArgs("/api-docs", false));
+      expect(result).toBe(false); // false signals NextAuth to redirect to the sign-in page
+    });
+
+    it("011-audit-remediation follow-up: an authenticated (non-ADMIN) request reaches /api-docs at the middleware layer -- the ADMIN-only check happens page-side, matching this app's settings-page pattern", () => {
+      expect(authorizedCallback).toBeDefined();
+
+      const result = authorizedCallback!(buildRequestArgs("/api-docs", true));
+      expect(result).toBe(true);
+    });
   });
 });

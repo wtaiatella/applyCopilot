@@ -11,7 +11,6 @@ export const PUBLIC_ROUTES = [
   "/register",
   "/forgot-password",
   "/reset-password",
-  "/api-docs",
 ];
 
 export const authConfig: NextAuthConfig = {

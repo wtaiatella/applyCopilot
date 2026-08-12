@@ -25,7 +25,10 @@ export async function PUT(req: Request, props: Params) {
     });
 
     if (!education || education.profile.userId !== userId) {
-      return NextResponse.json({ error: "Education not found or access denied" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Education not found or access denied" },
+        { status: 404 },
+      );
     }
 
     let body;
@@ -41,7 +44,10 @@ export async function PUT(req: Request, props: Params) {
         field: err.path.join("."),
         message: err.message,
       }));
-      return NextResponse.json({ error: "Validation failed", details }, { status: 400 });
+      return NextResponse.json(
+        { error: "Validation failed", details },
+        { status: 400 },
+      );
     }
 
     const data = parsed.data;
@@ -52,9 +58,13 @@ export async function PUT(req: Request, props: Params) {
     });
 
     const incomingBullets = data.bullets;
-    const incomingIds = incomingBullets.filter((b) => b.id).map((b) => b.id) as string[];
+    const incomingIds = incomingBullets
+      .filter((b) => b.id)
+      .map((b) => b.id) as string[];
 
-    const bulletsToDelete = existingBullets.filter((b) => !incomingIds.includes(b.id));
+    const bulletsToDelete = existingBullets.filter(
+      (b) => !incomingIds.includes(b.id),
+    );
 
     // Update in transaction
     const updatedEd = await prisma.$transaction(async (tx) => {
@@ -160,6 +170,7 @@ export async function PUT(req: Request, props: Params) {
         usedInCVs: b.usedInCVs.map((uc) => ({
           id: uc.cv.id,
           name: uc.cv.name,
+          jobListingId: uc.cv.jobListingId,
         })),
       })),
     };
@@ -169,7 +180,10 @@ export async function PUT(req: Request, props: Params) {
     return NextResponse.json(responseData);
   } catch (error) {
     logger.error("Failed to update education", { error });
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
@@ -190,7 +204,10 @@ export async function DELETE(req: Request, props: Params) {
     });
 
     if (!education || education.profile.userId !== userId) {
-      return NextResponse.json({ error: "Education not found or access denied" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Education not found or access denied" },
+        { status: 404 },
+      );
     }
 
     await prisma.education.delete({
@@ -202,6 +219,9 @@ export async function DELETE(req: Request, props: Params) {
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error("Failed to delete education", { error });
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

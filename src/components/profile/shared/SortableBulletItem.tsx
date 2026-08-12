@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { Button, Switch, Tooltip, Input } from "antd";
 import { DeleteOutlined, MenuOutlined, StarOutlined } from "@ant-design/icons";
 import { useSortable } from "@dnd-kit/sortable";
@@ -109,7 +110,18 @@ export default function SortableBulletItem({
         {isUsed && (
           <div className="pl-1.5">
             <span className="text-[10px] bg-blue-900/30 text-blue-300 border border-blue-800/40 px-1.5 py-0.5 rounded font-medium">
-              Used in: {bullet.usedInCVs.map((c) => c.name).join(", ")}
+              Used in:{" "}
+              {bullet.usedInCVs.map((cv, index) => (
+                <React.Fragment key={cv.id}>
+                  {index > 0 && ", "}
+                  <Link
+                    href={`/jobs/${cv.jobListingId}/application`}
+                    className="underline hover:text-blue-100"
+                  >
+                    {cv.name}
+                  </Link>
+                </React.Fragment>
+              ))}
             </span>
           </div>
         )}

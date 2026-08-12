@@ -10,7 +10,11 @@ interface MainLayoutProps {
 export default async function MainLayout({ children }: MainLayoutProps) {
   const session = await auth();
 
-  // If user is not logged in, redirect them to the sign-in page on the server
+  // REM-10 / spectech.md Decision 7: middleware.ts's PUBLIC_ROUTES allowlist
+  // (src/lib/auth/authConfig.ts) is the primary, single source of truth for route
+  // protection under (main). This server-side auth() + redirect check is intentional
+  // defense-in-depth only - redundant-but-harmless, not the primary enforcement point.
+  // Kept as-is rather than removed (no behavior change).
   if (!session || !session.user) {
     redirect("/login");
   }

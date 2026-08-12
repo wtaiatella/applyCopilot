@@ -7,6 +7,12 @@ import { POST as eventsHandler } from "@/app/api/applications/[applicationId]/ev
 import { GET as cvApplicationHandler } from "@/app/api/cv/[cvId]/application/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import {
+  transitionStage,
+  undoTransition,
+  addManualEvent,
+  OwnershipViolationError,
+} from "@/services/applicationService";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -246,9 +252,10 @@ describe("AC.11 — Undo + further timeline changes never touch CV.snapshotData/
   });
 
   afterAll(async () => {
+    // Pool/connection teardown happens once, in the LAST describe block in this file (see the
+    // ownership-violation block below) — Jest runs describe blocks within a file sequentially,
+    // so closing the shared `pool`/`prisma` connection here would break that later block.
     await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
-    await prisma.$disconnect();
-    await pool.end();
   });
 
   beforeEach(() => {
@@ -347,4 +354,130 @@ describe("AC.11 — Undo + further timeline changes never touch CV.snapshotData/
     const req = new Request(`http://localhost:3000/api/cv/${cvId}/application`);
     return cvApplicationHandler(req, { params: Promise.resolve({ cvId }) });
   }
+});
+
+describe("applicationService — direct-call ownership violation (REM-8, AC.8)", () => {
+  const ownerEmail = `application-ownership-owner-${Date.now()}@example.com`;
+  const attackerEmail = `application-ownership-attacker-${Date.now()}@example.com`;
+  let ownerUserId: string;
+  let ownerProfileId: string;
+  let attackerUserId: string;
+
+  beforeAll(async () => {
+    const owner = await prisma.user.create({
+      data: {
+        email: ownerEmail,
+        password: "hashedpassword123",
+        profile: { create: { firstName: "Owner", lastName: "Tester" } },
+      },
+      include: { profile: true },
+    });
+    ownerUserId = owner.id;
+    ownerProfileId = owner.profile!.id;
+
+    const attacker = await prisma.user.create({
+      data: {
+        email: attackerEmail,
+        password: "hashedpassword123",
+        profile: { create: { firstName: "Attacker", lastName: "Tester" } },
+      },
+    });
+    attackerUserId = attacker.id;
+  });
+
+  afterAll(async () => {
+    await prisma.user.delete({ where: { id: ownerUserId } }).catch(() => {});
+    await prisma.user.delete({ where: { id: attackerUserId } }).catch(() => {});
+    await prisma.$disconnect();
+    await pool.end();
+  });
+
+  async function createOwnedApplication() {
+    const jobListing = await prisma.jobListing.create({
+      data: {
+        portalId: "test-portal",
+        externalJobId: `test-job-application-ownership-${Date.now()}-${Math.random()}`,
+        title: "Backend Engineer",
+        company: "Test Company",
+        url: "https://example.com/job",
+      },
+    });
+    const cv = await prisma.cV.create({
+      data: {
+        profileId: ownerProfileId,
+        jobListingId: jobListing.id,
+        name: "Test CV",
+        status: "APPLIED",
+        appliedAt: new Date(),
+        snapshotData: {},
+      },
+    });
+    const application = await prisma.application.create({
+      data: {
+        cvId: cv.id,
+        profileId: ownerProfileId,
+        jobListingId: jobListing.id,
+        stage: "APPLIED",
+      },
+    });
+    await prisma.applicationEvent.create({
+      data: {
+        applicationId: application.id,
+        type: "STAGE_CHANGE",
+        fromStage: null,
+        toStage: "APPLIED",
+      },
+    });
+    return application;
+  }
+
+  it("transitionStage rejects a caller who does not own the Application, called directly (bypassing the route)", async () => {
+    const application = await createOwnedApplication();
+
+    await expect(
+      transitionStage(application.id, attackerUserId, { stage: "SCREENING" }),
+    ).rejects.toThrow(OwnershipViolationError);
+
+    const persisted = await prisma.application.findUnique({
+      where: { id: application.id },
+    });
+    expect(persisted?.stage).toBe("APPLIED");
+  });
+
+  it("undoTransition rejects a caller who does not own the Application, called directly (bypassing the route)", async () => {
+    const application = await createOwnedApplication();
+    const { eventId } = await transitionStage(application.id, ownerUserId, {
+      stage: "SCREENING",
+    });
+
+    await expect(
+      undoTransition(application.id, attackerUserId, eventId),
+    ).rejects.toThrow(OwnershipViolationError);
+
+    const persisted = await prisma.application.findUnique({
+      where: { id: application.id },
+    });
+    expect(persisted?.stage).toBe("SCREENING");
+
+    const eventStillExists = await prisma.applicationEvent.findUnique({
+      where: { id: eventId },
+    });
+    expect(eventStillExists).not.toBeNull();
+  });
+
+  it("addManualEvent rejects a caller who does not own the Application, called directly (bypassing the route)", async () => {
+    const application = await createOwnedApplication();
+
+    await expect(
+      addManualEvent(application.id, attackerUserId, {
+        type: "NOTE",
+        content: "Should never be written",
+      }),
+    ).rejects.toThrow(OwnershipViolationError);
+
+    const events = await prisma.applicationEvent.findMany({
+      where: { applicationId: application.id, type: "NOTE" },
+    });
+    expect(events).toHaveLength(0);
+  });
 });

@@ -180,4 +180,47 @@ describe("POST /api/cv/[cvId]/match-score — on-demand only (AC.8)", () => {
     });
     expect(res.status).toBe(401);
   });
+
+  // REM-7 / T027: cv_match_score's own Decision 6 threshold (100/day) — completes the
+  // 9-route table this ticket's rate-limit coverage spans (see profile-ai.test.ts and
+  // cv-ai.test.ts for the other 8 routes).
+  describe("AI rate limiting (REM-7, Decision 6 threshold)", () => {
+    beforeEach(async () => {
+      // Earlier tests in this file already exercise this route and leave their own
+      // AIUsageLog rows behind — start each case from a clean slate.
+      await prisma.aIUsageLog.deleteMany({ where: { userId: testUserId } });
+    });
+
+    afterEach(async () => {
+      await prisma.aIUsageLog.deleteMany({ where: { userId: testUserId } });
+    });
+
+    it("rejects the 101st call to cv_match_score with 429 once the 100/day threshold is reached", async () => {
+      await prisma.aIUsageLog.createMany({
+        data: Array.from({ length: 100 }).map(() => ({
+          userId: testUserId,
+          action: "cv_match_score",
+        })),
+      });
+
+      const req = new Request(
+        `http://localhost:3000/api/cv/${cvId}/match-score`,
+        { method: "POST" },
+      );
+      const res = await matchScoreHandler(req, {
+        params: Promise.resolve({ cvId }),
+      });
+      expect(res.status).toBe(429);
+      const data = await res.json();
+      expect(data.error).toBe(
+        "Rate limit reached. You can only cv_match_score 100 times per day.",
+      );
+      expect(generateEmbedding).not.toHaveBeenCalled();
+
+      const logs = await prisma.aIUsageLog.count({
+        where: { userId: testUserId, action: "cv_match_score" },
+      });
+      expect(logs).toBe(100);
+    });
+  });
 });

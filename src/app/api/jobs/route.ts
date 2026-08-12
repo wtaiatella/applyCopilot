@@ -20,7 +20,14 @@ export async function GET(request: Request) {
     const minMatchVal = searchParams.get("minMatch");
 
     const days = daysVal ? parseInt(daysVal, 10) : 15;
-    const limit = limitVal ? parseInt(limitVal, 10) : 50;
+    const rawLimit = limitVal ? parseInt(limitVal, 10) : 50;
+    // Clamp to [1, 100] regardless of requested value — out-of-range values are clamped, not
+    // rejected, so no new error path is introduced for existing callers (REM-12, spectech.md
+    // API Contracts). A non-numeric `limit` query param (e.g. `?limit=abc`) parses to NaN, which
+    // must fall back to the default before clamping — Math.min/Math.max never resolve a NaN
+    // input to a finite value, so an unguarded NaN would otherwise reach the SQL layer.
+    const safeRawLimit = Number.isFinite(rawLimit) ? rawLimit : 50;
+    const limit = Math.min(100, Math.max(1, safeRawLimit));
     const minMatch = minMatchVal ? parseFloat(minMatchVal) : null;
 
     // Load User Profile embedding via raw query because Unsupported type is omitted by standard prisma client selectors

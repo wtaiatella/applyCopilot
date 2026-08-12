@@ -35,6 +35,20 @@ export class StaleUndoError extends Error {
   }
 }
 
+/**
+ * Thrown when the caller-supplied `userId` does not own the `Application` identified by
+ * `applicationId` (REM-8, AC.8) — an independent, service-level ownership check that holds even
+ * for a caller that bypasses the route layer's own `findUnique` + ownership check (defense in
+ * depth, mirrors `OutcomeRequiredError`/`StaleUndoError`'s own in-service enforcement). Mapped to
+ * `404` at the route layer, per spectech.md's Error Handling Strategy.
+ */
+export class OwnershipViolationError extends Error {
+  constructor() {
+    super("caller does not own this Application");
+    this.name = "OwnershipViolationError";
+  }
+}
+
 // Structural subset of a Prisma transaction client `createApplicationForCV` needs — mirrors
 // `cvReconciliationService.ts`'s `ReconcileTx` convention: the caller's already-open Apply
 // transaction is passed in, not a bare Prisma client.
@@ -107,6 +121,7 @@ interface ApplicationRow {
  */
 export async function transitionStage(
   applicationId: string,
+  userId: string,
   input: StageTransitionInput,
 ): Promise<{ application: ApplicationRow; eventId: string }> {
   if (input.stage === "FINAL" && !input.outcome) {
@@ -116,10 +131,23 @@ export async function transitionStage(
   const outcome = input.stage === "FINAL" ? (input.outcome ?? null) : null;
 
   const result = await prisma.$transaction(async (tx) => {
-    const current = await tx.application.findUniqueOrThrow({
+    const current = await tx.application.findUnique({
       where: { id: applicationId },
-      select: { stage: true },
+      select: {
+        stage: true,
+        outcome: true,
+        profile: { select: { userId: true } },
+      },
     });
+
+    if (!current || current.profile.userId !== userId) {
+      throw new OwnershipViolationError();
+    }
+
+    // The transition being recorded is leaving FINAL only when the current stage is FINAL and
+    // the target isn't — that's the one case `outcome` gets cleared (see `outcome` above), so
+    // it's the one case worth preserving on the event for `undoTransition` to restore (REM-4).
+    const leavingFinal = current.stage === "FINAL" && input.stage !== "FINAL";
 
     const updated = await tx.application.update({
       where: { id: applicationId },
@@ -133,6 +161,7 @@ export async function transitionStage(
         type: "STAGE_CHANGE",
         fromStage: current.stage,
         toStage: input.stage,
+        previousOutcome: leavingFinal ? current.outcome : null,
       },
       select: { id: true },
     });
@@ -159,13 +188,28 @@ export async function transitionStage(
  */
 export async function undoTransition(
   applicationId: string,
+  userId: string,
   eventId: UndoInput["eventId"],
 ): Promise<ApplicationRow> {
   const updated = await prisma.$transaction(async (tx) => {
+    const application = await tx.application.findUnique({
+      where: { id: applicationId },
+      select: { profile: { select: { userId: true } } },
+    });
+
+    if (!application || application.profile.userId !== userId) {
+      throw new OwnershipViolationError();
+    }
+
     const latestEvent = await tx.applicationEvent.findFirst({
       where: { applicationId, type: "STAGE_CHANGE" },
       orderBy: { createdAt: "desc" },
-      select: { id: true, fromStage: true, toStage: true },
+      select: {
+        id: true,
+        fromStage: true,
+        toStage: true,
+        previousOutcome: true,
+      },
     });
 
     if (!latestEvent || latestEvent.id !== eventId || !latestEvent.fromStage) {
@@ -174,6 +218,12 @@ export async function undoTransition(
       throw new StaleUndoError();
     }
 
+    // The undone transition left FINAL only when it moved OUT of FINAL — that's the one case
+    // whose cleared `outcome` was preserved on the event (see `transitionStage`), so it's the
+    // one case undo restores it in (REM-4).
+    const leftFinal =
+      latestEvent.fromStage === "FINAL" && latestEvent.toStage !== "FINAL";
+
     await tx.applicationEvent.delete({ where: { id: eventId } });
 
     return tx.application.update({
@@ -181,7 +231,12 @@ export async function undoTransition(
       data: {
         stage: latestEvent.fromStage,
         // The undone transition had set an outcome only if it moved INTO FINAL.
-        outcome: latestEvent.toStage === "FINAL" ? null : undefined,
+        outcome:
+          latestEvent.toStage === "FINAL"
+            ? null
+            : leftFinal
+              ? latestEvent.previousOutcome
+              : undefined,
       },
       select: { id: true, stage: true, outcome: true },
     });
@@ -214,8 +269,18 @@ interface ApplicationEventRow {
  */
 export async function addManualEvent(
   applicationId: string,
+  userId: string,
   input: AddEventInput,
 ): Promise<ApplicationEventRow> {
+  const application = await prisma.application.findUnique({
+    where: { id: applicationId },
+    select: { profile: { select: { userId: true } } },
+  });
+
+  if (!application || application.profile.userId !== userId) {
+    throw new OwnershipViolationError();
+  }
+
   const data: Prisma.ApplicationEventUncheckedCreateInput = {
     applicationId,
     type: input.type,

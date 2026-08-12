@@ -343,4 +343,94 @@ describe("profileBulletAIService", () => {
       });
     });
   });
+
+  // ── REM-15: `userComment` (Regenerate flow) end-to-end prompt/response coverage ─────
+  // Covers the full path a Regenerate call takes: request input (`userComment`) → prompt
+  // construction (the "User Comment (apply this feedback): ..." section) → the AI service
+  // call (`generateJSON`'s first argument) → the function's own response. These tests fail
+  // if `userComment` is dropped or ignored anywhere along that path.
+  describe("userComment (Regenerate flow, REM-15)", () => {
+    describe("runGenerateBullet", () => {
+      it("includes the trimmed userComment in the prompt sent to the AI service", async () => {
+        generateJSONMock.mockResolvedValue({
+          revisedText: "Regenerated bullet",
+        });
+
+        const result = await runGenerateBullet({
+          contextNotes: ["Managed a $2M budget"],
+          existingBullets: [],
+          userComment: "  Make it punchier  ",
+        });
+
+        expect(generateJSONMock).toHaveBeenCalledTimes(1);
+        const userPrompt = generateJSONMock.mock.calls[0][0] as string;
+        expect(userPrompt).toContain(
+          "User Comment (apply this feedback): <user_content>Make it punchier</user_content>",
+        );
+        expect(result).toEqual({ revisedText: "Regenerated bullet" });
+      });
+
+      it("omits the User Comment section entirely when userComment is absent", async () => {
+        generateJSONMock.mockResolvedValue({ revisedText: "Bullet" });
+
+        await runGenerateBullet({
+          contextNotes: ["Managed a $2M budget"],
+          existingBullets: [],
+        });
+
+        const userPrompt = generateJSONMock.mock.calls[0][0] as string;
+        expect(userPrompt).not.toContain("User Comment");
+      });
+
+      it("omits the User Comment section when userComment is only whitespace", async () => {
+        generateJSONMock.mockResolvedValue({ revisedText: "Bullet" });
+
+        await runGenerateBullet({
+          contextNotes: ["Managed a $2M budget"],
+          existingBullets: [],
+          userComment: "   ",
+        });
+
+        const userPrompt = generateJSONMock.mock.calls[0][0] as string;
+        expect(userPrompt).not.toContain("User Comment");
+      });
+    });
+
+    describe("runReviewBullet", () => {
+      const bullet: BulletInput = {
+        id: "b1",
+        text: "Original bullet",
+        type: "BULLET",
+        usedInCVs: [],
+      };
+
+      it("includes the trimmed userComment in the prompt sent to the AI service", async () => {
+        generateJSONMock.mockResolvedValue({
+          revisedText: "Regenerated review",
+        });
+
+        const result = await runReviewBullet({
+          bullet,
+          contextNotes: [],
+          userComment: "  Emphasize leadership  ",
+        });
+
+        expect(generateJSONMock).toHaveBeenCalledTimes(1);
+        const userPrompt = generateJSONMock.mock.calls[0][0] as string;
+        expect(userPrompt).toContain(
+          "User Comment (apply this feedback): <user_content>Emphasize leadership</user_content>",
+        );
+        expect(result).toEqual({ revisedText: "Regenerated review" });
+      });
+
+      it("omits the User Comment section entirely when userComment is absent", async () => {
+        generateJSONMock.mockResolvedValue({ revisedText: "Improved bullet" });
+
+        await runReviewBullet({ bullet, contextNotes: [] });
+
+        const userPrompt = generateJSONMock.mock.calls[0][0] as string;
+        expect(userPrompt).not.toContain("User Comment");
+      });
+    });
+  });
 });

@@ -35,7 +35,10 @@ export async function POST(req: Request) {
         field: err.path.join("."),
         message: err.message,
       }));
-      return NextResponse.json({ error: "Validation failed", details }, { status: 400 });
+      return NextResponse.json(
+        { error: "Validation failed", details },
+        { status: 400 },
+      );
     }
 
     const data = parsed.data;
@@ -97,15 +100,22 @@ export async function POST(req: Request) {
         usedInCVs: b.usedInCVs.map((uc) => ({
           id: uc.cv.id,
           name: uc.cv.name,
+          jobListingId: uc.cv.jobListingId,
         })),
       })),
     };
 
-    logger.info("Project created successfully", { profileId: profile.id, projectId: newProj.id });
+    logger.info("Project created successfully", {
+      profileId: profile.id,
+      projectId: newProj.id,
+    });
 
     return NextResponse.json(responseData, { status: 201 });
   } catch (error) {
     logger.error("Failed to create project", { error });
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

@@ -3,7 +3,10 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
 import { AddEventSchema } from "@/lib/validation/applicationSchemas";
-import { addManualEvent } from "@/services/applicationService";
+import {
+  addManualEvent,
+  OwnershipViolationError,
+} from "@/services/applicationService";
 
 interface Params {
   params: Promise<{ applicationId: string }>;
@@ -57,7 +60,18 @@ export async function POST(req: Request, props: Params) {
       );
     }
 
-    const event = await addManualEvent(applicationId, parsed.data);
+    let event;
+    try {
+      event = await addManualEvent(applicationId, userId, parsed.data);
+    } catch (error) {
+      if (error instanceof OwnershipViolationError) {
+        return NextResponse.json(
+          { error: "Application not found or access denied" },
+          { status: 404 },
+        );
+      }
+      throw error;
+    }
 
     return NextResponse.json(
       {

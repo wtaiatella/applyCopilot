@@ -3,6 +3,10 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
 import { calculateCVMatchScore } from "@/services/cvMatchScoreService";
+import {
+  assertAiRateLimit,
+  AiRateLimitExceededError,
+} from "@/lib/ai/aiRateLimit";
 import type { CVSnapshotData } from "@/types/cv";
 
 interface Params {
@@ -38,6 +42,8 @@ export async function POST(_req: Request, props: Params) {
       );
     }
 
+    await assertAiRateLimit(userId, "cv_match_score", 100);
+
     const snapshotData = cv.snapshotData as unknown as CVSnapshotData;
     const score = await calculateCVMatchScore(snapshotData, cv.jobListingId);
     const computedAt = new Date().toISOString();
@@ -46,6 +52,9 @@ export async function POST(_req: Request, props: Params) {
 
     return NextResponse.json({ score, computedAt });
   } catch (error) {
+    if (error instanceof AiRateLimitExceededError) {
+      return NextResponse.json({ error: error.message }, { status: 429 });
+    }
     logger.error("Failed to calculate CV match score", { error });
     return NextResponse.json(
       { error: "Internal server error" },

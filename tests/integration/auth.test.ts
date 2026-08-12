@@ -7,7 +7,7 @@ import { POST as registerHandler } from "@/app/api/auth/register/route";
 import { POST as forgotPasswordHandler } from "@/app/api/auth/forgot-password/route";
 import { POST as resetPasswordHandler } from "@/app/api/auth/reset-password/route";
 import { prisma, pool } from "@/lib/db/prisma";
-import { authConfig } from "@/lib/auth/authConfig";
+import { authConfig, PUBLIC_ROUTES } from "@/lib/auth/authConfig";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -21,9 +21,11 @@ describe("Authentication & Password Reset Integration Tests", () => {
   afterAll(async () => {
     // Clean up test user
     if (createdUserId) {
-      await prisma.user.delete({
-        where: { id: createdUserId },
-      }).catch(() => {});
+      await prisma.user
+        .delete({
+          where: { id: createdUserId },
+        })
+        .catch(() => {});
     }
 
     // Clean up temporary debug email files
@@ -54,7 +56,9 @@ describe("Authentication & Password Reset Integration Tests", () => {
       const json = await res.json();
       expect(json.success).toBe(true);
 
-      const user = await prisma.user.findUnique({ where: { email: testEmail } });
+      const user = await prisma.user.findUnique({
+        where: { email: testEmail },
+      });
       expect(user).toBeDefined();
       expect(user?.email).toBe(testEmail);
       createdUserId = user!.id;
@@ -92,10 +96,13 @@ describe("Authentication & Password Reset Integration Tests", () => {
   describe("POST /api/auth/forgot-password", () => {
     it("should generate a reset token, write to debug directory, and delete old tokens", async () => {
       // 1. Request first reset
-      const req1 = new Request("http://localhost:3000/api/auth/forgot-password", {
-        method: "POST",
-        body: JSON.stringify({ email: testEmail }),
-      });
+      const req1 = new Request(
+        "http://localhost:3000/api/auth/forgot-password",
+        {
+          method: "POST",
+          body: JSON.stringify({ email: testEmail }),
+        },
+      );
 
       const res1 = await forgotPasswordHandler(req1);
       expect(res1.status).toBe(200);
@@ -110,10 +117,13 @@ describe("Authentication & Password Reset Integration Tests", () => {
       expect(tokens1).toHaveLength(1);
 
       // 2. Request second reset to verify invalidation of the first token
-      const req2 = new Request("http://localhost:3000/api/auth/forgot-password", {
-        method: "POST",
-        body: JSON.stringify({ email: testEmail }),
-      });
+      const req2 = new Request(
+        "http://localhost:3000/api/auth/forgot-password",
+        {
+          method: "POST",
+          body: JSON.stringify({ email: testEmail }),
+        },
+      );
 
       const res2 = await forgotPasswordHandler(req2);
       expect(res2.status).toBe(200);
@@ -123,16 +133,21 @@ describe("Authentication & Password Reset Integration Tests", () => {
         orderBy: { createdAt: "asc" },
       });
       expect(tokens2).toHaveLength(2); // The old token was expired, so total tokens is 2
-      expect(tokens2[0].expiresAt.getTime()).toBeLessThanOrEqual(Date.now() + 5000); // First token is expired
+      expect(tokens2[0].expiresAt.getTime()).toBeLessThanOrEqual(
+        Date.now() + 5000,
+      ); // First token is expired
       expect(tokens2[1].expiresAt.getTime()).toBeGreaterThan(Date.now()); // Second token is active
 
       // Verify email file written in debug directory
       const debugEmailsDir = path.join(process.cwd(), "..", "debug", "emails");
       const files = fs.readdirSync(debugEmailsDir);
-      const userFiles = files.filter(file => file.includes(testEmail));
+      const userFiles = files.filter((file) => file.includes(testEmail));
       expect(userFiles.length).toBeGreaterThanOrEqual(1);
 
-      const fileContent = fs.readFileSync(path.join(debugEmailsDir, userFiles[userFiles.length - 1]), "utf-8");
+      const fileContent = fs.readFileSync(
+        path.join(debugEmailsDir, userFiles[userFiles.length - 1]),
+        "utf-8",
+      );
       expect(fileContent).toContain(testEmail);
       expect(fileContent).toContain("reset-password?token=");
     });
@@ -140,18 +155,24 @@ describe("Authentication & Password Reset Integration Tests", () => {
     it("should enforce the 3 requests per hour rate limit", async () => {
       // We already made 2 requests in the previous test.
       // 3rd request:
-      const req3 = new Request("http://localhost:3000/api/auth/forgot-password", {
-        method: "POST",
-        body: JSON.stringify({ email: testEmail }),
-      });
+      const req3 = new Request(
+        "http://localhost:3000/api/auth/forgot-password",
+        {
+          method: "POST",
+          body: JSON.stringify({ email: testEmail }),
+        },
+      );
       const res3 = await forgotPasswordHandler(req3);
       expect(res3.status).toBe(200);
 
       // 4th request (triggers rate limit):
-      const req4 = new Request("http://localhost:3000/api/auth/forgot-password", {
-        method: "POST",
-        body: JSON.stringify({ email: testEmail }),
-      });
+      const req4 = new Request(
+        "http://localhost:3000/api/auth/forgot-password",
+        {
+          method: "POST",
+          body: JSON.stringify({ email: testEmail }),
+        },
+      );
       const res4 = await forgotPasswordHandler(req4);
       expect(res4.status).toBe(429);
 
@@ -169,7 +190,10 @@ describe("Authentication & Password Reset Integration Tests", () => {
       });
 
       const rawToken = crypto.randomBytes(32).toString("hex");
-      const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(rawToken)
+        .digest("hex");
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
       await prisma.passwordResetToken.create({
@@ -200,14 +224,22 @@ describe("Authentication & Password Reset Integration Tests", () => {
       expect(dbToken?.usedAt).not.toBeNull();
 
       // Verify user password updated
-      const user = await prisma.user.findUnique({ where: { id: createdUserId } });
-      const passwordUpdated = await bcrypt.compare(newPassword, user?.password || "");
+      const user = await prisma.user.findUnique({
+        where: { id: createdUserId },
+      });
+      const passwordUpdated = await bcrypt.compare(
+        newPassword,
+        user?.password || "",
+      );
       expect(passwordUpdated).toBe(true);
     });
 
     it("should reject used tokens", async () => {
       const rawToken = crypto.randomBytes(32).toString("hex");
-      const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(rawToken)
+        .digest("hex");
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
       await prisma.passwordResetToken.create({
@@ -234,7 +266,10 @@ describe("Authentication & Password Reset Integration Tests", () => {
 
     it("should reject expired tokens", async () => {
       const rawToken = crypto.randomBytes(32).toString("hex");
-      const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(rawToken)
+        .digest("hex");
       const expiresAt = new Date(Date.now() - 1000); // Expired 1 second ago
 
       await prisma.passwordResetToken.create({
@@ -264,7 +299,11 @@ describe("Authentication & Password Reset Integration Tests", () => {
       const jwtCallback = authConfig.callbacks?.jwt;
       expect(jwtCallback).toBeDefined();
 
-      const mockUser = { id: "user-id-123", email: "admin@example.com", role: "ADMIN" };
+      const mockUser = {
+        id: "user-id-123",
+        email: "admin@example.com",
+        role: "ADMIN",
+      };
       const mockToken = { sub: "sub-123" };
 
       const resultToken = await jwtCallback!({
@@ -299,6 +338,66 @@ describe("Authentication & Password Reset Integration Tests", () => {
       expect(resultSession).toBeDefined();
       expect(resultSession.user.id).toBe("user-id-123");
       expect(resultSession.user.role).toBe("ADMIN");
+    });
+  });
+
+  describe("REM-10: middleware.ts route-protection allowlist (authConfig.authorized)", () => {
+    const authorizedCallback = authConfig.callbacks?.authorized;
+
+    function buildRequestArgs(pathname: string, isLoggedIn: boolean) {
+      const nextUrl = new URL(`http://localhost:3000${pathname}`);
+      return {
+        auth: isLoggedIn ? ({ user: { id: "user-id-123" } } as any) : null,
+        request: { nextUrl } as any,
+      };
+    }
+
+    it("should allow every PUBLIC_ROUTES entry for an unauthenticated request", () => {
+      expect(authorizedCallback).toBeDefined();
+
+      for (const route of PUBLIC_ROUTES) {
+        const result = authorizedCallback!(buildRequestArgs(route, false));
+        expect(result).toBe(true);
+      }
+    });
+
+    it("should redirect an unauthenticated request to a newly-added stub route under (main) that has no explicit protection code, via middleware's allowlist alone", () => {
+      expect(authorizedCallback).toBeDefined();
+
+      // Simulates a brand-new route added under (main) (e.g. src/app/(main)/new-feature/page.tsx)
+      // that was never added to PUBLIC_ROUTES and carries no route-level protection code of its
+      // own. Per REM-10's protect-by-default inversion, middleware.ts's authorized() callback
+      // must reject it (redirect to sign-in) without any additional per-route wiring.
+      const stubRoutePath = "/new-feature-not-in-allowlist";
+      expect(PUBLIC_ROUTES).not.toContain(stubRoutePath);
+
+      const result = authorizedCallback!(
+        buildRequestArgs(stubRoutePath, false),
+      );
+      expect(result).toBe(false); // false signals NextAuth to redirect to the sign-in page
+    });
+
+    it("should allow an authenticated request to that same newly-added stub route", () => {
+      expect(authorizedCallback).toBeDefined();
+
+      const stubRoutePath = "/new-feature-not-in-allowlist";
+      const result = authorizedCallback!(buildRequestArgs(stubRoutePath, true));
+      expect(result).toBe(true);
+    });
+
+    it("011-audit-remediation follow-up: /api-docs is no longer in PUBLIC_ROUTES and is protected by default for an unauthenticated request", () => {
+      expect(authorizedCallback).toBeDefined();
+      expect(PUBLIC_ROUTES).not.toContain("/api-docs");
+
+      const result = authorizedCallback!(buildRequestArgs("/api-docs", false));
+      expect(result).toBe(false); // false signals NextAuth to redirect to the sign-in page
+    });
+
+    it("011-audit-remediation follow-up: an authenticated (non-ADMIN) request reaches /api-docs at the middleware layer -- the ADMIN-only check happens page-side, matching this app's settings-page pattern", () => {
+      expect(authorizedCallback).toBeDefined();
+
+      const result = authorizedCallback!(buildRequestArgs("/api-docs", true));
+      expect(result).toBe(true);
     });
   });
 });

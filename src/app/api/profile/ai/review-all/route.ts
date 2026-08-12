@@ -4,6 +4,10 @@ import { logger } from "@/lib/logging/logger";
 import { ReviewAllSchema } from "@/lib/validation/aiSchemas";
 import { loadOwnedEntity } from "@/lib/db/profileEntityAccess";
 import {
+  assertAiRateLimit,
+  AiRateLimitExceededError,
+} from "@/lib/ai/aiRateLimit";
+import {
   runReviewAll,
   type BulletInput,
   type BulletSuggestion,
@@ -44,6 +48,8 @@ export async function POST(req: Request) {
     if (!entity) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+
+    await assertAiRateLimit(userId, "profile_review_all", 15);
 
     const bullets: BulletInput[] = entity.bullets.map((b) => ({
       id: b.id,
@@ -100,6 +106,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ suggestions });
   } catch (error) {
+    if (error instanceof AiRateLimitExceededError) {
+      return NextResponse.json({ error: error.message }, { status: 429 });
+    }
     logger.error("Failed to run review-all", { error });
     return NextResponse.json(
       { error: "AI generation failed" },

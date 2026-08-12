@@ -730,7 +730,7 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
   });
 
   describe("atomic double-apply guard (HIGH rework fix — TOCTOU race)", () => {
-    it("moves the DRAFT→APPLIED check inside the transaction so a second apply on an already-APPLIED CV returns 409 without re-running reconciliation", async () => {
+    it("moves the DRAFT→APPLIED check inside the transaction so two genuinely concurrent apply requests against the same CV/job pair leave exactly one success (200) and one rejection (409), without a double reconciliation", async () => {
       const job = await prisma.jobListing.create({
         data: {
           portalId: "test-portal",
@@ -768,27 +768,32 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
         "reconcileCVApply",
       );
 
+      // Two genuinely concurrent apply requests against the SAME CV/job pair, both in flight
+      // before either resolves — the atomic `updateMany({ where: { status: "DRAFT" } })` guard
+      // (the first statement inside `prisma.$transaction`) is what must serialize them at the
+      // database level, not the test's own call ordering.
       const req1 = new Request(`http://localhost:3000/api/cv/${cv.id}/apply`, {
         method: "POST",
       });
-      const res1 = await applyHandler(req1, {
-        params: Promise.resolve({ cvId: cv.id }),
-      });
-      expect(res1.status).toBe(200);
-      expect(reconcileSpy).toHaveBeenCalledTimes(1);
-
-      // Second apply on the now-APPLIED CV: the atomic `updateMany({ where: { status: "DRAFT" } })`
-      // guard inside the transaction must find count 0 and reject BEFORE reconciliation runs again.
       const req2 = new Request(`http://localhost:3000/api/cv/${cv.id}/apply`, {
         method: "POST",
       });
-      const res2 = await applyHandler(req2, {
-        params: Promise.resolve({ cvId: cv.id }),
-      });
-      expect(res2.status).toBe(409);
 
-      // Reconciliation was never invoked a second time.
+      const [res1, res2] = await Promise.all([
+        applyHandler(req1, { params: Promise.resolve({ cvId: cv.id }) }),
+        applyHandler(req2, { params: Promise.resolve({ cvId: cv.id }) }),
+      ]);
+
+      const statuses = [res1.status, res2.status].sort();
+      // Exactly one request succeeds (200) and the other is rejected as already-applied (409)
+      // — never 200/200 (double reconciliation) and never 409/409 (no request got through).
+      expect(statuses).toEqual([200, 409]);
+
+      // Reconciliation ran exactly once across both concurrent requests.
       expect(reconcileSpy).toHaveBeenCalledTimes(1);
+
+      const cvAfter = await prisma.cV.findUnique({ where: { id: cv.id } });
+      expect(cvAfter?.status).toBe("APPLIED");
 
       reconcileSpy.mockRestore();
     });

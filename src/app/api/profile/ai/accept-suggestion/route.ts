@@ -12,6 +12,10 @@ import {
   type OwnedEntityBullet,
 } from "@/lib/db/profileEntityAccess";
 import { reconcileBulletMutation } from "@/lib/db/bulletMutations";
+import {
+  assertAiRateLimit,
+  AiRateLimitExceededError,
+} from "@/lib/ai/aiRateLimit";
 
 interface ResponseBullet {
   id: string;
@@ -20,7 +24,7 @@ interface ResponseBullet {
   isArchived: boolean;
   type: "BULLET" | "PARAGRAPH";
   sortOrder: number;
-  usedInCVs: Array<{ id: string; name: string }>;
+  usedInCVs: Array<{ id: string; name: string; jobListingId: string }>;
 }
 
 /** Reloads the entity's (non-archived) bullets, shaped like existing profile route responses. */
@@ -63,7 +67,11 @@ async function loadBulletsForResponse(
     isArchived: b.isArchived,
     type: b.type,
     sortOrder: b.sortOrder,
-    usedInCVs: b.usedInCVs.map((uc) => ({ id: uc.cv.id, name: uc.cv.name })),
+    usedInCVs: b.usedInCVs.map((uc) => ({
+      id: uc.cv.id,
+      name: uc.cv.name,
+      jobListingId: uc.cv.jobListingId,
+    })),
   }));
 }
 
@@ -121,6 +129,8 @@ export async function POST(req: Request) {
     if (!entity) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+
+    await assertAiRateLimit(userId, "profile_accept_suggestion", 100);
 
     const table = ENTITY_BULLET_TABLE[entityType];
     const fkKey = ENTITY_BULLET_FK[entityType];
@@ -248,6 +258,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ bullets });
   } catch (error) {
+    if (error instanceof AiRateLimitExceededError) {
+      return NextResponse.json({ error: error.message }, { status: 429 });
+    }
     logger.error("Failed to accept suggestion", { error });
     return NextResponse.json(
       { error: "Internal server error" },

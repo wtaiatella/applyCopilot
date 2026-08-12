@@ -1,15 +1,22 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
-import { 
-  ProfileDTO, 
-  BasicDataDTO, 
-  ExperienceDTO, 
-  EducationDTO, 
-  ProjectDTO, 
-  SkillDTO, 
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+} from "react";
+import {
+  ProfileDTO,
+  BasicDataDTO,
+  ExperienceDTO,
+  EducationDTO,
+  ProjectDTO,
+  SkillDTO,
   ReferenceDTO,
-  SummaryDTO
+  SummaryDTO,
+  ParseProgressEvent,
 } from "../types/profile";
 import { ProfileService } from "../services/profileService";
 import { isValidUrl } from "../lib/validation/profileSchemas";
@@ -22,28 +29,29 @@ interface ProfileContextType {
   saveStatus: SaveStatus;
   error: string | null;
   refreshProfile: () => Promise<void>;
-  
-  updateBasicDataState: (data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }) => void;
-  
+
+  updateBasicDataState: (
+    data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] },
+  ) => void;
+
   addExperience: () => Promise<void>;
   updateExperienceState: (id: string, data: Partial<ExperienceDTO>) => void;
   deleteExperience: (id: string) => Promise<void>;
-  
+
   addEducation: () => Promise<void>;
   updateEducationState: (id: string, data: Partial<EducationDTO>) => void;
   deleteEducation: (id: string) => Promise<void>;
-  
+
   addProject: () => Promise<void>;
   updateProjectState: (id: string, data: Partial<ProjectDTO>) => void;
   deleteProject: (id: string) => Promise<void>;
-  
+
   updateSkillsState: (skills: SkillDTO[]) => void;
   suggestSkills: () => Promise<void>;
   updateReferencesState: (references: ReferenceDTO[]) => void;
   syncProfile: () => Promise<void>;
   isSyncOutOfDate: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handlePartialData: (phase: string, data: any) => void;
+  handlePartialData: (event: ParseProgressEvent) => void;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
@@ -58,7 +66,9 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   // Track pending save operations
   const activeSavesRef = useRef<Set<string>>(new Set());
   const timeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  const pendingBasicDataChangesRef = useRef<Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }>({});
+  const pendingBasicDataChangesRef = useRef<
+    Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }
+  >({});
 
   // Clean up timeouts on unmount
   useEffect(() => {
@@ -122,13 +132,16 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   };
 
   // 1. Basic Data Autosave
-  const updateBasicDataState = (data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }) => {
+  const updateBasicDataState = (
+    data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] },
+  ) => {
     if (!profile) return;
 
     const { summaries, ...basicFields } = data;
 
     const updatedBasic = { ...profile.basicData, ...basicFields };
-    const updatedSummaries = summaries !== undefined ? summaries : profile.summaries;
+    const updatedSummaries =
+      summaries !== undefined ? summaries : profile.summaries;
 
     // Synchronize active summary title/content to basic fields if summaries were updated
     if (summaries !== undefined) {
@@ -241,7 +254,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
             return b;
           }),
         };
-        await ProfileService.updateExperience(id, payload as Partial<ExperienceDTO>);
+        await ProfileService.updateExperience(
+          id,
+          payload as Partial<ExperienceDTO>,
+        );
       });
     }
   };
@@ -316,7 +332,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
             return b;
           }),
         };
-        await ProfileService.updateEducation(id, payload as Partial<EducationDTO>);
+        await ProfileService.updateEducation(
+          id,
+          payload as Partial<EducationDTO>,
+        );
       });
     }
   };
@@ -459,22 +478,46 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handlePartialData = (phase: string, data: any) => {
+  const handlePartialData = (event: ParseProgressEvent) => {
     if (!profile) return;
-    if (phase === "basic") {
-      // Update the flat basicData fields immediately from SSE data
-      setProfile((prev) => (prev ? { ...prev, basicData: data } : null));
-      // The backend also created/updated a ProfileSummary for this import.
-      // Refresh the full profile so the new summary appears in the summaries list
-      // without requiring a manual page reload.
-      refreshProfile();
-    } else if (phase === "experiences") {
-      setProfile((prev) => (prev ? { ...prev, experiences: data } : null));
-    } else if (phase === "projects") {
-      setProfile((prev) => (prev ? { ...prev, projects: data } : null));
-    } else if (phase === "education") {
-      setProfile((prev) => (prev ? { ...prev, education: data.education, skills: data.skills } : null));
+    switch (event.phase) {
+      case "basic":
+        if (!event.data) return;
+        // Update the flat basicData fields immediately from SSE data
+        setProfile((prev) =>
+          prev ? { ...prev, basicData: event.data! } : null,
+        );
+        // The backend also created/updated a ProfileSummary for this import.
+        // Refresh the full profile so the new summary appears in the summaries list
+        // without requiring a manual page reload.
+        refreshProfile();
+        break;
+      case "experiences":
+        if (!event.data) return;
+        setProfile((prev) =>
+          prev ? { ...prev, experiences: event.data! } : null,
+        );
+        break;
+      case "projects":
+        if (!event.data) return;
+        setProfile((prev) =>
+          prev ? { ...prev, projects: event.data! } : null,
+        );
+        break;
+      case "education":
+        if (!event.data) return;
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                education: event.data!.education,
+                skills: event.data!.skills,
+              }
+            : null,
+        );
+        break;
+      default:
+        break;
     }
   };
 

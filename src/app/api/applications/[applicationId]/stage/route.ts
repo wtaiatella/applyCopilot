@@ -6,6 +6,7 @@ import { StageTransitionSchema } from "@/lib/validation/applicationSchemas";
 import {
   transitionStage,
   OutcomeRequiredError,
+  OwnershipViolationError,
 } from "@/services/applicationService";
 
 interface Params {
@@ -61,7 +62,7 @@ export async function POST(req: Request, props: Params) {
 
     let result;
     try {
-      result = await transitionStage(applicationId, parsed.data);
+      result = await transitionStage(applicationId, userId, parsed.data);
     } catch (error) {
       if (error instanceof OutcomeRequiredError) {
         return NextResponse.json(
@@ -70,6 +71,12 @@ export async function POST(req: Request, props: Params) {
             details: [{ field: "outcome", message: error.message }],
           },
           { status: 400 },
+        );
+      }
+      if (error instanceof OwnershipViolationError) {
+        return NextResponse.json(
+          { error: "Application not found or access denied" },
+          { status: 404 },
         );
       }
       throw error;

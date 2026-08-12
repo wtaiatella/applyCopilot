@@ -5,6 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { Layout, Menu, Splitter, Button, Typography } from "antd";
+import type { MenuProps } from "antd";
+
+type MenuItem = Required<MenuProps>["items"][number];
 import ThemeToggle from "./ThemeToggle";
 import { useTheme } from "../providers/AntdThemeProvider";
 import {
@@ -88,7 +91,7 @@ export default function MainLayoutClient({
     }
   };
 
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     {
       key: "/dashboard",
       icon: <LayoutDashboard className="h-5 w-5" />,
@@ -127,7 +130,7 @@ export default function MainLayoutClient({
           label: <Link href="/settings/portals">Job Scraper</Link>,
         },
       ],
-    } as any);
+    });
   }
 
   // Prevent server-side rendering mismatch for states

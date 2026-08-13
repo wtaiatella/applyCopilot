@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
 import { EducationInputSchema } from "@/lib/validation/profileSchemas";
+import { guardBulletTextUpdate } from "@/lib/db/bulletMutations";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -88,13 +89,56 @@ export async function PUT(req: Request, props: Params) {
         }
       }
 
-      // 2. Upsert incoming bullets
+      // 2. Guard against overwriting a CV-referenced bullet's text — defense-in-depth backstop
+      // for the UI's read-only text field (see spectech.md Technical Decisions, guardBulletTextUpdate).
+      const guardedBulletIds = incomingBullets
+        .filter((b) => b.id)
+        .map((b) => b.id) as string[];
+      const usageCounts =
+        guardedBulletIds.length > 0
+          ? await tx.cVBullet.groupBy({
+              by: ["educationBulletId"],
+              where: { educationBulletId: { in: guardedBulletIds } },
+              _count: true,
+            })
+          : [];
+      const usedCountByBulletId = new Map(
+        usageCounts.map((u) => [u.educationBulletId, u._count]),
+      );
+      const existingTextByBulletId = new Map(
+        existingBullets.map((b) => [b.id, b.text]),
+      );
+
+      // 3. Upsert incoming bullets
       for (const [idx, b] of incomingBullets.entries()) {
         if (b.id) {
+          const existingText = existingTextByBulletId.get(b.id);
+          if (existingText === undefined) {
+            // b.id is not among this education's active bullets — reject to prevent a
+            // cross-parent bypass of the immutability guard (security fix, §6 rework).
+            logger.warn(
+              "Rejected bullet update: id not found among this education's bullets",
+              { bulletId: b.id, educationId: id },
+            );
+            continue;
+          }
+          const guardedText = guardBulletTextUpdate(
+            b.text,
+            existingText,
+            usedCountByBulletId.get(b.id) ?? 0,
+          );
+
+          if (guardedText !== b.text) {
+            logger.warn(
+              "guardBulletTextUpdate: ignored text change on CV-referenced bullet",
+              { bulletId: b.id, table: "educationBullet" },
+            );
+          }
+
           await tx.educationBullet.update({
             where: { id: b.id },
             data: {
-              text: b.text,
+              text: guardedText,
               isActive: b.isActive,
               isArchived: b.isArchived,
               type: b.type,
@@ -115,7 +159,7 @@ export async function PUT(req: Request, props: Params) {
         }
       }
 
-      // 3. Update parent education details
+      // 4. Update parent education details
       return tx.education.update({
         where: { id },
         data: {

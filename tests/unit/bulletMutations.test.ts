@@ -4,6 +4,7 @@
 
 import {
   reconcileBulletMutation,
+  guardBulletTextUpdate,
   BulletTable,
   CVBulletForeignKey,
 } from "@/lib/db/bulletMutations";
@@ -21,7 +22,7 @@ jest.mock("@/lib/logging/logger", () => ({
 function buildTxMock(
   table: BulletTable,
   cvBulletCount: number,
-  createdBulletId = "new-bullet-id"
+  createdBulletId = "new-bullet-id",
 ) {
   const cVBullet = { count: jest.fn().mockResolvedValue(cvBulletCount) };
 
@@ -57,7 +58,9 @@ describe("reconcileBulletMutation", () => {
         update: jest.Mock;
         create: jest.Mock;
       };
-      const cvBulletClient = (tx as Record<string, unknown>).cVBullet as { count: jest.Mock };
+      const cvBulletClient = (tx as Record<string, unknown>).cVBullet as {
+        count: jest.Mock;
+      };
 
       const result = await reconcileBulletMutation(
         tx,
@@ -67,7 +70,7 @@ describe("reconcileBulletMutation", () => {
         fkKey,
         parentId,
         sortOrder,
-        type
+        type,
       );
 
       // CVBullet.count was called with the correct foreign key
@@ -111,7 +114,9 @@ describe("reconcileBulletMutation", () => {
         update: jest.Mock;
         create: jest.Mock;
       };
-      const cvBulletClient = (tx as Record<string, unknown>).cVBullet as { count: jest.Mock };
+      const cvBulletClient = (tx as Record<string, unknown>).cVBullet as {
+        count: jest.Mock;
+      };
 
       const result = await reconcileBulletMutation(
         tx,
@@ -121,7 +126,7 @@ describe("reconcileBulletMutation", () => {
         fkKey,
         parentId,
         sortOrder,
-        type
+        type,
       );
 
       // CVBullet.count was called
@@ -158,10 +163,21 @@ describe("reconcileBulletMutation", () => {
       };
 
       // update (archive) succeeds, but create throws
-      tableClient.create.mockRejectedValueOnce(new Error("DB constraint error"));
+      tableClient.create.mockRejectedValueOnce(
+        new Error("DB constraint error"),
+      );
 
       await expect(
-        reconcileBulletMutation(tx, bulletId, newText, table, fkKey, parentId, sortOrder, type)
+        reconcileBulletMutation(
+          tx,
+          bulletId,
+          newText,
+          table,
+          fkKey,
+          parentId,
+          sortOrder,
+          type,
+        ),
       ).rejects.toThrow("DB constraint error");
 
       // Note: in a real Prisma $transaction, the failed create would roll back
@@ -193,7 +209,7 @@ describe("reconcileBulletMutation", () => {
         projectFk,
         parentId,
         sortOrder,
-        type
+        type,
       );
 
       expect(tableClient.create).toHaveBeenCalledWith({
@@ -225,12 +241,105 @@ describe("reconcileBulletMutation", () => {
         eduFk,
         parentId,
         sortOrder,
-        type
+        type,
       );
 
       expect(tableClient.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ educationId: parentId }),
       });
     });
+  });
+
+  // ───────────────────────────────────────────────
+  // Test 6: forceInPlace (US-3 "Replace") always in-place, even when usedCount > 0
+  // ───────────────────────────────────────────────
+  describe("when forceInPlace is true and the bullet has been used in a CV", () => {
+    it("updates the bullet text in-place instead of archiving and creating", async () => {
+      const tx = buildTxMock(table, 5);
+      const tableClient = (tx as Record<string, unknown>)[table] as {
+        update: jest.Mock;
+        create: jest.Mock;
+      };
+
+      const result = await reconcileBulletMutation(
+        tx,
+        bulletId,
+        newText,
+        table,
+        fkKey,
+        parentId,
+        sortOrder,
+        type,
+        true,
+      );
+
+      expect(tableClient.update).toHaveBeenCalledWith({
+        where: { id: bulletId },
+        data: { text: newText },
+      });
+      expect(tableClient.create).not.toHaveBeenCalled();
+      expect(result).toEqual({ action: "updated", newBulletId: bulletId });
+    });
+  });
+
+  // ───────────────────────────────────────────────
+  // Test 7: forceInPlace omitted/false preserves existing archive+create behavior
+  // ───────────────────────────────────────────────
+  describe("when forceInPlace is omitted or false and the bullet has been used in a CV", () => {
+    it("still archives the original and creates a new bullet (regression)", async () => {
+      const createdId = "still-archives-id";
+      const tx = buildTxMock(table, 1, createdId);
+      const tableClient = (tx as Record<string, unknown>)[table] as {
+        update: jest.Mock;
+        create: jest.Mock;
+      };
+
+      const result = await reconcileBulletMutation(
+        tx,
+        bulletId,
+        newText,
+        table,
+        fkKey,
+        parentId,
+        sortOrder,
+        type,
+        false,
+      );
+
+      expect(tableClient.update).toHaveBeenCalledWith({
+        where: { id: bulletId },
+        data: { isArchived: true, isActive: false },
+      });
+      expect(tableClient.create).toHaveBeenCalled();
+      expect(result).toEqual({
+        action: "archived_and_created",
+        newBulletId: createdId,
+      });
+    });
+  });
+});
+
+describe("guardBulletTextUpdate", () => {
+  it("returns the stored text when usedCount > 0 and the incoming text differs", () => {
+    const result = guardBulletTextUpdate(
+      "A tampered edit",
+      "The original, CV-referenced text",
+      2,
+    );
+    expect(result).toBe("The original, CV-referenced text");
+  });
+
+  it("passes the incoming text through when usedCount === 0, even if it differs", () => {
+    const result = guardBulletTextUpdate(
+      "An edited bullet",
+      "The original text",
+      0,
+    );
+    expect(result).toBe("An edited bullet");
+  });
+
+  it("passes the incoming text through when usedCount > 0 but the text is unchanged", () => {
+    const result = guardBulletTextUpdate("Same text", "Same text", 3);
+    expect(result).toBe("Same text");
   });
 });

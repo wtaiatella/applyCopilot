@@ -237,4 +237,130 @@ describe("AIBulletModal (REM-16)", () => {
     );
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  // ── US-3: keep-or-replace footer on a tagged bullet in review mode ──
+  describe("keep-or-replace footer (isBulletUsed)", () => {
+    it("renders Keep Original / Replace instead of Accept when reviewing a tagged bullet", () => {
+      render(
+        <AIBulletModal
+          open={true}
+          mode="review"
+          initialText="Improved text"
+          originalText="Original text"
+          isBulletUsed={true}
+          onClose={jest.fn()}
+          onAccept={jest.fn()}
+          onRegenerate={jest.fn()}
+        />,
+      );
+
+      expect(
+        screen.getByRole("button", { name: /Keep Original/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Replace/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Accept/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("invokes onAccept(text, true) when Keep Original is clicked, with no write until then", async () => {
+      const onAccept = jest.fn().mockResolvedValue(undefined);
+      const onClose = jest.fn();
+
+      render(
+        <AIBulletModal
+          open={true}
+          mode="review"
+          initialText="Improved text"
+          originalText="Original text"
+          isBulletUsed={true}
+          onClose={onClose}
+          onAccept={onAccept}
+          onRegenerate={jest.fn()}
+        />,
+      );
+
+      expect(onAccept).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Keep Original/i }));
+      });
+
+      expect(onAccept).toHaveBeenCalledWith("Improved text", true);
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
+    it("invokes onAccept(text, false) when Replace is clicked", async () => {
+      const onAccept = jest.fn().mockResolvedValue(undefined);
+      const onClose = jest.fn();
+
+      render(
+        <AIBulletModal
+          open={true}
+          mode="review"
+          initialText="Improved text"
+          originalText="Original text"
+          isBulletUsed={true}
+          onClose={onClose}
+          onAccept={onAccept}
+          onRegenerate={jest.fn()}
+        />,
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Replace/i }));
+      });
+
+      expect(onAccept).toHaveBeenCalledWith("Improved text", false);
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
+    it("renders the single Accept button unchanged when isBulletUsed is false (regression)", () => {
+      render(
+        <AIBulletModal
+          open={true}
+          mode="review"
+          initialText="Improved text"
+          originalText="Original text"
+          isBulletUsed={false}
+          onClose={jest.fn()}
+          onAccept={jest.fn()}
+          onRegenerate={jest.fn()}
+        />,
+      );
+
+      expect(
+        screen.getByRole("button", { name: /Accept/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Keep Original/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Replace/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders the single Accept button unchanged in generate mode even if isBulletUsed is true (regression)", () => {
+      render(
+        <AIBulletModal
+          open={true}
+          mode="generate"
+          initialText="Draft"
+          isBulletUsed={true}
+          onClose={jest.fn()}
+          onAccept={jest.fn()}
+          onRegenerate={jest.fn()}
+        />,
+      );
+
+      expect(
+        screen.getByRole("button", { name: /Accept/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Keep Original/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
 });

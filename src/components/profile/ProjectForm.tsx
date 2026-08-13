@@ -97,6 +97,7 @@ export default function ProjectForm({
   const [aiModalOriginalText, setAiModalOriginalText] = useState<
     string | undefined
   >(undefined);
+  const [aiModalBulletUsed, setAiModalBulletUsed] = useState(false);
   const [aiReviewLoadingId, setAiReviewLoadingId] = useState<string | null>(
     null,
   );
@@ -104,7 +105,12 @@ export default function ProjectForm({
   const acceptSuggestion = async (
     projId: string,
     payload:
-      | { action: "rewrite"; bulletId: string; newText: string }
+      | {
+          action: "rewrite";
+          bulletId: string;
+          newText: string;
+          keepOriginal?: boolean;
+        }
       | { action: "merge"; bulletIds: string[]; combinedText: string }
       | { action: "new" | "generate"; text: string },
   ) => {
@@ -285,6 +291,7 @@ export default function ProjectForm({
       setAiModalBulletId(bullet.id);
       setAiModalText(data.revisedText);
       setAiModalOriginalText(bullet.text);
+      setAiModalBulletUsed((bullet.usedInCVs || []).length > 0);
       setAiModalOpen(true);
     } catch {
       Modal.error({
@@ -338,7 +345,7 @@ export default function ProjectForm({
     return data.revisedText;
   };
 
-  const handleAiModalAccept = async (text: string) => {
+  const handleAiModalAccept = async (text: string, keepOriginal?: boolean) => {
     if (!aiModalTargetId) return;
     if (aiModalMode === "generate") {
       await acceptSuggestion(aiModalTargetId, { action: "generate", text });
@@ -348,6 +355,7 @@ export default function ProjectForm({
         action: "rewrite",
         bulletId: aiModalBulletId,
         newText: text,
+        keepOriginal,
       });
     }
   };
@@ -358,6 +366,7 @@ export default function ProjectForm({
     setAiModalBulletId(null);
     setAiModalText("");
     setAiModalOriginalText(undefined);
+    setAiModalBulletUsed(false);
   };
 
   const isEmptyProject = (proj: ProjectDTO) =>
@@ -811,6 +820,7 @@ export default function ProjectForm({
         mode={aiModalMode}
         initialText={aiModalText}
         originalText={aiModalOriginalText}
+        isBulletUsed={aiModalBulletUsed}
         onClose={handleAiModalClose}
         onAccept={handleAiModalAccept}
         onRegenerate={handleAiModalRegenerate}

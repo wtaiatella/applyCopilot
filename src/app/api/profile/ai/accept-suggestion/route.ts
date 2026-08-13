@@ -143,6 +143,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
 
+      // keepOriginal omitted/true (default) → unchanged archive+create behavior when tagged;
+      // keepOriginal === false → forceInPlace: true (US-3 "Replace" escape hatch).
+      const forceInPlace = data.keepOriginal === false;
+
       await prisma.$transaction(async (tx) => {
         await reconcileBulletMutation(
           tx as unknown as ReconcileTx,
@@ -153,6 +157,7 @@ export async function POST(req: Request) {
           entityId,
           bullet.sortOrder,
           bullet.type,
+          forceInPlace,
         );
       });
     } else if (action === "merge") {

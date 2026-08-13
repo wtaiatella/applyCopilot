@@ -1,6 +1,9 @@
-import { logger } from "../logging/logger";
+import { logger } from "@/lib/logging/logger";
 
-export type BulletTable = "experienceBullet" | "projectBullet" | "educationBullet";
+export type BulletTable =
+  | "experienceBullet"
+  | "projectBullet"
+  | "educationBullet";
 export type CVBulletForeignKey =
   | "experienceBulletId"
   | "projectBulletId"
@@ -25,7 +28,10 @@ const parentFkField: Record<BulletTable, string> = {
 // for bullet table mutations. Using `unknown` intermediary to satisfy the TS compiler
 // when indexing Prisma's union delegate types.
 interface BulletTableClient {
-  update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
+  update(args: {
+    where: { id: string };
+    data: Record<string, unknown>;
+  }): Promise<unknown>;
   create(args: { data: Record<string, unknown> }): Promise<{ id: string }>;
 }
 
@@ -49,6 +55,9 @@ interface MinimalTx {
  * Simple path (bullet has never been used in a CV):
  *   In-place text update (same ID)
  *
+ * @param forceInPlace When `true`, always takes the simple in-place-update path, even when
+ *   `usedCount > 0` (US-3 "Replace" escape hatch). Optional, defaults to `false` so all
+ *   pre-existing call sites/tests are unaffected unless they explicitly opt in.
  * @returns MutationResult with the action taken and the ID to use going forward.
  */
 export async function reconcileBulletMutation(
@@ -59,7 +68,8 @@ export async function reconcileBulletMutation(
   fkKey: CVBulletForeignKey,
   parentId: string,
   sortOrder: number,
-  type: "BULLET" | "PARAGRAPH"
+  type: "BULLET" | "PARAGRAPH",
+  forceInPlace = false,
 ): Promise<MutationResult> {
   // Check whether this bullet has ever been referenced in a generated CV
   const usedCount = await tx.cVBullet.count({
@@ -68,13 +78,16 @@ export async function reconcileBulletMutation(
 
   const tableClient = tx[table] as BulletTableClient;
 
-  if (usedCount > 0) {
+  if (usedCount > 0 && !forceInPlace) {
     // Immutability path: archive original, create new
-    logger.info("reconcileBulletMutation: immutability path — archiving original and creating new bullet", {
-      bulletId,
-      table,
-      usedCount,
-    });
+    logger.info(
+      "reconcileBulletMutation: immutability path — archiving original and creating new bullet",
+      {
+        bulletId,
+        table,
+        usedCount,
+      },
+    );
 
     // 1. Archive the original
     await tableClient.update({
@@ -109,4 +122,26 @@ export async function reconcileBulletMutation(
 
     return { action: "updated", newBulletId: bulletId };
   }
+}
+
+/**
+ * Server-side backstop for US-1 (bullet immutability): a bullet that has ever been referenced by
+ * a generated CV (`usedCount > 0`) keeps its stored text no matter what an entity `PUT` request
+ * sends. This is defense-in-depth alongside the UI's read-only text field — see spectech.md
+ * Technical Decisions.
+ *
+ * Pure — no I/O. Callers own fetching `usedCount` (e.g. via `cVBullet.groupBy`).
+ *
+ * @returns the text to persist: the stored `existingText` when the incoming text was ignored,
+ *   otherwise `incomingText` unchanged.
+ */
+export function guardBulletTextUpdate(
+  incomingText: string,
+  existingText: string,
+  usedCount: number,
+): string {
+  if (usedCount > 0 && incomingText !== existingText) {
+    return existingText;
+  }
+  return incomingText;
 }

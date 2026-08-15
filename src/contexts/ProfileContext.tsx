@@ -51,6 +51,7 @@ interface ProfileContextType {
   updateReferencesState: (references: ReferenceDTO[]) => void;
   syncProfile: () => Promise<void>;
   isSyncOutOfDate: boolean;
+  lastSyncedAt: number | null;
   handlePartialData: (event: ParseProgressEvent) => void;
 }
 
@@ -62,6 +63,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [isSyncOutOfDate, setIsSyncOutOfDate] = useState<boolean>(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
 
   // Track pending save operations
   const activeSavesRef = useRef<Set<string>>(new Set());
@@ -528,6 +530,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       await ProfileService.syncProfile();
       await refreshProfile();
       setIsSyncOutOfDate(false);
+      setLastSyncedAt(Date.now());
       setSaveStatus("saved");
     } catch (err) {
       console.error(err);
@@ -560,6 +563,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         updateReferencesState,
         syncProfile,
         isSyncOutOfDate,
+        lastSyncedAt,
         handlePartialData,
       }}
     >

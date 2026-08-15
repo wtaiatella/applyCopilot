@@ -53,6 +53,10 @@ export const AcceptSuggestionSchema = z.discriminatedUnion("action", [
     entityId: entityIdSchema,
     bulletId: z.string().cuid(),
     newText: z.string().min(1).max(2000),
+    // US-3: when the target bullet is CV-referenced, `false` requests the "Replace" (in-place)
+    // path via reconcileBulletMutation's forceInPlace; omitted/`true` keeps today's "Keep
+    // Original" (archive + create) behavior — safe default for the Review-All caller.
+    keepOriginal: z.boolean().optional(),
   }),
 
   // Merge: user accepts combining 2+ bullets into one.

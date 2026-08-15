@@ -20,9 +20,19 @@ export interface AIBulletModalProps {
   initialText?: string;
   /** The bullet's original text, shown read-only above the suggestion in "review" mode. */
   originalText?: string;
+  /**
+   * Whether the bullet under review is CV-referenced ("tagged"). When `true` in "review" mode,
+   * the footer replaces the single "Accept" button with an explicit "Keep Original" / "Replace"
+   * choice (US-3) instead of writing immediately.
+   */
+  isBulletUsed?: boolean;
   onClose: () => void;
-  /** Persists the (possibly edited) text. Should throw on failure. */
-  onAccept: (text: string) => Promise<void>;
+  /**
+   * Persists the (possibly edited) text. Should throw on failure.
+   * `keepOriginal` is only meaningful for a tagged bullet in "review" mode: `true` = archive
+   * original + create new (default/unchanged behavior), `false` = replace in place (US-3).
+   */
+  onAccept: (text: string, keepOriginal?: boolean) => Promise<void>;
   /** Re-runs the AI action with an optional user comment, returning the new suggested text. */
   onRegenerate: (comment: string) => Promise<string>;
 }
@@ -37,6 +47,7 @@ export default function AIBulletModal({
   mode,
   initialText,
   originalText,
+  isBulletUsed,
   onClose,
   onAccept,
   onRegenerate,
@@ -72,11 +83,15 @@ export default function AIBulletModal({
     }
   };
 
-  const handleAccept = async () => {
+  const handleAccept = async (keepOriginal?: boolean) => {
     if (!generatedText.trim()) return;
     setIsLoading(true);
     try {
-      await onAccept(generatedText);
+      if (keepOriginal === undefined) {
+        await onAccept(generatedText);
+      } else {
+        await onAccept(generatedText, keepOriginal);
+      }
       onClose();
     } catch (err) {
       message.error(
@@ -88,6 +103,8 @@ export default function AIBulletModal({
       setIsLoading(false);
     }
   };
+
+  const showKeepOrReplace = mode === "review" && isBulletUsed === true;
 
   const handleDiscard = () => {
     if (isLoading) return;
@@ -176,16 +193,40 @@ export default function AIBulletModal({
             >
               Discard
             </Button>
-            <Button
-              type="primary"
-              icon={<CheckOutlined />}
-              onClick={handleAccept}
-              loading={isLoading}
-              disabled={!generatedText.trim()}
-              className="bg-emerald-600 border-emerald-600 hover:bg-emerald-500 text-white"
-            >
-              Accept
-            </Button>
+            {showKeepOrReplace ? (
+              <>
+                <Button
+                  icon={<CheckOutlined />}
+                  onClick={() => handleAccept(true)}
+                  loading={isLoading}
+                  disabled={!generatedText.trim()}
+                  className="bg-transparent border-emerald-600 text-emerald-400 hover:text-emerald-300 hover:border-emerald-500"
+                >
+                  Keep Original
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<CheckOutlined />}
+                  onClick={() => handleAccept(false)}
+                  loading={isLoading}
+                  disabled={!generatedText.trim()}
+                  className="bg-emerald-600 border-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  Replace
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="primary"
+                icon={<CheckOutlined />}
+                onClick={() => handleAccept()}
+                loading={isLoading}
+                disabled={!generatedText.trim()}
+                className="bg-emerald-600 border-emerald-600 hover:bg-emerald-500 text-white"
+              >
+                Accept
+              </Button>
+            )}
           </div>
         </div>
       </div>

@@ -309,6 +309,104 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       });
       expect(bulletsInDb).toHaveLength(0);
     });
+
+    // §6 rework — Security HIGH: guardBulletTextUpdate must not be bypassable by supplying a
+    // bullet id that belongs to a DIFFERENT experience record. Before the fix, the unscoped
+    // `where: { id: b.id }` update let a client overwrite any bullet's text (tagged or not)
+    // regardless of which experience it actually belonged to, since ownership is verified only
+    // on the parent (`id` in the URL), not on each bullet id in the payload.
+    it("rejects a cross-parent bullet id — cannot use experience B's bullet id to update text via experience A's PUT", async () => {
+      const expA = await prisma.experience.create({
+        data: {
+          profile: { connect: { id: testProfileId } },
+          company: "Company A",
+          position: "Role A",
+          startDate: new Date("2023-01-01"),
+          current: true,
+          bullets: {
+            create: [
+              { text: "Experience A bullet", type: "BULLET", sortOrder: 0 },
+            ],
+          },
+        },
+        include: { bullets: true },
+      });
+
+      const expB = await prisma.experience.create({
+        data: {
+          profile: { connect: { id: testProfileId } },
+          company: "Company B",
+          position: "Role B",
+          startDate: new Date("2023-01-01"),
+          current: true,
+          bullets: {
+            create: [
+              {
+                text: "Experience B bullet — should stay untouched",
+                type: "BULLET",
+                sortOrder: 0,
+              },
+            ],
+          },
+        },
+        include: { bullets: true },
+      });
+
+      const foreignBulletId = expB.bullets[0].id;
+
+      // Attempt to update experience A while passing experience B's bullet id in the payload,
+      // trying to overwrite its text via the cross-parent lookup.
+      const payload = {
+        company: "Company A",
+        position: "Role A",
+        startDate: new Date("2023-01-01").toISOString(),
+        current: true,
+        bullets: [
+          {
+            id: foreignBulletId,
+            text: "HACKED via cross-parent bypass",
+            type: "BULLET",
+            sortOrder: 0,
+            isActive: true,
+            isArchived: false,
+          },
+        ],
+      };
+
+      const req = new Request(
+        `http://localhost:3000/api/profile/experiences/${expA.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        },
+      );
+
+      const params = Promise.resolve({ id: expA.id });
+      const res = await updateExperienceHandler(req, { params });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      // The foreign bullet must not appear as one of experience A's bullets.
+      expect(data.bullets.map((b: any) => b.id)).not.toContain(foreignBulletId);
+
+      // Experience B's bullet text must be unchanged in the database.
+      const foreignBulletInDb = await prisma.experienceBullet.findUnique({
+        where: { id: foreignBulletId },
+      });
+      expect(foreignBulletInDb).not.toBeNull();
+      expect(foreignBulletInDb!.text).toBe(
+        "Experience B bullet — should stay untouched",
+      );
+      expect(foreignBulletInDb!.experienceId).toBe(expB.id);
+
+      // Clean up
+      await prisma.experience
+        .delete({ where: { id: expA.id } })
+        .catch(() => {});
+      await prisma.experience
+        .delete({ where: { id: expB.id } })
+        .catch(() => {});
+    });
   });
 
   describe("Education CRUD & Bullet Reconciliation", () => {

@@ -3,7 +3,12 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Button, Switch, Tooltip, Input } from "antd";
-import { DeleteOutlined, MenuOutlined, StarOutlined } from "@ant-design/icons";
+import {
+  DeleteOutlined,
+  LockOutlined,
+  MenuOutlined,
+  StarOutlined,
+} from "@ant-design/icons";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { BulletDTO } from "../../../types/profile";
@@ -100,13 +105,25 @@ export default function SortableBulletItem({
 
       {/* Auto-expanding text area */}
       <div className="flex-1 min-w-0 space-y-1">
-        <TextArea
-          value={bullet.text}
-          onChange={(e) => onUpdate(bullet.id, { text: e.target.value })}
-          autoSize={{ minRows: 1 }}
-          className="bg-transparent border-none text-white focus:bg-zinc-900 focus:border-zinc-800 text-sm px-1.5 w-full resize-none"
-          placeholder="Describe an achievement or responsibility..."
-        />
+        <div className="items-start gap-1" style={{ display: "flex" }}>
+          <TextArea
+            value={bullet.text}
+            onChange={(e) => onUpdate(bullet.id, { text: e.target.value })}
+            readOnly={isUsed}
+            autoSize={{ minRows: 1 }}
+            className="bg-transparent border-none text-white focus:bg-zinc-900 focus:border-zinc-800 text-sm px-1.5 w-full resize-none"
+            placeholder="Describe an achievement or responsibility..."
+          />
+          {isUsed && (
+            <Tooltip title="Text is locked because this bullet is used in a generated CV — edits here would not change what was already sent">
+              <LockOutlined
+                className="mt-2.5 text-zinc-500 shrink-0"
+                style={{ fontSize: 12 }}
+                aria-label="Text locked — used in a CV"
+              />
+            </Tooltip>
+          )}
+        </div>
         {isUsed && (
           <div className="pl-1.5">
             <span className="text-[10px] bg-blue-900/30 text-blue-300 border border-blue-800/40 px-1.5 py-0.5 rounded font-medium">
@@ -161,18 +178,13 @@ export default function SortableBulletItem({
       </Tooltip>
 
       {/* Delete */}
-      {isUsed ? (
-        <Tooltip title="Used in a CV — toggle Active to hide instead of deleting">
-          <Button
-            type="text"
-            danger
-            disabled
-            icon={<DeleteOutlined />}
-            size="small"
-            className="shrink-0"
-          />
-        </Tooltip>
-      ) : (
+      <Tooltip
+        title={
+          isUsed
+            ? "Remove from active list — used in a CV, so this archives it instead of deleting"
+            : "Delete bullet"
+        }
+      >
         <Button
           type="text"
           danger
@@ -180,8 +192,9 @@ export default function SortableBulletItem({
           onClick={() => onDelete(bullet.id)}
           size="small"
           className="hover:bg-zinc-900 shrink-0"
+          aria-label={isUsed ? "Remove from active list" : "Delete bullet"}
         />
-      )}
+      </Tooltip>
     </div>
   );
 }

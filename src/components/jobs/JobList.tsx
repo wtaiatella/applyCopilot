@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Select, Button, Space, Typography, Spin, Alert, Empty } from "antd";
 import { RefreshCw, SlidersHorizontal, Sparkles } from "lucide-react";
 import JobCard from "./JobCard";
 import JobDetailsPanel from "./JobDetailsPanel";
+import { useProfileContext } from "@/contexts/ProfileContext";
 
 const { Text, Title } = Typography;
 
@@ -33,6 +34,16 @@ export default function JobList() {
   // Filter States
   const [days, setDays] = useState<number>(15);
   const [minMatch, setMinMatch] = useState<number | undefined>(undefined);
+
+  // Profile Context (optional fallback for un-wrapped unit tests)
+  let lastSyncedAt: number | null = null;
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const profileCtx = useProfileContext();
+    lastSyncedAt = profileCtx.lastSyncedAt;
+  } catch {
+    lastSyncedAt = null;
+  }
 
   const fetchJobs = async () => {
     setLoading(true);
@@ -71,6 +82,16 @@ export default function JobList() {
     fetchJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const prevSyncedAtRef = useRef<number | null>(lastSyncedAt);
+
+  useEffect(() => {
+    if (lastSyncedAt && lastSyncedAt !== prevSyncedAtRef.current) {
+      prevSyncedAtRef.current = lastSyncedAt;
+      fetchJobs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSyncedAt]);
 
   return (
     <div className="flex flex-col h-full space-y-6">

@@ -60,7 +60,7 @@ export async function getJobsWithSimilarity(
       FROM "JobListing"
       WHERE "classificationStatus" = 'COMPLETED'
         AND ("postedAt" >= NOW() - $2 * INTERVAL '1 day' OR "postedAt" IS NULL)
-      ORDER BY "matchScore" DESC
+      ORDER BY "matchScore" DESC NULLS LAST, COALESCE("postedAt", "createdAt") DESC
       LIMIT $3;
       `,
       vectorStr,

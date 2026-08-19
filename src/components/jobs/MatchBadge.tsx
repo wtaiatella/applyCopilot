@@ -1,15 +1,21 @@
 "use client";
 
 import React from "react";
-import { Tag } from "antd";
+import { Tag, Tooltip } from "antd";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Ban } from "lucide-react";
 
 interface MatchBadgeProps {
   score: number | null;
+  disqualified?: boolean;
+  disqualifyReason?: string | null;
 }
 
-export default function MatchBadge({ score }: MatchBadgeProps) {
+export default function MatchBadge({
+  score,
+  disqualified,
+  disqualifyReason,
+}: MatchBadgeProps) {
   if (score === null || score === undefined) {
     return (
       <Link href="/profile">
@@ -24,9 +30,29 @@ export default function MatchBadge({ score }: MatchBadgeProps) {
     );
   }
 
+  // Disqualified: muted/red tag, reason (if any) shown on hover — takes precedence over the
+  // numeric percentage (FR-15, FR-17).
+  if (disqualified) {
+    const tag = (
+      <Tag
+        color="error"
+        className="border-0 bg-rose-950/40 text-rose-400 font-semibold px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5"
+      >
+        <Ban size={13} className="text-rose-400" />
+        Disqualified
+      </Tag>
+    );
+    return disqualifyReason ? (
+      <Tooltip title={disqualifyReason}>{tag}</Tooltip>
+    ) : (
+      tag
+    );
+  }
+
   const percentage = Math.round(score);
 
-  if (percentage >= 80) {
+  // Thresholds: >=75 Green / 50-74 Yellow / <50 Gray (FR-15 — was 80/60).
+  if (percentage >= 75) {
     return (
       <Tag
         color="success"
@@ -38,7 +64,7 @@ export default function MatchBadge({ score }: MatchBadgeProps) {
     );
   }
 
-  if (percentage >= 60) {
+  if (percentage >= 50) {
     return (
       <Tag
         color="warning"

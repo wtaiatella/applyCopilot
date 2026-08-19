@@ -112,19 +112,19 @@ describe("Database Integration Tests (Prisma + pgvector)", () => {
 
     const profileId = user.profile!.id;
 
-    // Generate a valid 512-dimension float array representation
-    const mockVector = Array.from({ length: 512 }, (_, i) => i / 512);
+    // Generate a valid 768-dimension float array representation
+    const mockVector = Array.from({ length: 768 }, (_, i) => i / 768);
     const vectorString = `[${mockVector.join(",")}]`;
 
     // 1. Update embedding using Raw SQL
     await prisma.$executeRawUnsafe(
       `UPDATE "UserProfile" SET embedding = $1::vector WHERE id = $2`,
       vectorString,
-      profileId
+      profileId,
     );
 
     // 2. Query embedding distance using Raw SQL with Cosine Distance operator <=>
-    const queryVector = Array.from({ length: 512 }, (_, i) => (i + 0.1) / 512);
+    const queryVector = Array.from({ length: 768 }, (_, i) => (i + 0.1) / 768);
     const queryVectorString = `[${queryVector.join(",")}]`;
 
     const results = await prisma.$queryRawUnsafe<
@@ -134,7 +134,7 @@ describe("Database Integration Tests (Prisma + pgvector)", () => {
        FROM "UserProfile" 
        WHERE id = $2`,
       queryVectorString,
-      profileId
+      profileId,
     );
 
     expect(results).toHaveLength(1);

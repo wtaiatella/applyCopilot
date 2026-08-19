@@ -1,14 +1,15 @@
-import { 
-  ProfileDTO, 
-  BasicDataDTO, 
-  ExperienceDTO, 
-  EducationDTO, 
-  ProjectDTO, 
-  SkillDTO, 
+import {
+  ProfileDTO,
+  BasicDataDTO,
+  ExperienceDTO,
+  EducationDTO,
+  ProjectDTO,
+  SkillDTO,
   ReferenceDTO,
   ParseProgressEvent,
-  SummaryDTO
+  SummaryDTO,
 } from "../types/profile";
+import { ProfileFacts } from "@/lib/validation/profileFactsSchema";
 
 export class ProfileService {
   /**
@@ -25,7 +26,9 @@ export class ProfileService {
   /**
    * Update basic data
    */
-  static async updateBasicData(data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }): Promise<BasicDataDTO> {
+  static async updateBasicData(
+    data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] },
+  ): Promise<BasicDataDTO> {
     const response = await fetch("/api/profile/basic", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -40,7 +43,9 @@ export class ProfileService {
   /**
    * Experiences CRUD
    */
-  static async createExperience(data: Partial<ExperienceDTO>): Promise<ExperienceDTO> {
+  static async createExperience(
+    data: Partial<ExperienceDTO>,
+  ): Promise<ExperienceDTO> {
     const response = await fetch("/api/profile/experiences", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -52,7 +57,10 @@ export class ProfileService {
     return response.json();
   }
 
-  static async updateExperience(id: string, data: Partial<ExperienceDTO>): Promise<ExperienceDTO> {
+  static async updateExperience(
+    id: string,
+    data: Partial<ExperienceDTO>,
+  ): Promise<ExperienceDTO> {
     const response = await fetch(`/api/profile/experiences/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -76,7 +84,9 @@ export class ProfileService {
   /**
    * Education CRUD
    */
-  static async createEducation(data: Partial<EducationDTO>): Promise<EducationDTO> {
+  static async createEducation(
+    data: Partial<EducationDTO>,
+  ): Promise<EducationDTO> {
     const response = await fetch("/api/profile/education", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -88,7 +98,10 @@ export class ProfileService {
     return response.json();
   }
 
-  static async updateEducation(id: string, data: Partial<EducationDTO>): Promise<EducationDTO> {
+  static async updateEducation(
+    id: string,
+    data: Partial<EducationDTO>,
+  ): Promise<EducationDTO> {
     const response = await fetch(`/api/profile/education/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -124,7 +137,10 @@ export class ProfileService {
     return response.json();
   }
 
-  static async updateProject(id: string, data: Partial<ProjectDTO>): Promise<ProjectDTO> {
+  static async updateProject(
+    id: string,
+    data: Partial<ProjectDTO>,
+  ): Promise<ProjectDTO> {
     const response = await fetch(`/api/profile/projects/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -170,7 +186,9 @@ export class ProfileService {
     return response.json();
   }
 
-  static async updateReferences(references: ReferenceDTO[]): Promise<ReferenceDTO[]> {
+  static async updateReferences(
+    references: ReferenceDTO[],
+  ): Promise<ReferenceDTO[]> {
     const response = await fetch("/api/profile/references", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -189,7 +207,7 @@ export class ProfileService {
     file: File,
     onProgress: (event: ParseProgressEvent) => void,
     onError: (error: string) => void,
-    onComplete: () => void
+    onComplete: () => void,
   ): Promise<void> {
     try {
       const formData = new FormData();
@@ -202,7 +220,9 @@ export class ProfileService {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Upload failed with status ${response.status}`);
+        throw new Error(
+          errData.error || `Upload failed with status ${response.status}`,
+        );
       }
 
       if (!response.body) {
@@ -251,13 +271,19 @@ export class ProfileService {
   /**
    * Triggers the AI-powered profile synchronization (text cleaning & embedding generation)
    */
-  static async syncProfile(): Promise<{ success: boolean; cleanedText: string }> {
+  static async syncProfile(): Promise<{
+    success: boolean;
+    profileFacts: ProfileFacts;
+  }> {
     const response = await fetch("/api/profile/sync", {
       method: "POST",
     });
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || `Failed to sync profile with AI: ${response.statusText}`);
+      throw new Error(
+        errData.error ||
+          `Failed to sync profile with AI: ${response.statusText}`,
+      );
     }
     return response.json();
   }

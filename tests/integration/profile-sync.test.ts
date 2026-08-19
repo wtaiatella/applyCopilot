@@ -6,22 +6,42 @@ import { POST as syncProfileHandler } from "@/app/api/profile/sync/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 
+// Mock the AI client used by profileSyncService.extractProfileFacts (generateJSON, capability "profile")
+jest.mock("@/lib/ai/aiClient", () => ({
+  generateJSON: jest.fn(),
+}));
+
+// Mock the vector service to avoid loading a real embedding provider in integration tests.
+// Per spectech.md Testing Strategy: generateEmbedding's public signature is unchanged (FR-18),
+// so it is mocked at the module boundary rather than expecting a live 768d vector here.
+jest.mock("@/lib/ai/vector-service", () => ({
+  generateEmbedding: jest.fn(),
+}));
+
 // Mock the auth middleware
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
 }));
 
-// Mock the AI client to clean the profile text
-jest.mock("@/lib/ai/aiClient", () => ({
-  generateText: jest.fn().mockResolvedValue(
-    "Cleaned Profile: Software Engineer, 5 years Experience, Skills: React, Node.js"
-  ),
-}));
+import { generateJSON } from "@/lib/ai/aiClient";
+import { generateEmbedding } from "@/lib/ai/vector-service";
 
-// Mock the vector service to avoid loading the real TensorFlow model in integration tests
-jest.mock("@/lib/ai/vector-service", () => ({
-  generateEmbedding: jest.fn().mockResolvedValue(new Array(512).fill(0.123)),
-}));
+const mockGenerateJSON = generateJSON as jest.Mock;
+const mockGenerateEmbedding = generateEmbedding as jest.Mock;
+
+// A valid ProfileFacts fixture matching ProfileFactsSchema
+function makeValidProfileFacts(
+  overrides: Partial<Record<string, unknown>> = {},
+) {
+  return {
+    skills: ["React", "Node.js"],
+    softSkills: ["Communication"],
+    seniority: "senior",
+    totalYearsExperience: 5,
+    domains: ["fintech"],
+    ...overrides,
+  };
+}
 
 describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
   const mockAuth = auth as unknown as jest.Mock;
@@ -50,7 +70,7 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     testUserId = user.id;
     testProfileId = user.profile!.id;
 
-    // Seed test experience and skills so we have content to clean
+    // Seed test experience and skills so we have content to extract facts from
     await prisma.experience.create({
       data: {
         profileId: testProfileId,
@@ -73,9 +93,11 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
   afterAll(async () => {
     // Clean up database records
     if (testUserId) {
-      await prisma.user.delete({
-        where: { id: testUserId },
-      }).catch(() => {});
+      await prisma.user
+        .delete({
+          where: { id: testUserId },
+        })
+        .catch(() => {});
     }
 
     await prisma.$disconnect();
@@ -89,48 +111,54 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
       user: { id: testUserId, email: testEmail, role: "USER" },
       expires: "any",
     });
+    // Default: extraction returns a valid ProfileFacts payload
+    mockGenerateJSON.mockResolvedValue(makeValidProfileFacts());
+    // Default: embedding generation returns a 768-dimension vector
+    mockGenerateEmbedding.mockResolvedValue(new Array(768).fill(0.123));
   });
 
-  it("should clean the profile via LLM, generate vector, and update UserProfile", async () => {
-    const req = new Request("http://localhost:3000/api/profile/sync", {
+  function makeRequest(): Request {
+    return new Request("http://localhost:3000/api/profile/sync", {
       method: "POST",
     });
+  }
 
-    const res = await syncProfileHandler(req);
+  it("should extract ProfileFacts via LLM, generate a 768d embedding, and update UserProfile", async () => {
+    const res = await syncProfileHandler(makeRequest());
     expect(res.status).toBe(200);
 
     const data = await res.json();
     expect(data.success).toBe(true);
-    expect(data.cleanedText).toContain("Cleaned Profile");
+    expect(data.profileFacts).toEqual(makeValidProfileFacts());
 
     // Fetch the profile directly from database to verify values
     const updatedProfile = await prisma.userProfile.findUnique({
       where: { userId: testUserId },
     });
 
-    expect(updatedProfile?.aiCleanedText).toContain("Cleaned Profile");
+    expect(updatedProfile?.profileFacts).toEqual(makeValidProfileFacts());
     expect(updatedProfile?.embeddingSyncedAt).not.toBeNull();
 
+    // Verify the embedding vector was generated from the skills list (not the full text)
+    expect(mockGenerateEmbedding).toHaveBeenCalledWith("React Node.js");
+
     // Verify embedding vector exists in DB by querying directly (since Prisma unsupported fails to return it via findUnique)
-    const rawResult = await prisma.$queryRaw<any[]>`
+    const rawResult = await prisma.$queryRaw<Array<{ embedding: string }>>`
       SELECT embedding::text FROM "UserProfile" WHERE "userId" = ${testUserId}
     `;
     const dbVectorStr = rawResult[0]?.embedding;
     expect(dbVectorStr).toBeDefined();
-    
-    // Check that it is a 512-dimension vector array format e.g. "[0.123,0.123,...]"
+
+    // Check that it is a 768-dimension vector array format e.g. "[0.123,0.123,...]"
     const parsedVector = JSON.parse(dbVectorStr);
     expect(parsedVector).toBeInstanceOf(Array);
-    expect(parsedVector.length).toBe(512);
+    expect(parsedVector.length).toBe(768);
     expect(parsedVector[0]).toBeCloseTo(0.123);
   });
 
   it("should reject unauthenticated request", async () => {
     mockAuth.mockResolvedValue(null);
-    const req = new Request("http://localhost:3000/api/profile/sync", {
-      method: "POST",
-    });
-    const res = await syncProfileHandler(req);
+    const res = await syncProfileHandler(makeRequest());
     expect(res.status).toBe(401);
   });
 
@@ -154,17 +182,103 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
       expires: "any",
     });
 
-    const req = new Request("http://localhost:3000/api/profile/sync", {
-      method: "POST",
-    });
-
-    const res = await syncProfileHandler(req);
+    const res = await syncProfileHandler(makeRequest());
     expect(res.status).toBe(400);
 
     const data = await res.json();
-    expect(data.error).toContain("Please fill in at least one skill or experience before syncing");
+    expect(data.error).toContain(
+      "Please fill in at least one skill or experience",
+    );
 
     // Cleanup
     await prisma.user.delete({ where: { id: emptyUser.id } }).catch(() => {});
+  });
+
+  // ──────────────────────────────────────────────────
+  // FR-22: schema-invalid ProfileFacts -> 400, no DB write, prior data preserved
+  // ──────────────────────────────────────────────────
+
+  it("returns 400 and preserves prior profileFacts/embedding when the LLM extraction fails ProfileFactsSchema validation", async () => {
+    // Establish prior data via a successful sync first
+    const firstRes = await syncProfileHandler(makeRequest());
+    expect(firstRes.status).toBe(200);
+
+    const priorProfile = await prisma.userProfile.findUnique({
+      where: { userId: testUserId },
+    });
+    const priorVectorResult = await prisma.$queryRaw<Array<{ embedding: string }>>`
+      SELECT embedding::text FROM "UserProfile" WHERE "userId" = ${testUserId}
+    `;
+    const priorVector = priorVectorResult[0]?.embedding;
+    const priorSyncedAt = priorProfile?.embeddingSyncedAt;
+
+    // Now make the extraction return a schema-invalid shape (bad seniority enum)
+    mockGenerateJSON.mockResolvedValue(
+      makeValidProfileFacts({ seniority: "not-a-real-level" }),
+    );
+    mockGenerateEmbedding.mockClear();
+
+    const secondRes = await syncProfileHandler(makeRequest());
+    expect(secondRes.status).toBe(400);
+
+    const data = await secondRes.json();
+    expect(data.error).toContain("AI returned invalid ProfileFacts");
+
+    // The embedding provider must never be called for an invalid-shape extraction
+    expect(mockGenerateEmbedding).not.toHaveBeenCalled();
+
+    // Prior data must remain untouched
+    const afterProfile = await prisma.userProfile.findUnique({
+      where: { userId: testUserId },
+    });
+    const afterVectorResult = await prisma.$queryRaw<Array<{ embedding: string }>>`
+      SELECT embedding::text FROM "UserProfile" WHERE "userId" = ${testUserId}
+    `;
+
+    expect(afterProfile?.profileFacts).toEqual(priorProfile?.profileFacts);
+    expect(afterProfile?.embeddingSyncedAt).toEqual(priorSyncedAt);
+    expect(afterVectorResult[0]?.embedding).toEqual(priorVector);
+  });
+
+  // ──────────────────────────────────────────────────
+  // FR-23: embedding provider failure -> 502, no DB write, prior data preserved
+  // ──────────────────────────────────────────────────
+
+  it("returns 502 and preserves prior profileFacts/embedding when the embedding provider fails", async () => {
+    // Establish prior data via a successful sync first
+    const firstRes = await syncProfileHandler(makeRequest());
+    expect(firstRes.status).toBe(200);
+
+    const priorProfile = await prisma.userProfile.findUnique({
+      where: { userId: testUserId },
+    });
+    const priorVectorResult = await prisma.$queryRaw<Array<{ embedding: string }>>`
+      SELECT embedding::text FROM "UserProfile" WHERE "userId" = ${testUserId}
+    `;
+    const priorVector = priorVectorResult[0]?.embedding;
+    const priorSyncedAt = priorProfile?.embeddingSyncedAt;
+
+    // Now make the embedding provider fail transiently
+    mockGenerateEmbedding.mockRejectedValue(
+      new Error("Embedding provider unavailable"),
+    );
+
+    const secondRes = await syncProfileHandler(makeRequest());
+    expect(secondRes.status).toBe(502);
+
+    const data = await secondRes.json();
+    expect(data.error).toContain("Embedding provider unavailable");
+
+    // Prior data must remain untouched
+    const afterProfile = await prisma.userProfile.findUnique({
+      where: { userId: testUserId },
+    });
+    const afterVectorResult = await prisma.$queryRaw<Array<{ embedding: string }>>`
+      SELECT embedding::text FROM "UserProfile" WHERE "userId" = ${testUserId}
+    `;
+
+    expect(afterProfile?.profileFacts).toEqual(priorProfile?.profileFacts);
+    expect(afterProfile?.embeddingSyncedAt).toEqual(priorSyncedAt);
+    expect(afterVectorResult[0]?.embedding).toEqual(priorVector);
   });
 });

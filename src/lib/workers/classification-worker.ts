@@ -3,9 +3,13 @@ import { logger } from "../logging/logger";
 import { isProviderBlocked, withCircuitBreaker } from "../ai/circuit-breaker";
 import { classifyJobListing } from "../../services/jobClassificationService";
 import { generateEmbedding } from "../ai/vector-service";
+import { JobFactsSchema } from "../validation/jobFactsSchema";
 
 /** The SystemConfig key for the Parsing Provider capability */
 const PARSING_PROVIDER_KEY = "AI_PROVIDER_PARSING";
+
+/** The SystemConfig key for the Embedding Provider capability (FR-23, separate circuit breaker from parsing) */
+const EMBEDDING_PROVIDER_KEY = "AI_PROVIDER_EMBEDDING";
 
 /** Guard to prevent multiple bootstrap calls */
 let isClassifierRunning = false;
@@ -79,13 +83,18 @@ export interface WorkerRunResult {
  *    - `classificationAttempts < CLASSIFIER_MAX_ATTEMPTS`
  * 4. For each listing, sequentially:
  *    a. Sets `classificationStatus = RUNNING`.
- *    b. Calls `jobClassificationService` (with circuit breaker) to get the cleaned summary.
- *    c. Generates the 512-dimension local vector via `vector-service`.
- *    d. Saves `cleanedSummary`, `embedding`, `classificationStatus = COMPLETED`.
- * 5. On transient errors: increments `classificationAttempts`, resets to `PENDING`.
- *    Once attempts >= CLASSIFIER_MAX_ATTEMPTS, marks as `FAILED`.
- * 6. On circuit-breaking errors (429/401/402): circuit breaker blocks the provider
- *    for CLASSIFIER_COOLDOWN_MINUTES and the job stays PENDING.
+ *    b. Calls `jobClassificationService` (parsing circuit breaker) to get `jobFacts`.
+ *    c. Validates `jobFacts` via `JobFactsSchema` — schema-invalid moves the job straight
+ *       to `classificationStatus = FAILED` with `classificationError`, no attempts-loop
+ *       retry (FR-22 — a malformed structure won't self-correct by retrying the prompt).
+ *    d. Generates the embedding vector for `jobFacts.mustHave` via `vector-service`, under
+ *       a separate `AI_PROVIDER_EMBEDDING` circuit breaker (FR-23).
+ *    e. Saves `jobFacts`, `embedding`, `classificationStatus = COMPLETED`.
+ * 5. On transient errors (parsing OR embedding): increments `classificationAttempts`,
+ *    resets to `PENDING`. Once attempts >= CLASSIFIER_MAX_ATTEMPTS, marks as `FAILED`.
+ * 6. On circuit-breaking errors (429/401/402): circuit breaker blocks the offending
+ *    provider (parsing or embedding, tracked independently) for CLASSIFIER_COOLDOWN_MINUTES
+ *    and the job stays PENDING.
  */
 export async function runClassificationWorker(): Promise<WorkerRunResult> {
   logger.info("[ClassificationWorker] Starting classification worker run...");
@@ -100,7 +109,7 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
   const cooldownMs = cooldownMinutes * 60 * 1000;
 
   logger.info(
-    `[ClassificationWorker] Config: batchSize=${batchSize}, maxAttempts=${maxAttempts}, cooldown=${cooldownMinutes}min`
+    `[ClassificationWorker] Config: batchSize=${batchSize}, maxAttempts=${maxAttempts}, cooldown=${cooldownMinutes}min`,
   );
 
   // Step 2: Check if the provider is blocked
@@ -108,7 +117,7 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
 
   if (blocked) {
     logger.warn(
-      `[ClassificationWorker] Parsing provider (${PARSING_PROVIDER_KEY}) is BLOCKED. Skipping this run.`
+      `[ClassificationWorker] Parsing provider (${PARSING_PROVIDER_KEY}) is BLOCKED. Skipping this run.`,
     );
     return { processed: 0, failed: 0, skippedBlocked: true };
   }
@@ -132,11 +141,15 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
   });
 
   if (pendingJobs.length === 0) {
-    logger.info("[ClassificationWorker] No pending jobs to classify. Worker run complete.");
+    logger.info(
+      "[ClassificationWorker] No pending jobs to classify. Worker run complete.",
+    );
     return { processed: 0, failed: 0, skippedBlocked: false };
   }
 
-  logger.info(`[ClassificationWorker] Found ${pendingJobs.length} pending job(s) to classify.`);
+  logger.info(
+    `[ClassificationWorker] Found ${pendingJobs.length} pending job(s) to classify.`,
+  );
 
   let processed = 0;
   let failed = 0;
@@ -144,7 +157,9 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
   // Step 4: Process each job sequentially
   for (const job of pendingJobs) {
     if (!job.fullDescription) {
-      logger.warn(`[ClassificationWorker] Job ${job.id} has no fullDescription. Skipping.`);
+      logger.warn(
+        `[ClassificationWorker] Job ${job.id} has no fullDescription. Skipping.`,
+      );
       continue;
     }
 
@@ -155,8 +170,8 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
     });
 
     try {
-      // LLM cleaning — circuit breaker uses the configured cooldown
-      const { cleanedSummary } = await withCircuitBreaker(
+      // LLM extraction — circuit breaker uses the configured cooldown
+      const { jobFacts } = await withCircuitBreaker(
         PARSING_PROVIDER_KEY,
         () =>
           classifyJobListing({
@@ -165,11 +180,39 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
             company: job.company,
             fullDescription: job.fullDescription!,
           }),
-        cooldownMs
+        cooldownMs,
       );
 
-      // Generate 512-dimension local vector
-      const embeddingVector = await generateEmbedding(cleanedSummary);
+      // Validate the extracted JobFacts shape — schema-invalid fails immediately,
+      // with no attempts-loop retry (FR-22: a malformed structure won't self-correct
+      // by retrying the same prompt).
+      const parseResult = JobFactsSchema.safeParse(jobFacts);
+      if (!parseResult.success) {
+        const validationError = parseResult.error.message;
+        logger.error(
+          `[ClassificationWorker] Job ${job.id} failed JobFacts validation. Marking as FAILED (no retry).`,
+          { error: validationError },
+        );
+
+        await prisma.jobListing.update({
+          where: { id: job.id },
+          data: {
+            classificationStatus: "FAILED",
+            classificationError: validationError.substring(0, 1000),
+          },
+        });
+
+        failed++;
+        continue;
+      }
+
+      // Generate the embedding vector for the must-have skill list, under a separate
+      // circuit breaker key from the parsing provider (FR-23).
+      const embeddingVector = await withCircuitBreaker(
+        EMBEDDING_PROVIDER_KEY,
+        () => generateEmbedding(parseResult.data.mustHave.join(" ")),
+        cooldownMs,
+      );
 
       // Persist via raw SQL (Prisma does not support pgvector in update())
       const vectorString = `[${embeddingVector.join(",")}]`;
@@ -177,7 +220,7 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
       await prisma.$executeRaw`
         UPDATE "JobListing"
         SET
-          "cleanedSummary" = ${cleanedSummary},
+          "jobFacts" = ${JSON.stringify(parseResult.data)}::jsonb,
           "embedding" = ${vectorString}::vector,
           "classificationStatus" = 'COMPLETED',
           "classificationError" = NULL,
@@ -186,17 +229,20 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
         WHERE "id" = ${job.id}
       `;
 
-      logger.info(`[ClassificationWorker] Job ${job.id} classified successfully.`);
+      logger.info(
+        `[ClassificationWorker] Job ${job.id} classified successfully.`,
+      );
       processed++;
     } catch (error: unknown) {
       const attempts = job.classificationAttempts + 1;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       const isFinalAttempt = attempts >= maxAttempts;
       const newStatus = isFinalAttempt ? "FAILED" : "PENDING";
 
       logger.error(
         `[ClassificationWorker] Failed to classify job ${job.id} (attempt ${attempts}/${maxAttempts}). New status: ${newStatus}.`,
-        { error: errorMessage }
+        { error: errorMessage },
       );
 
       await prisma.jobListing.update({
@@ -213,7 +259,7 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
   }
 
   logger.info(
-    `[ClassificationWorker] Run complete. Processed: ${processed}, Failed: ${failed}, Total attempted: ${pendingJobs.length}.`
+    `[ClassificationWorker] Run complete. Processed: ${processed}, Failed: ${failed}, Total attempted: ${pendingJobs.length}.`,
   );
 
   return { processed, failed, skippedBlocked: false };
@@ -234,16 +280,23 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
  */
 export async function bootstrapClassificationWorker(): Promise<void> {
   if (isClassifierRunning) {
-    logger.info("[ClassificationWorker] Already bootstrapped. Skipping duplicate registration.");
+    logger.info(
+      "[ClassificationWorker] Already bootstrapped. Skipping duplicate registration.",
+    );
     return;
   }
   isClassifierRunning = true;
 
-  logger.info("[ClassificationWorker] Bootstrapping classification worker loop...");
+  logger.info(
+    "[ClassificationWorker] Bootstrapping classification worker loop...",
+  );
 
   async function loop(): Promise<void> {
     // Re-read interval each cycle so live config changes take effect without restart
-    const intervalMinutes = await getConfigInt(CONFIG_KEYS.INTERVAL_MINUTES, DEFAULTS.INTERVAL_MINUTES);
+    const intervalMinutes = await getConfigInt(
+      CONFIG_KEYS.INTERVAL_MINUTES,
+      DEFAULTS.INTERVAL_MINUTES,
+    );
     const intervalMs = intervalMinutes * 60 * 1000;
 
     try {
@@ -254,7 +307,9 @@ export async function bootstrapClassificationWorker(): Promise<void> {
       });
     }
 
-    logger.info(`[ClassificationWorker] Next run in ${intervalMinutes} minute(s).`);
+    logger.info(
+      `[ClassificationWorker] Next run in ${intervalMinutes} minute(s).`,
+    );
     setTimeout(loop, intervalMs);
   }
 

@@ -24,9 +24,25 @@ import {
   AlertTriangle,
   Lightbulb,
   FileText,
+  ListChecks,
+  Ban,
 } from "lucide-react";
 
 const { Title, Text, Paragraph } = Typography;
+
+interface JobFactsSummary {
+  niceToHave: string[];
+  seniority: string | null;
+  yearsExperienceMin: number | null;
+  workMode: string | null;
+  isWorldwide: boolean | null;
+  requiresUsWorkAuth: boolean | null;
+  providesRelocationVisa: boolean | null;
+  employmentType: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  currency: string | null;
+}
 
 interface JobListing {
   id: string;
@@ -40,6 +56,29 @@ interface JobListing {
   fullDescription?: string | null;
   isFullDescriptionFetched: boolean;
   postedAt?: Date | string | null;
+  matchedSkills?: string[];
+  missingSkills?: string[];
+  niceToHaveMatched?: string[];
+  disqualified?: boolean;
+  disqualifyReason?: string | null;
+  jobFacts?: JobFactsSummary | null;
+}
+
+function formatBoolean(value: boolean | null | undefined): string {
+  if (value === null || value === undefined) return "Not specified";
+  return value ? "Yes" : "No";
+}
+
+function formatSalaryRange(facts: JobFactsSummary | null | undefined): string {
+  if (!facts || (facts.salaryMin == null && facts.salaryMax == null)) {
+    return "Not specified";
+  }
+  const currency = facts.currency ?? "";
+  if (facts.salaryMin != null && facts.salaryMax != null) {
+    return `${currency} ${facts.salaryMin.toLocaleString()} - ${facts.salaryMax.toLocaleString()}`.trim();
+  }
+  const value = facts.salaryMin ?? facts.salaryMax;
+  return `${currency} ${value!.toLocaleString()}`.trim();
 }
 
 interface JobDetailsPanelProps {
@@ -214,6 +253,142 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
             </span>
           )}
         </Space>
+
+        {/* Match Comparison Section — full comparative breakdown (FR-16), shown above the Deep
+            Analysis card since it's the score-derived, deterministic comparison; AI Deep
+            Analysis remains a separate, opt-in CTA below, unchanged. */}
+        {(job.matchedSkills || job.missingSkills || job.jobFacts) && (
+          <Card
+            data-testid="match-comparison"
+            className="bg-zinc-900/60 border-zinc-800 p-2 rounded-xl"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-2">
+                <ListChecks size={18} className="text-blue-400" />
+                <Title level={4} style={{ color: "#fff", margin: 0 }}>
+                  Match Comparison
+                </Title>
+              </div>
+              {job.disqualified && (
+                <Tag className="m-0 border uppercase font-bold text-xs bg-rose-950/40 border-rose-900/60 text-rose-400 flex items-center gap-1">
+                  <Ban size={12} />
+                  Disqualified
+                </Tag>
+              )}
+            </div>
+
+            {job.disqualified && job.disqualifyReason && (
+              <div className="mb-4 p-3 rounded-lg border bg-rose-950/30 border-rose-900/60 text-rose-300 text-xs leading-relaxed">
+                {job.disqualifyReason}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 size={12} />
+                  Matched Must-Have Skills
+                </div>
+                {job.matchedSkills && job.matchedSkills.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {job.matchedSkills.map((skill) => (
+                      <Tag
+                        key={skill}
+                        className="m-0 border-0 bg-emerald-950/40 text-emerald-400 text-xs py-0.5 px-2 rounded font-medium"
+                      >
+                        {skill}
+                      </Tag>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-zinc-500">None identified.</div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                  <Lightbulb size={12} />
+                  Missing Must-Have Skills
+                </div>
+                {job.missingSkills && job.missingSkills.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {job.missingSkills.map((skill) => (
+                      <Tag
+                        key={skill}
+                        className="m-0 border-0 bg-amber-950/40 text-amber-400 text-xs py-0.5 px-2 rounded font-medium"
+                      >
+                        {skill}
+                      </Tag>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-zinc-500">
+                    All must-have requirements matched.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {job.jobFacts && job.jobFacts.niceToHave.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+                  Nice-to-Have Skills
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {job.jobFacts.niceToHave.map((skill) => {
+                    const matched = job.niceToHaveMatched?.includes(skill);
+                    return (
+                      <Tag
+                        key={skill}
+                        className={
+                          matched
+                            ? "m-0 border-0 bg-emerald-950/40 text-emerald-400 text-xs py-0.5 px-2 rounded font-medium"
+                            : "m-0 border border-zinc-700 bg-transparent text-zinc-400 text-xs py-0.5 px-2 rounded font-medium"
+                        }
+                      >
+                        {skill}
+                      </Tag>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <Divider className="my-4 border-zinc-800" />
+
+            <div className="space-y-2">
+              <div className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                Conditions &amp; Preferences
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-zinc-300">
+                <div>
+                  Work Mode: {job.jobFacts?.workMode ?? "Not specified"}
+                </div>
+                <div>Worldwide: {formatBoolean(job.jobFacts?.isWorldwide)}</div>
+                <div>
+                  US Work Auth Required:{" "}
+                  {formatBoolean(job.jobFacts?.requiresUsWorkAuth)}
+                </div>
+                <div>
+                  Visa / Relocation Support:{" "}
+                  {formatBoolean(job.jobFacts?.providesRelocationVisa)}
+                </div>
+                <div>
+                  Employment Type:{" "}
+                  {job.jobFacts?.employmentType ?? "Not specified"}
+                </div>
+                <div>Salary Range: {formatSalaryRange(job.jobFacts)}</div>
+                <div>
+                  Seniority: {job.jobFacts?.seniority ?? "Not specified"}
+                </div>
+                <div>
+                  Min. Years Experience:{" "}
+                  {job.jobFacts?.yearsExperienceMin ?? "Not specified"}
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* AI Deep Analysis Section */}
         <Card className="bg-zinc-900/60 border-zinc-800 p-2 rounded-xl">

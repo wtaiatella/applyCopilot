@@ -53,10 +53,16 @@ model UserProfile {
   linkedin        String?
   
   // Cleaned profile representation returned by LLM (used as embedding input)
+  // Kept present but unused post-014 — replaced as the AI-input role by profileFacts below
+  // (see spectech.md Non-Goals: no physical drop in this migration).
   aiCleanedText   String?          @db.Text
 
-  // pgvector embedding field (stored as PostgreSQL vector)
-  embedding       Unsupported("vector(512)")?
+  // Structured facts extracted by LLM (Match Score v2), validated by profileFactsSchema.
+  // Replaces aiCleanedText's role as the embedding-generation input.
+  profileFacts    Json?
+
+  // pgvector embedding field (stored as PostgreSQL vector) — 768d (was 512d TensorFlow.js)
+  embedding       Unsupported("vector(768)")?
 
   // Sync tracking
   embeddingSyncedAt DateTime?
@@ -73,6 +79,36 @@ model UserProfile {
   jobAnalyses     JobAnalysis[]
   applications    Application[]
   jobFavorites    JobFavorite[]
+  preferences     UserPreferences?
+}
+
+// --- Match Score v2 (014) ---
+
+model UserPreferences {
+  id                     String       @id @default(cuid())
+  profileId              String       @unique
+
+  seniority              String?      // "junior" | "mid" | "senior" | "lead" | "principal"
+  totalYearsExperience   Int?
+
+  acceptsContract        Boolean?     // null = indifferent, false = reject, true = accept
+  acceptsFreelance       Boolean?
+  acceptsOnsite          Boolean?
+  acceptsHybrid          Boolean?
+  acceptsRemote          Boolean?
+
+  onlyWorldwide          Boolean?
+  hasUsWorkAuth          Boolean?
+  requiresVisaRelocation Boolean?
+
+  salaryMin              Float?
+  salaryCurrency         String?
+
+  excludeKeywords        String[]     @default([])
+
+  updatedAt              DateTime     @updatedAt
+
+  profile                UserProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
 }
 
 model Experience {
@@ -351,10 +387,16 @@ model JobListing {
   fullDescription          String?   @db.Text
 
   // Technical summary returned by LLM (used as embedding input)
+  // Kept present but unused post-014 — replaced as the AI-input role by jobFacts below
+  // (see spectech.md Non-Goals: no physical drop in this migration).
   cleanedSummary           String?   @db.Text
 
-  // 512-dimension vector from TensorFlow.js (pgvector)
-  embedding                Unsupported("vector(512)")?
+  // Structured facts extracted by LLM (Match Score v2), validated by jobFactsSchema.
+  // Replaces cleanedSummary's role as the embedding-generation input.
+  jobFacts                 Json?
+
+  // 768-dimension vector, provider-routed (was 512d TensorFlow.js) (pgvector)
+  embedding                Unsupported("vector(768)")?
 
   // Classification State Tracking
   classificationStatus     ClassificationStatus @default(PENDING)

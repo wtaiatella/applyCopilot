@@ -1,12 +1,14 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     console.log("[instrumentation] Bootstrapping background workers...");
-    
+
     try {
       // Startup crash recovery: reset any tasks stuck in RUNNING state
       const { prisma } = await import("@/lib/db/prisma");
-      
-      console.log("[instrumentation] Running crash recovery for ScrapeTasks...");
+
+      console.log(
+        "[instrumentation] Running crash recovery for ScrapeTasks...",
+      );
       const recoveryResult = await prisma.scrapeTask.updateMany({
         where: { status: "RUNNING" },
         data: {
@@ -14,15 +16,19 @@ export async function register() {
           errorMessage: "Worker crashed or restarted during execution",
         },
       });
-      
-      console.log(`[instrumentation] Recovered ${recoveryResult.count} tasks from RUNNING to PENDING.`);
+
+      console.log(
+        `[instrumentation] Recovered ${recoveryResult.count} tasks from RUNNING to PENDING.`,
+      );
 
       // Crash recovery for JobListings stuck in RUNNING classification state
       const classificationRecovery = await prisma.jobListing.updateMany({
         where: { classificationStatus: "RUNNING" },
         data: { classificationStatus: "PENDING" },
       });
-      console.log(`[instrumentation] Recovered ${classificationRecovery.count} job(s) from RUNNING to PENDING classification.`);
+      console.log(
+        `[instrumentation] Recovered ${classificationRecovery.count} job(s) from RUNNING to PENDING classification.`,
+      );
     } catch (error) {
       console.error("[instrumentation] Crash recovery failed:", error);
     }
@@ -32,25 +38,22 @@ export async function register() {
       const { bootstrapWorker } = await import("@/lib/scraper/queue");
       bootstrapWorker();
     } catch (error) {
-      console.warn("[instrumentation] Scraper queue manager not fully implemented yet, skipping start.", error);
+      console.warn(
+        "[instrumentation] Scraper queue manager not fully implemented yet, skipping start.",
+        error,
+      );
     }
 
     try {
       // Classification worker (Step 2: LLM clean + vectorize job listings)
-      const { bootstrapClassificationWorker } = await import("@/lib/workers/classification-worker");
+      const { bootstrapClassificationWorker } =
+        await import("@/lib/workers/classification-worker");
       await bootstrapClassificationWorker();
     } catch (error) {
-      console.error("[instrumentation] Classification worker failed to start:", error);
-    }
-
-    try {
-      // Pre-warm local TensorFlow.js USE model
-      const { warmUpModel } = await import("@/lib/ai/tensorflow-model");
-      warmUpModel().catch((err) => {
-        console.error("[instrumentation] TensorFlow model warmup failed:", err);
-      });
-    } catch (error) {
-      console.warn("[instrumentation] TensorFlow module not available for warmup", error);
+      console.error(
+        "[instrumentation] Classification worker failed to start:",
+        error,
+      );
     }
   }
 }

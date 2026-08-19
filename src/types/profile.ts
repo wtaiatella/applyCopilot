@@ -113,6 +113,35 @@ export interface ProfileDTO {
   aiCleanedText?: string | null;
 }
 
+// --- Match Score v2 (014) ---
+
+export type SeniorityLevel = "junior" | "mid" | "senior" | "lead" | "principal";
+
+// Client-facing shape for GET/PUT /api/profile/preferences — mirrors
+// UserPreferencesInput (src/lib/validation/preferencesSchemas.ts). Every field is
+// nullable: null is a meaningful tri-state value ("indifferent"/"not stated"), not
+// "unset". GET returns this all-null shape by default when the user never saved
+// preferences (spectech.md Clarifications & Assumptions).
+export interface UserPreferencesDTO {
+  seniority: SeniorityLevel | null;
+  totalYearsExperience: number | null;
+
+  acceptsContract: boolean | null;
+  acceptsFreelance: boolean | null;
+  acceptsOnsite: boolean | null;
+  acceptsHybrid: boolean | null;
+  acceptsRemote: boolean | null;
+
+  onlyWorldwide: boolean | null;
+  hasUsWorkAuth: boolean | null;
+  requiresVisaRelocation: boolean | null;
+
+  salaryMin: number | null;
+  salaryCurrency: string | null;
+
+  excludeKeywords: string[];
+}
+
 export type ParseProgressEvent =
   | { phase: "upload"; progress: number; status: string }
   | { phase: "basic"; progress: number; status: string; data?: BasicDataDTO }

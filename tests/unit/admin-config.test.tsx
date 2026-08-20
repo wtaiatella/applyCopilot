@@ -38,6 +38,7 @@ describe("LLMSettingsPanel Unit Tests", () => {
     parsingProvider: "ollama" as const,
     summariesProvider: "gemini" as const,
     profileProvider: "ollama" as const,
+    embeddingProvider: "ollama" as const,
   };
 
   const mockCredentialStatus = {
@@ -71,6 +72,7 @@ describe("LLMSettingsPanel Unit Tests", () => {
     expect(screen.getByText("Parsing Provider")).toBeInTheDocument();
     expect(screen.getByText("Summaries Provider")).toBeInTheDocument();
     expect(screen.getByText("Profile Provider")).toBeInTheDocument();
+    expect(screen.getByText("Embedding Provider")).toBeInTheDocument();
   });
 
   it("should submit the form with new values when Save is clicked", async () => {
@@ -124,9 +126,9 @@ describe("LLMSettingsPanel Unit Tests", () => {
     // Expand collapse
     fireEvent.click(screen.getByText("LLM Models"));
 
-    // We should see four "✓ Configured" badges (one for each provider option)
+    // We should see five "✓ Configured" badges (one for each provider option, incl. embedding)
     const configuredBadges = screen.getAllByText("✓ Configured");
-    expect(configuredBadges.length).toBe(4);
+    expect(configuredBadges.length).toBe(5);
 
     // 2. Gemini and Claude false, but selected so they render in closed Selects
     render(
@@ -136,6 +138,7 @@ describe("LLMSettingsPanel Unit Tests", () => {
           parsingProvider: "gemini",
           summariesProvider: "claude",
           profileProvider: "ollama",
+          embeddingProvider: "gemini",
         }}
         credentialStatus={{ ollama: true, gemini: false, claude: false }}
         blockedStatus={{}}

@@ -1,10 +1,14 @@
 export type LLMProvider = "ollama" | "gemini" | "claude";
 
+/** Claude has no embedding API — narrower than LLMProvider (ollama/gemini only). */
+export type EmbeddingProvider = "ollama" | "gemini";
+
 export interface LLMProviderConfig {
   defaultProvider: LLMProvider;
   parsingProvider: LLMProvider;
   summariesProvider: LLMProvider;
   profileProvider: LLMProvider;
+  embeddingProvider: EmbeddingProvider;
 }
 
 export interface CredentialStatus {
@@ -23,4 +27,5 @@ export interface LLMConfigUpdateRequest {
   parsingProvider: LLMProvider;
   summariesProvider: LLMProvider;
   profileProvider: LLMProvider;
+  embeddingProvider: EmbeddingProvider;
 }

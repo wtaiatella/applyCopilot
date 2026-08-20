@@ -16,8 +16,11 @@ interface AIResolution {
   model: string;
 }
 
+/** Capabilities routed through the chat/JSON LLM path (generateText/generateJSON). */
+type ChatCapability = "parsing" | "summaries" | "default" | "profile";
+
 export async function resolveAIConfig(
-  capability: "parsing" | "summaries" | "default" | "profile",
+  capability: ChatCapability | "embedding",
 ): Promise<AIResolution> {
   let providerStr = "";
   let modelStr = "";
@@ -30,7 +33,9 @@ export async function resolveAIConfig(
           ? "AI_PROVIDER_SUMMARIES"
           : capability === "profile"
             ? "AI_PROVIDER_PROFILE"
-            : "AI_PROVIDER_DEFAULT";
+            : capability === "embedding"
+              ? "AI_PROVIDER_EMBEDDING"
+              : "AI_PROVIDER_DEFAULT";
 
     // Try fetching from database SystemConfig
     const dbProvider = await prisma.systemConfig.findUnique({
@@ -61,20 +66,27 @@ export async function resolveAIConfig(
           ? process.env.AI_PROVIDER_SUMMARIES
           : capability === "profile"
             ? process.env.AI_PROVIDER_PROFILE
-            : process.env.AI_PROVIDER_DEFAULT) || "ollama";
+            : capability === "embedding"
+              ? process.env.AI_PROVIDER_EMBEDDING
+              : process.env.AI_PROVIDER_DEFAULT) || "ollama";
   }
 
   const provider =
     (providerStr.toLowerCase() as "ollama" | "gemini" | "claude") || "ollama";
 
-  // Resolve model based on resolved provider
+  // Resolve model based on resolved provider (capability-aware: embedding models are a
+  // structurally different key set from chat models, see spectech Technical Decisions)
   try {
     const modelKey =
-      provider === "gemini"
-        ? "GEMINI_MODEL"
-        : provider === "claude"
-          ? "CLAUDE_MODEL"
-          : "OLLAMA_MODEL";
+      capability === "embedding"
+        ? provider === "gemini"
+          ? "GEMINI_EMBEDDING_MODEL"
+          : "OLLAMA_EMBEDDING_MODEL"
+        : provider === "gemini"
+          ? "GEMINI_MODEL"
+          : provider === "claude"
+            ? "CLAUDE_MODEL"
+            : "OLLAMA_MODEL";
 
     const dbModel = await prisma.systemConfig.findUnique({
       where: { key: modelKey },
@@ -86,11 +98,15 @@ export async function resolveAIConfig(
 
   if (!modelStr) {
     modelStr =
-      (provider === "gemini"
-        ? process.env.GEMINI_MODEL || "gemini-3-pro"
-        : provider === "claude"
-          ? process.env.CLAUDE_MODEL || "claude-haiku-4-5"
-          : process.env.OLLAMA_MODEL || "granite4.1:8b") || "";
+      (capability === "embedding"
+        ? provider === "gemini"
+          ? process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001"
+          : process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text"
+        : provider === "gemini"
+          ? process.env.GEMINI_MODEL || "gemini-3-pro"
+          : provider === "claude"
+            ? process.env.CLAUDE_MODEL || "claude-haiku-4-5"
+            : process.env.OLLAMA_MODEL || "granite4.1:8b") || "";
   }
 
   return { provider, model: modelStr };
@@ -98,7 +114,7 @@ export async function resolveAIConfig(
 
 export async function generateText(
   prompt: string,
-  capability: "parsing" | "summaries" | "default" | "profile",
+  capability: ChatCapability,
   systemPrompt?: string,
 ): Promise<string> {
   const { provider, model } = await resolveAIConfig(capability);
@@ -167,7 +183,7 @@ export async function generateText(
 
 export async function generateJSON<T>(
   prompt: string,
-  capability: "parsing" | "summaries" | "default" | "profile",
+  capability: ChatCapability,
   systemPrompt?: string,
 ): Promise<T> {
   const { provider, model } = await resolveAIConfig(capability);

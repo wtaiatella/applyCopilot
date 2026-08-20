@@ -126,6 +126,11 @@ export default function LLMSettingsPanel({
     if (values.profileProvider === "ollama" && !credentialStatus.ollama)
       unconfigured.push("Ollama (Profile)");
 
+    if (values.embeddingProvider === "gemini" && !credentialStatus.gemini)
+      unconfigured.push("Gemini (Embedding)");
+    if (values.embeddingProvider === "ollama" && !credentialStatus.ollama)
+      unconfigured.push("Ollama (Embedding)");
+
     if (unconfigured.length > 0) {
       modal.confirm({
         title: "Warning: Missing Credentials",
@@ -195,6 +200,12 @@ export default function LLMSettingsPanel({
     { value: "claude", label: getProviderLabel("claude", "Claude") },
   ];
 
+  // Claude has no embedding API — narrower option set than the other four provider dropdowns.
+  const embeddingProviderOptions = [
+    { value: "ollama", label: getProviderLabel("ollama", "Ollama (Local)") },
+    { value: "gemini", label: getProviderLabel("gemini", "Gemini") },
+  ];
+
   const collapseItems = [
     {
       key: "llm-models",
@@ -210,6 +221,7 @@ export default function LLMSettingsPanel({
             parsingProvider: config.parsingProvider,
             summariesProvider: config.summariesProvider,
             profileProvider: config.profileProvider,
+            embeddingProvider: config.embeddingProvider,
           }}
           onFinish={onFinish}
           requiredMark={false}
@@ -254,6 +266,16 @@ export default function LLMSettingsPanel({
             <Select options={providerOptions} size="large" />
           </Form.Item>
           {renderBlockedStatus("profileProvider", "AI_PROVIDER_PROFILE")}
+
+          <Form.Item
+            name="embeddingProvider"
+            label={<span className="text-zinc-300">Embedding Provider</span>}
+            tooltip="The provider used to generate vector embeddings for job/profile matching (Claude has no embedding API, so it is not offered here)"
+            className="mb-2"
+          >
+            <Select options={embeddingProviderOptions} size="large" />
+          </Form.Item>
+          {renderBlockedStatus("embeddingProvider", "AI_PROVIDER_EMBEDDING")}
 
           <Form.Item className="mb-0 mt-6">
             <Button

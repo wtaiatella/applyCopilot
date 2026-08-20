@@ -3,7 +3,11 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
 import { llmConfigSchema } from "@/lib/validation/adminSchemas";
-import { LLMProvider, CredentialStatus } from "@/types/admin";
+import {
+  LLMProvider,
+  EmbeddingProvider,
+  CredentialStatus,
+} from "@/types/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -26,10 +30,12 @@ export async function GET() {
             "AI_PROVIDER_PARSING",
             "AI_PROVIDER_SUMMARIES",
             "AI_PROVIDER_PROFILE",
+            "AI_PROVIDER_EMBEDDING",
             "AI_PROVIDER_DEFAULT_BLOCKED_UNTIL",
             "AI_PROVIDER_PARSING_BLOCKED_UNTIL",
             "AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL",
             "AI_PROVIDER_PROFILE_BLOCKED_UNTIL",
+            "AI_PROVIDER_EMBEDDING_BLOCKED_UNTIL",
           ],
         },
       },
@@ -45,6 +51,8 @@ export async function GET() {
       "gemini") as LLMProvider;
     const profileProvider = (configMap.get("AI_PROVIDER_PROFILE") ||
       "ollama") as LLMProvider;
+    const embeddingProvider = (configMap.get("AI_PROVIDER_EMBEDDING") ||
+      "ollama") as EmbeddingProvider;
 
     const defaultBlockedUntil = configMap.get(
       "AI_PROVIDER_DEFAULT_BLOCKED_UNTIL",
@@ -57,6 +65,9 @@ export async function GET() {
     );
     const profileBlockedUntil = configMap.get(
       "AI_PROVIDER_PROFILE_BLOCKED_UNTIL",
+    );
+    const embeddingBlockedUntil = configMap.get(
+      "AI_PROVIDER_EMBEDDING_BLOCKED_UNTIL",
     );
 
     const now = new Date();
@@ -71,6 +82,9 @@ export async function GET() {
       : false;
     const profileBlocked = profileBlockedUntil
       ? new Date(profileBlockedUntil) > now
+      : false;
+    const embeddingBlocked = embeddingBlockedUntil
+      ? new Date(embeddingBlockedUntil) > now
       : false;
 
     const ollamaUrl = process.env.OLLAMA_BASE_URL;
@@ -93,12 +107,14 @@ export async function GET() {
         parsingProvider,
         summariesProvider,
         profileProvider,
+        embeddingProvider,
       },
       blockedStatus: {
         defaultProvider: defaultBlocked ? defaultBlockedUntil : null,
         parsingProvider: parsingBlocked ? parsingBlockedUntil : null,
         summariesProvider: summariesBlocked ? summariesBlockedUntil : null,
         profileProvider: profileBlocked ? profileBlockedUntil : null,
+        embeddingProvider: embeddingBlocked ? embeddingBlockedUntil : null,
       },
       credentialStatus,
     });
@@ -198,7 +214,17 @@ export async function POST(req: Request) {
       parsingProvider,
       summariesProvider,
       profileProvider,
+      embeddingProvider,
     } = result.data;
+
+    // Read the previously stored embedding provider before overwriting it, so a change can be
+    // detected (NFR "Compatibilidade de Embeddings" — cross-provider vectors are incomparable).
+    const previousEmbeddingConfig = await prisma.systemConfig.findUnique({
+      where: { key: "AI_PROVIDER_EMBEDDING" },
+    });
+    const embeddingProviderChanged =
+      !!previousEmbeddingConfig &&
+      previousEmbeddingConfig.value !== embeddingProvider;
 
     await prisma.$transaction([
       prisma.systemConfig.upsert({
@@ -221,7 +247,39 @@ export async function POST(req: Request) {
         create: { key: "AI_PROVIDER_PROFILE", value: profileProvider },
         update: { value: profileProvider },
       }),
+      prisma.systemConfig.upsert({
+        where: { key: "AI_PROVIDER_EMBEDDING" },
+        create: { key: "AI_PROVIDER_EMBEDDING", value: embeddingProvider },
+        update: { value: embeddingProvider },
+      }),
     ]);
+
+    if (embeddingProviderChanged) {
+      const [profileResetResult, jobsRequeuedResult] =
+        await prisma.$transaction([
+          prisma.userProfile.updateMany({
+            where: { embeddingSyncedAt: { not: null } },
+            data: { embeddingSyncedAt: null },
+          }),
+          prisma.jobListing.updateMany({
+            where: { classificationStatus: "COMPLETED" },
+            data: {
+              classificationStatus: "PENDING",
+              classificationAttempts: 0,
+              classificationError: null,
+            },
+          }),
+        ]);
+
+      logger.warn("embedding_provider_changed", {
+        userId: session.user.id,
+        email: session.user.email,
+        previousProvider: previousEmbeddingConfig?.value,
+        newProvider: embeddingProvider,
+        profilesReset: profileResetResult.count,
+        jobsRequeued: jobsRequeuedResult.count,
+      });
+    }
 
     logger.info("LLM config updated successfully by admin", {
       userId: session.user.id,
@@ -231,7 +289,9 @@ export async function POST(req: Request) {
         parsingProvider,
         summariesProvider,
         profileProvider,
+        embeddingProvider,
       },
+      embeddingProviderChanged,
     });
 
     return NextResponse.json({
@@ -241,7 +301,9 @@ export async function POST(req: Request) {
         parsingProvider,
         summariesProvider,
         profileProvider,
+        embeddingProvider,
       },
+      embeddingProviderChanged,
     });
   } catch (error) {
     console.error("POST config error:", error);

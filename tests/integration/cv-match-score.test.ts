@@ -14,7 +14,7 @@ jest.mock("@/lib/auth/auth", () => ({
 
 // Avoid loading the real TensorFlow USE model in tests (mirrors profile-sync.test.ts's pattern).
 jest.mock("@/lib/ai/vector-service", () => ({
-  generateEmbedding: jest.fn().mockResolvedValue(new Array(512).fill(0.123)),
+  generateEmbedding: jest.fn().mockResolvedValue(new Array(768).fill(0.123)),
 }));
 
 import { generateEmbedding } from "@/lib/ai/vector-service";
@@ -98,7 +98,7 @@ describe("POST /api/cv/[cvId]/match-score — on-demand only (AC.8)", () => {
     });
     jobListingId = jobListing.id;
 
-    const vector = new Array(512).fill(0.123);
+    const vector = new Array(768).fill(0.123);
     await prisma.$executeRawUnsafe(
       `UPDATE "JobListing" SET embedding = $1::vector WHERE id = $2`,
       `[${vector.join(",")}]`,

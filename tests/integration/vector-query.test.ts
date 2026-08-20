@@ -4,9 +4,27 @@
 import "dotenv/config";
 import { prisma, pool } from "@/lib/db/prisma";
 import { getJobsWithSimilarity } from "@/lib/db/job-query";
+import { EMBEDDING_DIMENSION } from "@/lib/ai/vector-service";
 
-describe("Vector Similarity Search Integration Tests", () => {
+describe("Vector Similarity Search Integration Tests (Stage 1, 768d, FR-12)", () => {
   const createdJobIds: string[] = [];
+
+  const sampleJobFacts = {
+    mustHave: ["React", "TypeScript"],
+    niceToHave: ["GraphQL"],
+    softSkills: [],
+    seniority: "mid",
+    yearsExperienceMin: 3,
+    employmentType: "permanent",
+    workMode: "remote",
+    isWorldwide: null,
+    requiresUsWorkAuth: null,
+    providesRelocationVisa: null,
+    location: null,
+    salaryMin: null,
+    salaryMax: null,
+    currency: null,
+  };
 
   beforeAll(async () => {
     // Make sure we have the pgvector extension enabled (just in case)
@@ -14,14 +32,14 @@ describe("Vector Similarity Search Integration Tests", () => {
       .$executeRawUnsafe("CREATE EXTENSION IF NOT EXISTS vector;")
       .catch(() => {});
 
-    // Helper to generate a 512-dimension vector with a specific bias
+    // Helper to generate an EMBEDDING_DIMENSION (768) vector with a specific bias
     const makeVector = (bias: number) => {
-      const vec = new Array(512).fill(0.1);
+      const vec = new Array(EMBEDDING_DIMENSION).fill(0.1);
       vec[0] = bias; // Vary the first element to change similarity
       return `[${vec.join(",")}]`;
     };
 
-    // Insert 4 jobs with different statuses, embeddings, and post dates
+    // Insert 4 jobs with different statuses, embeddings, jobFacts, and post dates
     // Job 1: status=COMPLETED, postedAt=today, highly similar (vector first element = 0.9)
     const job1 = await prisma.jobListing.create({
       data: {
@@ -37,8 +55,9 @@ describe("Vector Similarity Search Integration Tests", () => {
     });
     createdJobIds.push(job1.id);
     await prisma.$executeRawUnsafe(
-      `UPDATE "JobListing" SET embedding = $1::vector WHERE id = $2`,
+      `UPDATE "JobListing" SET embedding = $1::vector, "jobFacts" = $2::jsonb WHERE id = $3`,
       makeVector(0.9),
+      JSON.stringify(sampleJobFacts),
       job1.id,
     );
 
@@ -57,8 +76,9 @@ describe("Vector Similarity Search Integration Tests", () => {
     });
     createdJobIds.push(job2.id);
     await prisma.$executeRawUnsafe(
-      `UPDATE "JobListing" SET embedding = $1::vector WHERE id = $2`,
+      `UPDATE "JobListing" SET embedding = $1::vector, "jobFacts" = $2::jsonb WHERE id = $3`,
       makeVector(-0.9),
+      JSON.stringify(sampleJobFacts),
       job2.id,
     );
 
@@ -123,15 +143,15 @@ describe("Vector Similarity Search Integration Tests", () => {
   // no portalId scoping, and this suite runs against the same database as
   // local dev (no separate test DB / no destructive table wipe — see
   // beforeAll above). To stay isolated from any pre-existing/real rows, we
-  // request a generously large limit and then filter the results down to
-  // just the rows this test created before asserting on count/order.
+  // request a generously large pool size and then filter the results down
+  // to just the rows this test created before asserting on count/order.
   const onlyOurJobs = (
     results: Awaited<ReturnType<typeof getJobsWithSimilarity>>,
   ) => results.filter((r) => createdJobIds.includes(r.id));
 
-  it("should rank jobs by similarity when query embedding is provided, filtering by date and status", async () => {
+  it("should rank jobs by similarity when a 768d query embedding is provided, filtering by date and status", async () => {
     // Query embedding similar to Job 1 (bias = 0.8)
-    const queryEmbedding = new Array(512).fill(0.1);
+    const queryEmbedding = new Array(EMBEDDING_DIMENSION).fill(0.1);
     queryEmbedding[0] = 0.8;
 
     const results = onlyOurJobs(
@@ -145,25 +165,54 @@ describe("Vector Similarity Search Integration Tests", () => {
     expect(results[0].title).toBe("Highly Similar Job");
     expect(results[1].title).toBe("Less Similar Job");
 
-    // Similarity score should be returned and be correct
-    expect(results[0].matchScore).toBeDefined();
-    expect(results[1].matchScore).toBeDefined();
-    expect(results[0].matchScore).toBeGreaterThan(results[1].matchScore!);
+    // Similarity is aliased "mustHaveSimilarity" (Stage-1 SQL score), not "matchScore" (which is
+    // Stage 2's composite, computed downstream by jobs/route.ts) — spectech.md Technical Decisions.
+    expect(results[0].mustHaveSimilarity).toBeDefined();
+    expect(results[1].mustHaveSimilarity).toBeDefined();
+    expect(results[0].mustHaveSimilarity).toBeGreaterThan(
+      results[1].mustHaveSimilarity!,
+    );
   });
 
-  it("should return jobs ordered chronologically with null matchScore when query embedding is null", async () => {
+  it("selects jobFacts alongside each candidate so Stage 2 needs no second DB round-trip", async () => {
+    const queryEmbedding = new Array(EMBEDDING_DIMENSION).fill(0.1);
+    queryEmbedding[0] = 0.8;
+
+    const results = onlyOurJobs(
+      await getJobsWithSimilarity(queryEmbedding, 15, 1000),
+    );
+
+    const job1Result = results.find((r) => r.title === "Highly Similar Job");
+    expect(job1Result?.jobFacts).toEqual(sampleJobFacts);
+  });
+
+  it("guards vector length against EMBEDDING_DIMENSION — falls back to the no-embedding branch (null mustHaveSimilarity) when the profile vector is the wrong dimension", async () => {
+    // A 512-dimension vector (the pre-014 shape) is NOT EMBEDDING_DIMENSION (768), so the
+    // implementation must not attempt the pgvector `<=>` operator with a mismatched vector —
+    // it falls back to the date-sorted branch, matching the null-embedding path exactly.
+    const wrongDimensionEmbedding = new Array(512).fill(0.1);
+
+    const results = onlyOurJobs(
+      await getJobsWithSimilarity(wrongDimensionEmbedding, 15, 1000),
+    );
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((r) => r.mustHaveSimilarity === null)).toBe(true);
+  });
+
+  it("should return jobs ordered chronologically with null mustHaveSimilarity when query embedding is null", async () => {
     const results = onlyOurJobs(await getJobsWithSimilarity(null, 15, 1000));
 
     // Should return completed jobs inside 15-day range: Job 1 and Job 2
     expect(results).toHaveLength(2);
-    expect(results.every((r) => r.matchScore === null)).toBe(true);
+    expect(results.every((r) => r.mustHaveSimilarity === null)).toBe(true);
 
     // Should be ordered by postedAt / createdAt descending (they were created in order, so the latest is returned)
     expect(results[0].title).toBeDefined();
   });
 
   it("should extend the date range filtering when daysLimit parameter is larger", async () => {
-    const queryEmbedding = new Array(512).fill(0.1);
+    const queryEmbedding = new Array(EMBEDDING_DIMENSION).fill(0.1);
     queryEmbedding[0] = 0.8;
 
     // Use 40 days limit to include the old completed job (Job 4)
@@ -174,5 +223,26 @@ describe("Vector Similarity Search Integration Tests", () => {
     // Should return Job 1, Job 2, and Job 4 (Job 3 is still skipped because of status=PENDING)
     expect(results).toHaveLength(3);
     expect(results.map((r) => r.title)).toContain("Old Completed Job");
+  });
+
+  it("decouples poolSize (Stage-1 candidate pool) from any client-facing page size — a small poolSize still bounds the SQL LIMIT independently (FR-12)", async () => {
+    const queryEmbedding = new Array(EMBEDDING_DIMENSION).fill(0.1);
+    queryEmbedding[0] = 0.8;
+
+    // poolSize=1 should return at most 1 row total (not scoped to our 4 fixture jobs — this
+    // proves the LIMIT itself, not just our filtered view of it).
+    const results = await getJobsWithSimilarity(queryEmbedding, 40, 1);
+    expect(results.length).toBeLessThanOrEqual(1);
+  });
+
+  it("defaults poolSize to 300 when not provided", async () => {
+    const queryEmbedding = new Array(EMBEDDING_DIMENSION).fill(0.1);
+    queryEmbedding[0] = 0.8;
+
+    const results = onlyOurJobs(
+      await getJobsWithSimilarity(queryEmbedding, 40),
+    );
+    // Our 3 completed/in-range fixture jobs are well within a 300-row default pool.
+    expect(results).toHaveLength(3);
   });
 });

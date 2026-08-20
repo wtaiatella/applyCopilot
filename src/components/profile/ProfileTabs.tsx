@@ -1,18 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { 
-  Tabs, 
-  Form, 
-  Button, 
-  Tooltip,
-  Badge,
-  notification
-} from "antd";
-import { 
-  CloudSyncOutlined, 
-  CheckCircleOutlined, 
-  ExclamationCircleOutlined
+import { Tabs, Form, Button, Tooltip, Badge, notification } from "antd";
+import {
+  CloudSyncOutlined,
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import { useProfileContext, SaveStatus } from "../../contexts/ProfileContext";
 import dayjs from "dayjs";
@@ -22,6 +15,7 @@ import EducationForm from "./EducationForm";
 import ProjectForm from "./ProjectForm";
 import SkillsForm from "./SkillsForm";
 import ReferencesForm from "./ReferencesForm";
+import PreferencesForm from "./PreferencesForm";
 
 // Save Status Badge Component
 function SaveStatusIndicator({ status }: { status: SaveStatus }) {
@@ -75,7 +69,7 @@ export default function ProfileTabs() {
     updateSkillsState,
     updateReferencesState,
     syncProfile,
-    isSyncOutOfDate
+    isSyncOutOfDate,
   } = useProfileContext();
 
   const [form] = Form.useForm();
@@ -87,14 +81,18 @@ export default function ProfileTabs() {
       await syncProfile();
       notification.success({
         message: "AI Profile Synced",
-        description: "Your profile details have been consolidated, cleaned, and vectorized for semantic matching successfully.",
-        placement: "topRight"
+        description:
+          "Your profile details have been consolidated, cleaned, and vectorized for semantic matching successfully.",
+        placement: "topRight",
       });
     } catch (err) {
       notification.error({
         message: "Synchronization Failed",
-        description: err instanceof Error ? err.message : "An unexpected error occurred while syncing your profile.",
-        placement: "topRight"
+        description:
+          err instanceof Error
+            ? err.message
+            : "An unexpected error occurred while syncing your profile.",
+        placement: "topRight",
       });
     } finally {
       setIsSyncing(false);
@@ -135,14 +133,23 @@ export default function ProfileTabs() {
       const currentLength = profile.experiences.length;
       if (currentLength > prevExpLengthRef.current) {
         if (profile.experiences[0]) {
-          Promise.resolve().then(() => setActiveExpTab(profile.experiences[0].id));
+          Promise.resolve().then(() =>
+            setActiveExpTab(profile.experiences[0].id),
+          );
         }
       } else if (currentLength < prevExpLengthRef.current) {
-        if (activeExpTab && !profile.experiences.some((e) => e.id === activeExpTab)) {
-          Promise.resolve().then(() => setActiveExpTab(profile.experiences[0]?.id));
+        if (
+          activeExpTab &&
+          !profile.experiences.some((e) => e.id === activeExpTab)
+        ) {
+          Promise.resolve().then(() =>
+            setActiveExpTab(profile.experiences[0]?.id),
+          );
         }
       } else if (currentLength > 0 && !activeExpTab) {
-        Promise.resolve().then(() => setActiveExpTab(profile.experiences[0].id));
+        Promise.resolve().then(() =>
+          setActiveExpTab(profile.experiences[0].id),
+        );
       }
       prevExpLengthRef.current = currentLength;
     }
@@ -157,11 +164,18 @@ export default function ProfileTabs() {
       const currentLength = profile.education.length;
       if (currentLength > prevEduLengthRef.current) {
         if (profile.education[0]) {
-          Promise.resolve().then(() => setActiveEduTab(profile.education[0].id));
+          Promise.resolve().then(() =>
+            setActiveEduTab(profile.education[0].id),
+          );
         }
       } else if (currentLength < prevEduLengthRef.current) {
-        if (activeEduTab && !profile.education.some((e) => e.id === activeEduTab)) {
-          Promise.resolve().then(() => setActiveEduTab(profile.education[0]?.id));
+        if (
+          activeEduTab &&
+          !profile.education.some((e) => e.id === activeEduTab)
+        ) {
+          Promise.resolve().then(() =>
+            setActiveEduTab(profile.education[0]?.id),
+          );
         }
       } else if (currentLength > 0 && !activeEduTab) {
         Promise.resolve().then(() => setActiveEduTab(profile.education[0].id));
@@ -179,11 +193,18 @@ export default function ProfileTabs() {
       const currentLength = profile.projects.length;
       if (currentLength > prevProjLengthRef.current) {
         if (profile.projects[0]) {
-          Promise.resolve().then(() => setActiveProjTab(profile.projects[0].id));
+          Promise.resolve().then(() =>
+            setActiveProjTab(profile.projects[0].id),
+          );
         }
       } else if (currentLength < prevProjLengthRef.current) {
-        if (activeProjTab && !profile.projects.some((p) => p.id === activeProjTab)) {
-          Promise.resolve().then(() => setActiveProjTab(profile.projects[0]?.id));
+        if (
+          activeProjTab &&
+          !profile.projects.some((p) => p.id === activeProjTab)
+        ) {
+          Promise.resolve().then(() =>
+            setActiveProjTab(profile.projects[0]?.id),
+          );
         }
       } else if (currentLength > 0 && !activeProjTab) {
         Promise.resolve().then(() => setActiveProjTab(profile.projects[0].id));
@@ -275,6 +296,11 @@ export default function ProfileTabs() {
         />
       ),
     },
+    {
+      key: "preferences",
+      label: "Preferences",
+      children: <PreferencesForm />,
+    },
   ];
 
   const getSyncStatus = () => {
@@ -282,23 +308,25 @@ export default function ProfileTabs() {
       return {
         status: "default" as const,
         text: "IA Profile Not Synced",
-        tooltip: "Your profile has not been vectorized. Sync with AI to enable smart job matching.",
-        color: "text-zinc-400 bg-zinc-950/40 border-zinc-800/50"
+        tooltip:
+          "Your profile has not been vectorized. Sync with AI to enable smart job matching.",
+        color: "text-zinc-400 bg-zinc-950/40 border-zinc-800/50",
       };
     }
     if (isSyncOutOfDate) {
       return {
         status: "warning" as const,
         text: "IA Profile Out of Date",
-        tooltip: "You modified your profile since the last sync. Re-sync recommended to update job rankings.",
-        color: "text-amber-400 bg-amber-950/40 border-amber-900/50"
+        tooltip:
+          "You modified your profile since the last sync. Re-sync recommended to update job rankings.",
+        color: "text-amber-400 bg-amber-950/40 border-amber-900/50",
       };
     }
     return {
       status: "success" as const,
       text: "IA Profile Synced",
       tooltip: "Your profile vector embedding is fully up to date.",
-      color: "text-emerald-400 bg-emerald-950/40 border-emerald-900/50"
+      color: "text-emerald-400 bg-emerald-950/40 border-emerald-900/50",
     };
   };
 
@@ -310,7 +338,9 @@ export default function ProfileTabs() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-900/50 border border-zinc-800/80 p-4 rounded-xl">
         <div className="flex flex-wrap items-center gap-4">
           <Tooltip title={syncConfig.tooltip}>
-            <span className={`flex items-center gap-2 text-xs font-medium border px-3 py-1.5 rounded-full ${syncConfig.color}`}>
+            <span
+              className={`flex items-center gap-2 text-xs font-medium border px-3 py-1.5 rounded-full ${syncConfig.color}`}
+            >
               <Badge status={syncConfig.status} />
               <span>{syncConfig.text}</span>
             </span>
@@ -318,7 +348,8 @@ export default function ProfileTabs() {
 
           {profile.embeddingSyncedAt && (
             <span className="text-zinc-500 text-xs" suppressHydrationWarning>
-              Last Synced: {dayjs(profile.embeddingSyncedAt).format("DD/MM/YYYY HH:mm")}
+              Last Synced:{" "}
+              {dayjs(profile.embeddingSyncedAt).format("DD/MM/YYYY HH:mm")}
             </span>
           )}
 
@@ -337,9 +368,9 @@ export default function ProfileTabs() {
         </div>
       </div>
 
-      <Tabs 
-        defaultActiveKey="basic" 
-        items={tabItems} 
+      <Tabs
+        defaultActiveKey="basic"
+        items={tabItems}
         type="card"
         className="profile-tabs text-white"
       />

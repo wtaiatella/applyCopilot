@@ -2,7 +2,57 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { getJobsWithSimilarity } from "@/lib/db/job-query";
+import { computeMatchScore } from "@/services/matchScorer";
+import type { ProfileFacts } from "@/lib/validation/profileFactsSchema";
+import type { JobFacts } from "@/lib/validation/jobFactsSchema";
+import type { UserPreferencesDTO } from "@/types/profile";
 import { logger } from "@/lib/logging/logger";
+
+// Fixed Stage-1 SQL prefilter pool size — intentionally decoupled from the client's requested
+// page size (FR-12, spectech.md Architecture "Two-stage ranking" Technical Decision).
+const STAGE1_POOL_SIZE = 300;
+
+// Same all-null default shape as GET /api/profile/preferences (spectech.md Clarifications &
+// Assumptions) — used whenever the user never saved preferences, so Stage 2 still runs with
+// "no preferences set" semantics (computePreferencesFit/checkDisqualification treat every
+// dimension as unset, i.e. non-blocking).
+const DEFAULT_PREFERENCES: UserPreferencesDTO = {
+  seniority: null,
+  totalYearsExperience: null,
+  acceptsContract: null,
+  acceptsFreelance: null,
+  acceptsOnsite: null,
+  acceptsHybrid: null,
+  acceptsRemote: null,
+  onlyWorldwide: null,
+  hasUsWorkAuth: null,
+  requiresVisaRelocation: null,
+  salaryMin: null,
+  salaryCurrency: null,
+  excludeKeywords: [],
+};
+
+interface ScoredJob {
+  id: string;
+  portalId: string;
+  externalJobId: string;
+  title: string;
+  company: string;
+  location: string[];
+  url: string;
+  postedAt: Date | null;
+  createdAt: Date;
+  classificationStatus: string;
+  isFullDescriptionFetched: boolean;
+  fullDescription: string | null;
+  jobFacts: JobFacts | null;
+  matchScore: number | null;
+  matchedSkills: string[];
+  missingSkills: string[];
+  niceToHaveMatched: string[];
+  disqualified: boolean;
+  disqualifyReason: string | null;
+}
 
 export async function GET(request: Request) {
   try {
@@ -25,21 +75,30 @@ export async function GET(request: Request) {
     // rejected, so no new error path is introduced for existing callers (REM-12, spectech.md
     // API Contracts). A non-numeric `limit` query param (e.g. `?limit=abc`) parses to NaN, which
     // must fall back to the default before clamping — Math.min/Math.max never resolve a NaN
-    // input to a finite value, so an unguarded NaN would otherwise reach the SQL layer.
+    // input to a finite value, so an unguarded NaN would otherwise reach the slice below.
     const safeRawLimit = Number.isFinite(rawLimit) ? rawLimit : 50;
     const limit = Math.min(100, Math.max(1, safeRawLimit));
     const minMatch = minMatchVal ? parseFloat(minMatchVal) : null;
 
-    // Load User Profile embedding via raw query because Unsupported type is omitted by standard prisma client selectors
-    const profileResult = await prisma.$queryRaw<any[]>`
-      SELECT embedding::text FROM "UserProfile" WHERE "userId" = ${userId} LIMIT 1
+    // Load profile id/embedding/profileFacts in one raw query — embedding is an Unsupported
+    // pgvector type Prisma's standard selectors omit; profileFacts is fetched alongside it so
+    // Stage 2 needs no second profile round-trip.
+    const profileResult = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        embeddingText: string | null;
+        profileFacts: ProfileFacts | null;
+      }>
+    >`
+      SELECT id, embedding::text as "embeddingText", "profileFacts"
+      FROM "UserProfile" WHERE "userId" = ${userId} LIMIT 1
     `;
+    const profileRow = profileResult[0] ?? null;
 
     let profileEmbedding: number[] | null = null;
-    const dbVectorStr = profileResult[0]?.embedding;
-    if (dbVectorStr) {
+    if (profileRow?.embeddingText) {
       try {
-        profileEmbedding = JSON.parse(dbVectorStr);
+        profileEmbedding = JSON.parse(profileRow.embeddingText);
       } catch (err) {
         logger.error("Failed to parse user profile embedding vector from DB", {
           err,
@@ -47,49 +106,155 @@ export async function GET(request: Request) {
       }
     }
 
-    // Retrieve and rank jobs
-    let jobs = await getJobsWithSimilarity(profileEmbedding, days, limit);
+    // Stage 1 (SQL prefilter): fixed pool size, independent of the client's requested `limit`.
+    const stage1Jobs = await getJobsWithSimilarity(
+      profileEmbedding,
+      days,
+      STAGE1_POOL_SIZE,
+    );
 
-    // Apply minMatch filter if specified and matchScore is calculated
+    let preferences: UserPreferencesDTO = DEFAULT_PREFERENCES;
+    if (profileRow) {
+      const prefsRow = await prisma.userPreferences.findUnique({
+        where: { profileId: profileRow.id },
+      });
+      if (prefsRow) {
+        preferences = {
+          seniority: prefsRow.seniority as UserPreferencesDTO["seniority"],
+          totalYearsExperience: prefsRow.totalYearsExperience,
+          acceptsContract: prefsRow.acceptsContract,
+          acceptsFreelance: prefsRow.acceptsFreelance,
+          acceptsOnsite: prefsRow.acceptsOnsite,
+          acceptsHybrid: prefsRow.acceptsHybrid,
+          acceptsRemote: prefsRow.acceptsRemote,
+          onlyWorldwide: prefsRow.onlyWorldwide,
+          hasUsWorkAuth: prefsRow.hasUsWorkAuth,
+          requiresVisaRelocation: prefsRow.requiresVisaRelocation,
+          salaryMin: prefsRow.salaryMin,
+          salaryCurrency: prefsRow.salaryCurrency,
+          excludeKeywords: prefsRow.excludeKeywords,
+        };
+      }
+    }
+
+    // Stage 2 (Node.js composite scorer): only runs when the profile has both an embedding and
+    // extracted profileFacts — FR-17: no embedding means matchScore stays null for every job and
+    // the client falls back to its existing "Sync Profile" badge state.
+    const canScore =
+      profileEmbedding !== null && profileRow?.profileFacts != null;
+    const profileFacts = profileRow?.profileFacts ?? null;
+
+    let scoredJobs: ScoredJob[] = stage1Jobs.map((job) => {
+      if (canScore && job.jobFacts && job.mustHaveSimilarity !== null) {
+        const result = computeMatchScore(
+          {
+            jobFacts: job.jobFacts,
+            mustHaveSimilarity: job.mustHaveSimilarity,
+          },
+          { profileFacts: profileFacts as ProfileFacts },
+          preferences,
+        );
+        return {
+          ...job,
+          matchScore: result.score,
+          matchedSkills: result.matchedSkills,
+          missingSkills: result.missingSkills,
+          niceToHaveMatched: result.niceToHaveMatched,
+          disqualified: result.disqualified,
+          disqualifyReason: result.disqualifyReason,
+        };
+      }
+
+      // Not yet classified (no jobFacts) or profile isn't scoreable — no composite score,
+      // never disqualified (there's nothing to disqualify against).
+      return {
+        ...job,
+        matchScore: null,
+        matchedSkills: [],
+        missingSkills: [],
+        niceToHaveMatched: [],
+        disqualified: false,
+        disqualifyReason: null,
+      };
+    });
+
+    // Sort: disqualified jobs demoted to the end, then by composite score DESC, then jobs with
+    // no score at all last within their group (spectech.md Architecture — Stage 2 sort
+    // contract).
+    scoredJobs.sort((a, b) => {
+      if (a.disqualified !== b.disqualified) return a.disqualified ? 1 : -1;
+      if (a.matchScore === null && b.matchScore === null) return 0;
+      if (a.matchScore === null) return 1;
+      if (b.matchScore === null) return -1;
+      return b.matchScore - a.matchScore;
+    });
+
+    // Apply minMatch filter on the FINAL composite score, then slice to the client's requested/
+    // clamped limit (1-100, unchanged) — the same minMatch/limit contract as before, now
+    // operating on Stage 2's composite score instead of Stage 1's raw similarity.
     if (minMatch !== null && !isNaN(minMatch)) {
-      jobs = jobs.filter(
+      scoredJobs = scoredJobs.filter(
         (job) => job.matchScore === null || job.matchScore >= minMatch,
       );
     }
+    scoredJobs = scoredJobs.slice(0, limit);
 
     // One additional batched JobFavorite lookup (not per-row) merged into the ranked-jobs
     // response — two total queries for the whole page load, not one per job (US-7, FR-17).
-    const profile = await prisma.userProfile.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-
     let favoritedJobIds = new Set<string>();
-    if (profile && jobs.length > 0) {
+    if (profileRow && scoredJobs.length > 0) {
       const favorites = await prisma.jobFavorite.findMany({
         where: {
-          profileId: profile.id,
-          jobListingId: { in: jobs.map((job) => job.id) },
+          profileId: profileRow.id,
+          jobListingId: { in: scoredJobs.map((job) => job.id) },
         },
         select: { jobListingId: true },
       });
       favoritedJobIds = new Set(favorites.map((f) => f.jobListingId));
     }
 
-    const jobsWithFavorite = jobs.map((job) => ({
-      ...job,
+    const response = scoredJobs.map((job) => ({
+      id: job.id,
+      portalId: job.portalId,
+      externalJobId: job.externalJobId,
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      url: job.url,
+      postedAt: job.postedAt,
+      createdAt: job.createdAt,
+      classificationStatus: job.classificationStatus,
+      isFullDescriptionFetched: job.isFullDescriptionFetched,
+      fullDescription: job.fullDescription,
+      matchScore: job.matchScore,
+      matchedSkills: job.matchedSkills,
+      missingSkills: job.missingSkills,
+      niceToHaveMatched: job.niceToHaveMatched,
+      disqualified: job.disqualified,
+      disqualifyReason: job.disqualifyReason,
       favorite: favoritedJobIds.has(job.id),
+      jobFacts: job.jobFacts
+        ? {
+            niceToHave: job.jobFacts.niceToHave,
+            seniority: job.jobFacts.seniority,
+            yearsExperienceMin: job.jobFacts.yearsExperienceMin,
+            workMode: job.jobFacts.workMode,
+            isWorldwide: job.jobFacts.isWorldwide,
+            requiresUsWorkAuth: job.jobFacts.requiresUsWorkAuth,
+            providesRelocationVisa: job.jobFacts.providesRelocationVisa,
+            employmentType: job.jobFacts.employmentType,
+            salaryMin: job.jobFacts.salaryMin,
+            salaryMax: job.jobFacts.salaryMax,
+            currency: job.jobFacts.currency,
+          }
+        : null,
     }));
 
-    return NextResponse.json(jobsWithFavorite);
+    return NextResponse.json(response);
   } catch (error) {
-    logger.error("Error fetching ranked jobs", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.error("Error fetching ranked jobs", { error });
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Internal Server Error",
-      },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }

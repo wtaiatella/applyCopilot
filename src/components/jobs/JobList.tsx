@@ -9,6 +9,20 @@ import { useProfileContext } from "@/contexts/ProfileContext";
 
 const { Text, Title } = Typography;
 
+export interface JobFactsSummary {
+  niceToHave: string[];
+  seniority: string | null;
+  yearsExperienceMin: number | null;
+  workMode: string | null;
+  isWorldwide: boolean | null;
+  requiresUsWorkAuth: boolean | null;
+  providesRelocationVisa: boolean | null;
+  employmentType: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  currency: string | null;
+}
+
 export interface Job {
   id: string;
   portalId: string;
@@ -22,6 +36,12 @@ export interface Job {
   postedAt: string | Date | null;
   createdAt: string | Date | null;
   matchScore: number | null;
+  matchedSkills?: string[];
+  missingSkills?: string[];
+  niceToHaveMatched?: string[];
+  disqualified?: boolean;
+  disqualifyReason?: string | null;
+  jobFacts?: JobFactsSummary | null;
   favorite?: boolean;
 }
 

@@ -96,6 +96,7 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
           parsingProvider: "gemini",
           summariesProvider: "claude",
           profileProvider: "ollama",
+          embeddingProvider: "ollama",
         }),
       });
 
@@ -116,6 +117,7 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
           parsingProvider: "gemini",
           summariesProvider: "claude",
           profileProvider: "ollama",
+          embeddingProvider: "ollama",
         }),
       });
 
@@ -174,6 +176,9 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
       const originalProfile = await prisma.systemConfig.findUnique({
         where: { key: "AI_PROVIDER_PROFILE" },
       });
+      const originalEmbedding = await prisma.systemConfig.findUnique({
+        where: { key: "AI_PROVIDER_EMBEDDING" },
+      });
 
       const req = new Request("http://localhost:3000/api/admin/llm-config", {
         method: "POST",
@@ -182,6 +187,7 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
           parsingProvider: "gemini",
           summariesProvider: "claude",
           profileProvider: "ollama",
+          embeddingProvider: "ollama",
         }),
       });
 
@@ -232,6 +238,202 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
           update: { value: originalProfile.value },
         });
       }
+      if (originalEmbedding) {
+        await prisma.systemConfig.upsert({
+          where: { key: "AI_PROVIDER_EMBEDDING" },
+          create: {
+            key: "AI_PROVIDER_EMBEDDING",
+            value: originalEmbedding.value,
+          },
+          update: { value: originalEmbedding.value },
+        });
+      } else {
+        await prisma.systemConfig
+          .delete({ where: { key: "AI_PROVIDER_EMBEDDING" } })
+          .catch(() => {});
+      }
+    });
+  });
+
+  describe("embeddingProvider change side-effects (NFR: Compatibilidade de Embeddings)", () => {
+    const testEmail = `llm-config-embed-test-${Date.now()}@example.com`;
+    let testUserId: string;
+    let testProfileId: string;
+    let testJobId: string;
+    let originalEmbeddingConfig: { value: string } | null;
+
+    beforeEach(async () => {
+      mockAuth.mockResolvedValue({
+        user: {
+          id: "admin-user-id",
+          email: "wtaiatella@gmail.com",
+          role: "ADMIN",
+        },
+        expires: "any",
+      });
+
+      originalEmbeddingConfig = await prisma.systemConfig.findUnique({
+        where: { key: "AI_PROVIDER_EMBEDDING" },
+      });
+
+      const user = await prisma.user.create({
+        data: {
+          email: testEmail,
+          password: "hashedpassword123",
+          profile: {
+            create: {
+              firstName: "Embed",
+              lastName: "Tester",
+              embeddingSyncedAt: new Date(),
+            },
+          },
+        },
+        include: { profile: true },
+      });
+      testUserId = user.id;
+      testProfileId = user.profile!.id;
+
+      const job = await prisma.jobListing.create({
+        data: {
+          portalId: "test-portal",
+          externalJobId: `embed-test-${Date.now()}`,
+          title: "Senior Engineer",
+          company: "Acme",
+          url: "https://example.com/job",
+          classificationStatus: "COMPLETED",
+          classificationAttempts: 3,
+          classificationError: "prior transient error",
+        },
+      });
+      testJobId = job.id;
+    });
+
+    afterEach(async () => {
+      await prisma.jobListing
+        .delete({ where: { id: testJobId } })
+        .catch(() => {});
+      await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+
+      if (originalEmbeddingConfig) {
+        await prisma.systemConfig.upsert({
+          where: { key: "AI_PROVIDER_EMBEDDING" },
+          create: {
+            key: "AI_PROVIDER_EMBEDDING",
+            value: originalEmbeddingConfig.value,
+          },
+          update: { value: originalEmbeddingConfig.value },
+        });
+      } else {
+        await prisma.systemConfig
+          .delete({ where: { key: "AI_PROVIDER_EMBEDDING" } })
+          .catch(() => {});
+      }
+    });
+
+    it("resets embeddingSyncedAt and requeues COMPLETED jobs when embeddingProvider changes", async () => {
+      await prisma.systemConfig.upsert({
+        where: { key: "AI_PROVIDER_EMBEDDING" },
+        create: { key: "AI_PROVIDER_EMBEDDING", value: "ollama" },
+        update: { value: "ollama" },
+      });
+
+      // This endpoint's reset/requeue is intentionally global (NFR "Compatibilidade de
+      // Embeddings" — cross-provider vectors are incomparable for every row, not just the ones
+      // this test created). Snapshot any other pre-existing affected rows so this test can
+      // restore them afterward instead of permanently mutating the shared dev/test database.
+      const otherSyncedProfilesBefore = await prisma.userProfile.findMany({
+        where: { embeddingSyncedAt: { not: null }, id: { not: testProfileId } },
+        select: { id: true, embeddingSyncedAt: true },
+      });
+      const otherCompletedJobsBefore = await prisma.jobListing.findMany({
+        where: { classificationStatus: "COMPLETED", id: { not: testJobId } },
+        select: {
+          id: true,
+          classificationAttempts: true,
+          classificationError: true,
+        },
+      });
+
+      const req = new Request("http://localhost:3000/api/admin/llm-config", {
+        method: "POST",
+        body: JSON.stringify({
+          defaultProvider: "ollama",
+          parsingProvider: "ollama",
+          summariesProvider: "ollama",
+          profileProvider: "ollama",
+          embeddingProvider: "gemini", // changed from "ollama"
+        }),
+      });
+
+      const res = await postConfigHandler(req);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.embeddingProviderChanged).toBe(true);
+
+      const profile = await prisma.userProfile.findUnique({
+        where: { id: testProfileId },
+      });
+      expect(profile?.embeddingSyncedAt).toBeNull();
+
+      const job = await prisma.jobListing.findUnique({
+        where: { id: testJobId },
+      });
+      expect(job?.classificationStatus).toBe("PENDING");
+      expect(job?.classificationAttempts).toBe(0);
+      expect(job?.classificationError).toBeNull();
+
+      // Restore other pre-existing rows this global reset touched (see snapshot above).
+      for (const p of otherSyncedProfilesBefore) {
+        await prisma.userProfile.update({
+          where: { id: p.id },
+          data: { embeddingSyncedAt: p.embeddingSyncedAt },
+        });
+      }
+      for (const j of otherCompletedJobsBefore) {
+        await prisma.jobListing.update({
+          where: { id: j.id },
+          data: {
+            classificationStatus: "COMPLETED",
+            classificationAttempts: j.classificationAttempts,
+            classificationError: j.classificationError,
+          },
+        });
+      }
+    });
+
+    it("is a no-op reset when embeddingProvider is unchanged", async () => {
+      await prisma.systemConfig.upsert({
+        where: { key: "AI_PROVIDER_EMBEDDING" },
+        create: { key: "AI_PROVIDER_EMBEDDING", value: "ollama" },
+        update: { value: "ollama" },
+      });
+
+      const req = new Request("http://localhost:3000/api/admin/llm-config", {
+        method: "POST",
+        body: JSON.stringify({
+          defaultProvider: "ollama",
+          parsingProvider: "ollama",
+          summariesProvider: "ollama",
+          profileProvider: "ollama",
+          embeddingProvider: "ollama", // unchanged
+        }),
+      });
+
+      const res = await postConfigHandler(req);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.embeddingProviderChanged).toBe(false);
+
+      const profile = await prisma.userProfile.findUnique({
+        where: { id: testProfileId },
+      });
+      expect(profile?.embeddingSyncedAt).not.toBeNull();
+
+      const job = await prisma.jobListing.findUnique({
+        where: { id: testJobId },
+      });
+      expect(job?.classificationStatus).toBe("COMPLETED");
+      expect(job?.classificationAttempts).toBe(3);
     });
   });
 });

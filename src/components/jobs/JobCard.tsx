@@ -1,11 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { Card, Typography, Space } from "antd";
+import { Card, Typography, Space, Tag } from "antd";
 import { MapPin, Calendar, Building2, Star } from "lucide-react";
 import MatchBadge from "./MatchBadge";
 
 const { Text } = Typography;
+
+// Only the top 3-4 matched skills are shown on the compact card — the full matched/missing
+// breakdown lives in JobDetailsPanel's "Match Comparison" section (FR-15).
+const MAX_CARD_SKILL_TAGS = 4;
 
 export interface JobCardProps {
   job: {
@@ -16,6 +20,9 @@ export interface JobCardProps {
     postedAt: string | Date | null;
     createdAt: string | Date | null;
     matchScore: number | null;
+    matchedSkills?: string[];
+    disqualified?: boolean;
+    disqualifyReason?: string | null;
     favorite?: boolean;
   };
   isSelected: boolean;
@@ -56,12 +63,19 @@ export default function JobCard({ job, isSelected, onClick }: JobCardProps) {
     }
   };
 
+  const cardMatchedSkills = (job.matchedSkills ?? []).slice(
+    0,
+    MAX_CARD_SKILL_TAGS,
+  );
+
   return (
     <Card
       hoverable
       onClick={onClick}
       styles={{ body: { padding: 16 } }}
       className={`transition-all duration-200 cursor-pointer border rounded-2xl bg-zinc-950/60 ${
+        job.disqualified ? "opacity-60 grayscale-[0.4]" : ""
+      } ${
         isSelected
           ? "border-blue-500/80 shadow-md shadow-blue-950/20 bg-zinc-900/60"
           : "border-zinc-800/80 hover:border-zinc-700/80 bg-zinc-950/30"
@@ -96,9 +110,26 @@ export default function JobCard({ job, isSelected, onClick }: JobCardProps) {
                 fill={favorite ? "currentColor" : "none"}
               />
             </button>
-            <MatchBadge score={job.matchScore} />
+            <MatchBadge
+              score={job.matchScore}
+              disqualified={job.disqualified}
+              disqualifyReason={job.disqualifyReason}
+            />
           </div>
         </div>
+
+        {!job.disqualified && cardMatchedSkills.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {cardMatchedSkills.map((skill) => (
+              <Tag
+                key={skill}
+                className="m-0 border-0 bg-emerald-950/40 text-emerald-400 text-xs py-0.5 px-2 rounded font-medium"
+              >
+                {skill}
+              </Tag>
+            ))}
+          </div>
+        )}
 
         <div className="flex items-center justify-between mt-3 text-xs text-zinc-500 border-t border-zinc-900/80 pt-2.5">
           <span className="flex items-center gap-1 truncate max-w-[150px]">

@@ -13,6 +13,9 @@ export const llmConfigSchema = z.object({
   profileProvider: z.enum(["ollama", "gemini", "claude"], {
     message: "Must be one of: ollama, gemini, claude",
   }),
+  embeddingProvider: z.enum(["ollama", "gemini"], {
+    message: "Must be one of: ollama, gemini",
+  }),
 });
 
 export type LLMConfigSchemaInput = z.infer<typeof llmConfigSchema>;

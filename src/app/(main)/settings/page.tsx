@@ -1,7 +1,11 @@
 import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
-import { LLMProvider, CredentialStatus } from "@/types/admin";
+import {
+  LLMProvider,
+  EmbeddingProvider,
+  CredentialStatus,
+} from "@/types/admin";
 import LLMSettingsPanel from "@/components/settings/LLMSettingsPanel";
 import DatabasePanel from "@/components/settings/DatabasePanel";
 import Link from "next/link";
@@ -25,6 +29,7 @@ export default async function SettingsPage() {
           "AI_PROVIDER_PARSING",
           "AI_PROVIDER_SUMMARIES",
           "AI_PROVIDER_PROFILE",
+          "AI_PROVIDER_EMBEDDING",
         ],
       },
     },
@@ -40,6 +45,8 @@ export default async function SettingsPage() {
     "gemini") as LLMProvider;
   const profileProvider = (configMap.get("AI_PROVIDER_PROFILE") ||
     "ollama") as LLMProvider;
+  const embeddingProvider = (configMap.get("AI_PROVIDER_EMBEDDING") ||
+    "ollama") as EmbeddingProvider;
 
   // Detect credential status
   const ollamaUrl = process.env.OLLAMA_BASE_URL;
@@ -68,6 +75,9 @@ export default async function SettingsPage() {
   const profileBlockedUntil = configMap.get(
     "AI_PROVIDER_PROFILE_BLOCKED_UNTIL",
   );
+  const embeddingBlockedUntil = configMap.get(
+    "AI_PROVIDER_EMBEDDING_BLOCKED_UNTIL",
+  );
 
   const now = new Date();
   const defaultBlocked = defaultBlockedUntil
@@ -82,12 +92,16 @@ export default async function SettingsPage() {
   const profileBlocked = profileBlockedUntil
     ? new Date(profileBlockedUntil) > now
     : false;
+  const embeddingBlocked = embeddingBlockedUntil
+    ? new Date(embeddingBlockedUntil) > now
+    : false;
 
   const config = {
     defaultProvider,
     parsingProvider,
     summariesProvider,
     profileProvider,
+    embeddingProvider,
   };
 
   const blockedStatus = {
@@ -95,6 +109,7 @@ export default async function SettingsPage() {
     parsingProvider: parsingBlocked ? parsingBlockedUntil || null : null,
     summariesProvider: summariesBlocked ? summariesBlockedUntil || null : null,
     profileProvider: profileBlocked ? profileBlockedUntil || null : null,
+    embeddingProvider: embeddingBlocked ? embeddingBlockedUntil || null : null,
   };
 
   return (

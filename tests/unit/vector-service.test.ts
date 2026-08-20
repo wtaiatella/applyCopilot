@@ -1,74 +1,150 @@
 /**
  * @jest-environment node
  */
-import { generateEmbedding } from "@/lib/ai/vector-service";
-import { getTensorFlowModel, warmUpModel } from "@/lib/ai/tensorflow-model";
+// Mock external AI SDKs before importing the module under test. jest.mock() factories cannot
+// reference outer-scope consts (TDZ, since jest.mock is hoisted above them) — the jest.fn()s are
+// created inside each factory instead, then recovered below via the constructor mock's
+// `.mock.results`, since vector-service.ts instantiates one client per SDK at module load.
+jest.mock("@google/genai", () => ({
+  GoogleGenAI: jest.fn().mockImplementation(() => ({
+    models: {
+      embedContent: jest.fn(),
+    },
+  })),
+}));
 
-// Mock the tensorflow model loader
-jest.mock("@/lib/ai/tensorflow-model", () => {
-  const mockEmbed = jest.fn().mockImplementation(async (texts: string[]) => {
-    return {
-      array: async () => [new Array(512).fill(0.1)],
-      dispose: jest.fn(),
-    };
-  });
+jest.mock("ollama", () => ({
+  Ollama: jest.fn().mockImplementation(() => ({
+    embed: jest.fn(),
+  })),
+}));
 
-  const mockModel = {
-    embed: mockEmbed,
-  };
+jest.mock("@/lib/ai/aiClient", () => ({
+  resolveAIConfig: jest.fn(),
+}));
 
-  return {
-    getTensorFlowModel: jest.fn().mockResolvedValue(mockModel),
-    warmUpModel: jest.fn().mockResolvedValue(undefined),
-  };
-});
+import {
+  generateEmbedding,
+  EMBEDDING_DIMENSION,
+} from "@/lib/ai/vector-service";
+import { resolveAIConfig } from "@/lib/ai/aiClient";
+import { GoogleGenAI } from "@google/genai";
+import { Ollama } from "ollama";
 
-describe("Local Vector Generation Service", () => {
+const mockResolveAIConfig = resolveAIConfig as jest.Mock;
+const mockEmbedContent = (GoogleGenAI as unknown as jest.Mock).mock.results[0]
+  .value.models.embedContent as jest.Mock;
+const mockOllamaEmbed = (Ollama as unknown as jest.Mock).mock.results[0].value
+  .embed as jest.Mock;
+
+describe("Provider-Routed Vector Generation Service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("should return a 512-dimension vector of decimals for a non-empty string", async () => {
-    const vector = await generateEmbedding("Senior React Developer with 5 years experience");
-    
-    expect(vector).toBeInstanceOf(Array);
-    expect(vector.length).toBe(512);
-    expect(vector[0]).toBe(0.1);
-    expect(getTensorFlowModel).toHaveBeenCalledTimes(1);
+  it("exports EMBEDDING_DIMENSION as 768", () => {
+    expect(EMBEDDING_DIMENSION).toBe(768);
   });
 
-  it("should return a zero-filled 512-dimension vector when input text is empty or whitespace", async () => {
+  it("should return a zero-filled EMBEDDING_DIMENSION vector when input text is empty or whitespace, without calling any provider", async () => {
     const vectorFromEmpty = await generateEmbedding("");
-    expect(vectorFromEmpty).toBeInstanceOf(Array);
-    expect(vectorFromEmpty.length).toBe(512);
-    expect(vectorFromEmpty.every(val => val === 0)).toBe(true);
+    expect(vectorFromEmpty.length).toBe(EMBEDDING_DIMENSION);
+    expect(vectorFromEmpty.every((val) => val === 0)).toBe(true);
 
     const vectorFromWhitespace = await generateEmbedding("    ");
-    expect(vectorFromWhitespace.length).toBe(512);
-    expect(vectorFromWhitespace.every(val => val === 0)).toBe(true);
+    expect(vectorFromWhitespace.length).toBe(EMBEDDING_DIMENSION);
+    expect(vectorFromWhitespace.every((val) => val === 0)).toBe(true);
 
-    // Should not trigger model loader for empty inputs
-    expect(getTensorFlowModel).not.toHaveBeenCalled();
+    expect(mockResolveAIConfig).not.toHaveBeenCalled();
+    expect(mockOllamaEmbed).not.toHaveBeenCalled();
+    expect(mockEmbedContent).not.toHaveBeenCalled();
   });
 
-  it("should throw an error and log if embedding generation fails", async () => {
-    const mockGetModel = getTensorFlowModel as jest.Mock;
-    mockGetModel.mockRejectedValueOnce(new Error("TensorFlow CPU out of memory"));
+  it("should route to Ollama's embed() when resolveAIConfig resolves the ollama provider", async () => {
+    mockResolveAIConfig.mockResolvedValue({
+      provider: "ollama",
+      model: "nomic-embed-text",
+    });
+    mockOllamaEmbed.mockResolvedValue({
+      embeddings: [new Array(EMBEDDING_DIMENSION).fill(0.2)],
+    });
 
-    await expect(generateEmbedding("React Native")).rejects.toThrow("TensorFlow CPU out of memory");
+    const vector = await generateEmbedding("Senior React Developer");
+
+    expect(mockResolveAIConfig).toHaveBeenCalledWith("embedding");
+    expect(mockOllamaEmbed).toHaveBeenCalledWith({
+      model: "nomic-embed-text",
+      input: "Senior React Developer",
+    });
+    expect(mockEmbedContent).not.toHaveBeenCalled();
+    expect(vector.length).toBe(EMBEDDING_DIMENSION);
+    expect(vector[0]).toBe(0.2);
   });
 
-  it("should throw an error if the model returns a vector with length other than 512", async () => {
-    const mockGetModel = getTensorFlowModel as jest.Mock;
-    mockGetModel.mockResolvedValueOnce({
-      embed: async () => ({
-        array: async () => [new Array(256).fill(0.5)],
-        dispose: jest.fn(),
-      }),
+  it("should route to Gemini's embedContent() when resolveAIConfig resolves the gemini provider, constrained to EMBEDDING_DIMENSION", async () => {
+    mockResolveAIConfig.mockResolvedValue({
+      provider: "gemini",
+      model: "gemini-embedding-001",
+    });
+    mockEmbedContent.mockResolvedValue({
+      embeddings: [{ values: new Array(EMBEDDING_DIMENSION).fill(0.3) }],
+    });
+
+    const vector = await generateEmbedding("Node.js Backend Engineer");
+
+    expect(mockResolveAIConfig).toHaveBeenCalledWith("embedding");
+    expect(mockEmbedContent).toHaveBeenCalledWith({
+      model: "gemini-embedding-001",
+      contents: "Node.js Backend Engineer",
+      config: { outputDimensionality: EMBEDDING_DIMENSION },
+    });
+    expect(mockOllamaEmbed).not.toHaveBeenCalled();
+    expect(vector.length).toBe(EMBEDDING_DIMENSION);
+    expect(vector[0]).toBe(0.3);
+  });
+
+  it("should fall back to Ollama when resolveAIConfig resolves the claude provider (no embedding API)", async () => {
+    mockResolveAIConfig.mockResolvedValue({
+      provider: "claude",
+      model: "nomic-embed-text",
+    });
+    mockOllamaEmbed.mockResolvedValue({
+      embeddings: [new Array(EMBEDDING_DIMENSION).fill(0.4)],
+    });
+
+    const vector = await generateEmbedding("Python Data Engineer");
+
+    expect(mockOllamaEmbed).toHaveBeenCalledWith({
+      model: "nomic-embed-text",
+      input: "Python Data Engineer",
+    });
+    expect(mockEmbedContent).not.toHaveBeenCalled();
+    expect(vector.length).toBe(EMBEDDING_DIMENSION);
+  });
+
+  it("should throw if the provider returns a vector with length other than EMBEDDING_DIMENSION", async () => {
+    mockResolveAIConfig.mockResolvedValue({
+      provider: "ollama",
+      model: "nomic-embed-text",
+    });
+    mockOllamaEmbed.mockResolvedValue({
+      embeddings: [new Array(256).fill(0.5)],
     });
 
     await expect(generateEmbedding("Tailwind CSS")).rejects.toThrow(
-      "Expected USE embedding vector of size 512, received 256"
+      `Expected embedding vector of size ${EMBEDDING_DIMENSION}, received 256`,
+    );
+  });
+
+  it("should propagate provider errors (e.g. network/429) to the caller", async () => {
+    mockResolveAIConfig.mockResolvedValue({
+      provider: "ollama",
+      model: "nomic-embed-text",
+    });
+    mockOllamaEmbed.mockRejectedValueOnce(new Error("Ollama unreachable"));
+
+    await expect(generateEmbedding("React Native")).rejects.toThrow(
+      "Ollama unreachable",
     );
   });
 });

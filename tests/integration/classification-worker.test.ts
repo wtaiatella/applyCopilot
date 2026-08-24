@@ -21,6 +21,15 @@ jest.mock("@/lib/ai/circuit-breaker", () => ({
   withCircuitBreaker: jest.fn(),
 }));
 
+// Mock aiClient — resolveAIConfig is used to determine the provider passed into the
+// circuit breaker (per-capability-and-provider block scoping); a fixed "gemini" here keeps
+// the existing key-based mockImplementation assertions below stable.
+jest.mock("@/lib/ai/aiClient", () => ({
+  resolveAIConfig: jest
+    .fn()
+    .mockResolvedValue({ provider: "gemini", model: "test-model" }),
+}));
+
 // Mock Classification Service
 jest.mock("@/services/jobClassificationService", () => ({
   classifyJobListing: jest.fn(),
@@ -104,9 +113,9 @@ describe("Classification Worker — runClassificationWorker", () => {
     // Default: provider is healthy
     mockIsProviderBlocked.mockResolvedValue(false);
 
-    // Default: withCircuitBreaker passes through to the wrapped fn, regardless of key
+    // Default: withCircuitBreaker passes through to the wrapped fn, regardless of key/provider
     mockWithCircuitBreaker.mockImplementation(
-      (_key: string, fn: () => Promise<unknown>) => fn(),
+      (_key: string, _provider: string, fn: () => Promise<unknown>) => fn(),
     );
 
     // Default: classification returns a valid jobFacts payload
@@ -183,6 +192,7 @@ describe("Classification Worker — runClassificationWorker", () => {
     // Should call the classification service under the PARSING_PROVIDER_KEY breaker
     expect(mockWithCircuitBreaker).toHaveBeenCalledWith(
       PARSING_PROVIDER_KEY,
+      "gemini",
       expect.any(Function),
       expect.any(Number),
     );
@@ -196,6 +206,7 @@ describe("Classification Worker — runClassificationWorker", () => {
     // Should generate the mustHave-skill-list embedding under the EMBEDDING_PROVIDER_KEY breaker
     expect(mockWithCircuitBreaker).toHaveBeenCalledWith(
       EMBEDDING_PROVIDER_KEY,
+      "gemini",
       expect.any(Function),
       expect.any(Number),
     );
@@ -339,7 +350,7 @@ describe("Classification Worker — runClassificationWorker", () => {
     mockFindMany.mockResolvedValue([job]);
 
     mockWithCircuitBreaker.mockImplementation(
-      (key: string, fn: () => Promise<unknown>) => {
+      (key: string, _provider: string, fn: () => Promise<unknown>) => {
         if (key === EMBEDDING_PROVIDER_KEY) {
           return Promise.reject(new Error("Embedding provider unavailable"));
         }
@@ -373,7 +384,7 @@ describe("Classification Worker — runClassificationWorker", () => {
     mockFindMany.mockResolvedValue([job]);
 
     mockWithCircuitBreaker.mockImplementation(
-      (key: string, fn: () => Promise<unknown>) => {
+      (key: string, _provider: string, fn: () => Promise<unknown>) => {
         if (key === EMBEDDING_PROVIDER_KEY) {
           return Promise.reject(new Error("Embedding provider BLOCKED (429)"));
         }
@@ -424,7 +435,7 @@ describe("Classification Worker — runClassificationWorker", () => {
     // First job succeeds end-to-end, second job's parsing breaker rejects
     let callCount = 0;
     mockWithCircuitBreaker.mockImplementation(
-      (key: string, fn: () => Promise<unknown>) => {
+      (key: string, _provider: string, fn: () => Promise<unknown>) => {
         if (key === PARSING_PROVIDER_KEY) {
           callCount++;
           if (callCount === 2) {

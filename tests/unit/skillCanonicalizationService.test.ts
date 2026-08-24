@@ -31,12 +31,18 @@ jest.mock("@/lib/ai/vector-service", () => ({
 
 jest.mock("@/lib/ai/aiClient", () => ({
   generateJSON: jest.fn(),
+  resolveAIConfig: jest
+    .fn()
+    .mockResolvedValue({ provider: "gemini", model: "test-model" }),
 }));
 
 // withCircuitBreaker just invokes the wrapped fn directly — the circuit-breaker's own
-// behavior is covered by circuit-breaker.test.ts, not re-tested here.
+// behavior (including per-provider key scoping) is covered by circuit-breaker.test.ts, not
+// re-tested here.
 jest.mock("@/lib/ai/circuit-breaker", () => ({
-  withCircuitBreaker: jest.fn((_key: string, fn: () => unknown) => fn()),
+  withCircuitBreaker: jest.fn(
+    (_key: string, _provider: string, fn: () => unknown) => fn(),
+  ),
 }));
 
 jest.mock("@/lib/logging/logger", () => ({

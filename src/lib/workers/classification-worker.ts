@@ -1,6 +1,7 @@
 import { prisma } from "../db/prisma";
 import { logger } from "../logging/logger";
 import { isProviderBlocked, withCircuitBreaker } from "../ai/circuit-breaker";
+import { resolveAIConfig } from "../ai/aiClient";
 import {
   classifyJobListing,
   canonicalizeJobFacts,
@@ -115,12 +116,22 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
     `[ClassificationWorker] Config: batchSize=${batchSize}, maxAttempts=${maxAttempts}, cooldown=${cooldownMinutes}min`,
   );
 
-  // Step 2: Check if the provider is blocked
-  const blocked = await isProviderBlocked(PARSING_PROVIDER_KEY);
+  // Resolve the currently-configured provider for each capability once per run — the circuit
+  // breaker is scoped per (capability, provider) pair, not just per capability, so switching
+  // e.g. parsing from "gemini" to "gemma-26b" in admin gives that capability a fresh,
+  // unblocked state instead of inheriting the old provider's cooldown.
+  const { provider: parsingProvider } = await resolveAIConfig("parsing");
+  const { provider: embeddingProvider } = await resolveAIConfig("embedding");
+
+  // Step 2: Check if the (parsing capability, currently-configured provider) pair is blocked
+  const blocked = await isProviderBlocked(
+    PARSING_PROVIDER_KEY,
+    parsingProvider,
+  );
 
   if (blocked) {
     logger.warn(
-      `[ClassificationWorker] Parsing provider (${PARSING_PROVIDER_KEY}) is BLOCKED. Skipping this run.`,
+      `[ClassificationWorker] Parsing provider (${PARSING_PROVIDER_KEY}/${parsingProvider}) is BLOCKED. Skipping this run.`,
     );
     return { processed: 0, failed: 0, skippedBlocked: true };
   }
@@ -176,6 +187,7 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
       // LLM extraction — circuit breaker uses the configured cooldown
       const { jobFacts } = await withCircuitBreaker(
         PARSING_PROVIDER_KEY,
+        parsingProvider,
         () =>
           classifyJobListing({
             id: job.id,
@@ -218,6 +230,7 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
       // circuit breaker key from the parsing provider (FR-23).
       const embeddingVector = await withCircuitBreaker(
         EMBEDDING_PROVIDER_KEY,
+        embeddingProvider,
         () => generateEmbedding(parseResult.data.mustHave.join(" ")),
         cooldownMs,
       );

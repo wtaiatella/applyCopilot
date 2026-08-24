@@ -9,6 +9,9 @@ import { auth } from "@/lib/auth/auth";
 // Mock the AI client used by profileSyncService.extractProfileFacts (generateJSON, capability "profile")
 jest.mock("@/lib/ai/aiClient", () => ({
   generateJSON: jest.fn(),
+  resolveAIConfig: jest
+    .fn()
+    .mockResolvedValue({ provider: "gemini", model: "test-model" }),
 }));
 
 // Mock the vector service to avoid loading a real embedding provider in integration tests.

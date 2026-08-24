@@ -162,6 +162,11 @@ export default function LLMSettingsPanel({
       unconfigured.push("Claude (Default)");
     if (values.defaultProvider === "ollama" && !credentialStatus.ollama)
       unconfigured.push("Ollama (Default)");
+    // gemma-26b/gemma-31b share GEMINI_API_KEY with "gemini" — same credential check.
+    if (values.defaultProvider === "gemma-26b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 26B (Default)");
+    if (values.defaultProvider === "gemma-31b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 31B (Default)");
 
     if (values.parsingProvider === "gemini" && !credentialStatus.gemini)
       unconfigured.push("Gemini (Parsing)");
@@ -169,6 +174,10 @@ export default function LLMSettingsPanel({
       unconfigured.push("Claude (Parsing)");
     if (values.parsingProvider === "ollama" && !credentialStatus.ollama)
       unconfigured.push("Ollama (Parsing)");
+    if (values.parsingProvider === "gemma-26b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 26B (Parsing)");
+    if (values.parsingProvider === "gemma-31b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 31B (Parsing)");
 
     if (values.summariesProvider === "gemini" && !credentialStatus.gemini)
       unconfigured.push("Gemini (Summaries)");
@@ -176,6 +185,10 @@ export default function LLMSettingsPanel({
       unconfigured.push("Claude (Summaries)");
     if (values.summariesProvider === "ollama" && !credentialStatus.ollama)
       unconfigured.push("Ollama (Summaries)");
+    if (values.summariesProvider === "gemma-26b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 26B (Summaries)");
+    if (values.summariesProvider === "gemma-31b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 31B (Summaries)");
 
     if (values.profileProvider === "gemini" && !credentialStatus.gemini)
       unconfigured.push("Gemini (Profile)");
@@ -183,6 +196,10 @@ export default function LLMSettingsPanel({
       unconfigured.push("Claude (Profile)");
     if (values.profileProvider === "ollama" && !credentialStatus.ollama)
       unconfigured.push("Ollama (Profile)");
+    if (values.profileProvider === "gemma-26b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 26B (Profile)");
+    if (values.profileProvider === "gemma-31b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 31B (Profile)");
 
     if (values.embeddingProvider === "gemini" && !credentialStatus.gemini)
       unconfigured.push("Gemini (Embedding)");
@@ -227,6 +244,14 @@ export default function LLMSettingsPanel({
       badgeColor = isConfigured ? "success" : "error";
       tooltipText =
         "Requires CLAUDE_API_KEY from Anthropic Console to be added to environment variables.";
+    } else if (value === "gemma-26b" || value === "gemma-31b") {
+      // Gemma models are hosted on the same Gemini API — shares GEMINI_API_KEY, no separate
+      // credential. No embedding support (not offered on the embedding provider dropdown).
+      isConfigured = credentialStatus.gemini;
+      badgeText = isConfigured ? "✓ Configured" : "⚠️ API key not set";
+      badgeColor = isConfigured ? "success" : "warning";
+      tooltipText =
+        "Uses the same GEMINI_API_KEY as Gemini (Gemma models are served via the Gemini API). No embedding support.";
     }
 
     return (
@@ -256,6 +281,14 @@ export default function LLMSettingsPanel({
     { value: "ollama", label: getProviderLabel("ollama", "Ollama (Local)") },
     { value: "gemini", label: getProviderLabel("gemini", "Gemini") },
     { value: "claude", label: getProviderLabel("claude", "Claude") },
+    {
+      value: "gemma-26b",
+      label: getProviderLabel("gemma-26b", "Gemma 4 26B"),
+    },
+    {
+      value: "gemma-31b",
+      label: getProviderLabel("gemma-31b", "Gemma 4 31B"),
+    },
   ];
 
   // Claude has no embedding API — narrower option set than the other four provider dropdowns.

@@ -3,6 +3,7 @@ import { generateJSON } from "../lib/ai/aiClient";
 import { logger } from "../lib/logging/logger";
 import type { ProfileFacts } from "../lib/validation/profileFactsSchema";
 import { resolveCanonicalSkills } from "./skillCanonicalizationService";
+import { SkillKeySchema } from "../lib/validation/skillEmbeddingSchema";
 
 /**
  * Mirrors `ProfileFactsSchema`'s `.max(50)` cap on `skills`/`softSkills`
@@ -230,21 +231,34 @@ export async function extractProfileFacts(
  * through untouched so the caller's `ProfileFactsSchema.safeParse` still catches and rejects it
  * exactly as before this wiring existed (FR-22 behavior preserved).
  *
+ * Per-string length pre-check (fast-follow, 015 QA §7.0 finding): a candidate exceeding
+ * `ProfileFactsSchema`'s own per-item `.max(100)` (same bound as `SkillKeySchema`) is excluded
+ * from the batch sent to `resolveCanonicalSkills` — it can never resolve to a persistable
+ * canonical entry anyway, and `ProfileFactsSchema.safeParse` will reject the whole record
+ * downstream regardless, so there is no point spending an embedding/LLM call on it. The
+ * candidate is left as its original string in the output (falls through via `?? s` below),
+ * exactly as if canonicalization were never attempted for it.
+ *
  * @param profileFacts The raw (not yet schema-validated) extraction from `extractProfileFacts`.
  * @returns `profileFacts` with `skills`/`softSkills` rewritten to canonical display names.
  */
 export async function canonicalizeProfileFacts(
   profileFacts: ProfileFacts,
 ): Promise<ProfileFacts> {
+  const withinLength = (s: unknown): s is string =>
+    typeof s === "string" && SkillKeySchema.safeParse(s).success;
+
   const skillsMap = Array.isArray(profileFacts.skills)
     ? await resolveCanonicalSkills(
-        profileFacts.skills.slice(0, MAX_SKILLS_PER_FIELD),
+        profileFacts.skills.filter(withinLength).slice(0, MAX_SKILLS_PER_FIELD),
         "HARD",
       )
     : null;
   const softSkillsMap = Array.isArray(profileFacts.softSkills)
     ? await resolveCanonicalSkills(
-        profileFacts.softSkills.slice(0, MAX_SKILLS_PER_FIELD),
+        profileFacts.softSkills
+          .filter(withinLength)
+          .slice(0, MAX_SKILLS_PER_FIELD),
         "SOFT",
       )
     : null;

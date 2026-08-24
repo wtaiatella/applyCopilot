@@ -2,6 +2,7 @@ import { generateJSON } from "../lib/ai/aiClient";
 import { logger } from "../lib/logging/logger";
 import type { JobFacts } from "../lib/validation/jobFactsSchema";
 import { resolveCanonicalSkills } from "./skillCanonicalizationService";
+import { SkillKeySchema } from "../lib/validation/skillEmbeddingSchema";
 
 /**
  * Mirrors `JobFactsSchema`'s `.max(50)` cap on `mustHave`/`niceToHave`/
@@ -81,26 +82,42 @@ export async function classifyJobListing(
  * together (single `resolveCanonicalSkills` call, both `kind: HARD`) so a skill repeated
  * across both lists dedupes to one embedding/LLM call (spectech.md Implementation Notes).
  *
+ * Per-string length pre-check (fast-follow, 015 QA §7.0 finding): a candidate exceeding
+ * `JobFactsSchema`'s own per-item `.max(100)` (same bound as `SkillKeySchema`) is excluded from
+ * the batch sent to `resolveCanonicalSkills` — untrusted scraped job-posting text is the highest-
+ * volume, least-trusted source of oversized/garbled extraction, and an oversized candidate can
+ * never resolve to a persistable canonical entry anyway; `JobFactsSchema.safeParse` will reject
+ * the whole record downstream regardless, so there is no point spending an embedding/LLM call on
+ * it (up to 150 candidates per job across mustHave+niceToHave+softSkills). The candidate is left
+ * as its original string in the output (falls through via `?? s` below).
+ *
  * @param jobFacts The raw (not yet schema-validated) extraction from `classifyJobListing`.
  * @returns `jobFacts` with `mustHave`/`niceToHave`/`softSkills` rewritten to canonical names.
  */
 export async function canonicalizeJobFacts(
   jobFacts: JobFacts,
 ): Promise<JobFacts> {
+  const withinLength = (s: unknown): s is string =>
+    typeof s === "string" && SkillKeySchema.safeParse(s).success;
+
   const hardSkillsValid =
     Array.isArray(jobFacts.mustHave) && Array.isArray(jobFacts.niceToHave);
   const hardMap = hardSkillsValid
     ? await resolveCanonicalSkills(
         [
-          ...jobFacts.mustHave.slice(0, MAX_SKILLS_PER_FIELD),
-          ...jobFacts.niceToHave.slice(0, MAX_SKILLS_PER_FIELD),
+          ...jobFacts.mustHave
+            .filter(withinLength)
+            .slice(0, MAX_SKILLS_PER_FIELD),
+          ...jobFacts.niceToHave
+            .filter(withinLength)
+            .slice(0, MAX_SKILLS_PER_FIELD),
         ],
         "HARD",
       )
     : null;
   const softMap = Array.isArray(jobFacts.softSkills)
     ? await resolveCanonicalSkills(
-        jobFacts.softSkills.slice(0, MAX_SKILLS_PER_FIELD),
+        jobFacts.softSkills.filter(withinLength).slice(0, MAX_SKILLS_PER_FIELD),
         "SOFT",
       )
     : null;

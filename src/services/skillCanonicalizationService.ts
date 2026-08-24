@@ -14,6 +14,11 @@ import {
  * `parsing`/`profile` (spectech.md ADR "new ChatCapability value"). */
 const SKILLALIAS_PROVIDER_KEY = "AI_PROVIDER_SKILLALIAS";
 
+/** Circuit-breaker key for the embedding call in `resolveOne` — same key used by
+ * `classification-worker.ts`'s embedding call, so a failing/blocked embedding provider is
+ * isolated consistently across every call site (fast-follow, 015 QA §7.0 finding). */
+const EMBEDDING_PROVIDER_KEY = "AI_PROVIDER_EMBEDDING";
+
 /** `SystemConfig` key for the alias-confirmation similarity threshold (0-100 int, default 60). */
 const SIMILARITY_THRESHOLD_KEY = "SKILL_ALIAS_SIMILARITY_THRESHOLD";
 const DEFAULT_SIMILARITY_THRESHOLD = 60;
@@ -226,8 +231,13 @@ async function resolveOne(
     return exactAlias.skillRef.displayName;
   }
 
-  // Step 2: embedding + pgvector top-1 cosine search, scoped to `kind`.
-  const embedding = await generateEmbedding(normalized);
+  // Step 2: embedding + pgvector top-1 cosine search, scoped to `kind`. Circuit-breaker wrapped
+  // (fast-follow, 015 QA §7.0 finding) — matches every other embedding call site in the codebase
+  // (e.g. classification-worker.ts), so a failing/blocked embedding provider is isolated the
+  // same way here instead of being hammered from this write path with no cooldown.
+  const embedding = await withCircuitBreaker(EMBEDDING_PROVIDER_KEY, () =>
+    generateEmbedding(normalized),
+  );
   const vectorStr = `[${embedding.join(",")}]`;
   const top1 = await findTop1Match(vectorStr, kind);
 

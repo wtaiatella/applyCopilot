@@ -7,6 +7,7 @@ import {
   isProfileEmpty,
   consolidateProfileToText,
   extractProfileFacts,
+  canonicalizeProfileFacts,
 } from "@/services/profileSyncService";
 import { generateEmbedding } from "@/lib/ai/vector-service";
 import { ProfileFactsSchema } from "@/lib/validation/profileFactsSchema";
@@ -55,8 +56,13 @@ export async function POST(request: Request) {
       );
     }
 
+    // 5b. Canonicalize skills/softSkills against the write-path vocabulary (T007, FR-08) —
+    // before validation, so persisted ProfileFacts always carry canonical displayName values.
+    const canonicalizedProfileFacts =
+      await canonicalizeProfileFacts(rawProfileFacts);
+
     // 6. Validate the extracted shape (FR-22: invalid -> 400, no DB write, prior data preserved)
-    const parseResult = ProfileFactsSchema.safeParse(rawProfileFacts);
+    const parseResult = ProfileFactsSchema.safeParse(canonicalizedProfileFacts);
     if (!parseResult.success) {
       logger.error(
         "ProfileFacts failed Zod validation. No DB write (prior data preserved).",

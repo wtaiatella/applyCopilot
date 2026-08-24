@@ -17,7 +17,12 @@ interface AIResolution {
 }
 
 /** Capabilities routed through the chat/JSON LLM path (generateText/generateJSON). */
-type ChatCapability = "parsing" | "summaries" | "default" | "profile";
+type ChatCapability =
+  | "parsing"
+  | "summaries"
+  | "default"
+  | "profile"
+  | "skillAlias";
 
 export async function resolveAIConfig(
   capability: ChatCapability | "embedding",
@@ -33,9 +38,11 @@ export async function resolveAIConfig(
           ? "AI_PROVIDER_SUMMARIES"
           : capability === "profile"
             ? "AI_PROVIDER_PROFILE"
-            : capability === "embedding"
-              ? "AI_PROVIDER_EMBEDDING"
-              : "AI_PROVIDER_DEFAULT";
+            : capability === "skillAlias"
+              ? "AI_PROVIDER_SKILLALIAS"
+              : capability === "embedding"
+                ? "AI_PROVIDER_EMBEDDING"
+                : "AI_PROVIDER_DEFAULT";
 
     // Try fetching from database SystemConfig
     const dbProvider = await prisma.systemConfig.findUnique({
@@ -66,9 +73,11 @@ export async function resolveAIConfig(
           ? process.env.AI_PROVIDER_SUMMARIES
           : capability === "profile"
             ? process.env.AI_PROVIDER_PROFILE
-            : capability === "embedding"
-              ? process.env.AI_PROVIDER_EMBEDDING
-              : process.env.AI_PROVIDER_DEFAULT) || "ollama";
+            : capability === "skillAlias"
+              ? process.env.AI_PROVIDER_SKILLALIAS
+              : capability === "embedding"
+                ? process.env.AI_PROVIDER_EMBEDDING
+                : process.env.AI_PROVIDER_DEFAULT) || "ollama";
   }
 
   const provider =

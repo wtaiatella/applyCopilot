@@ -19,3 +19,9 @@ export const llmConfigSchema = z.object({
 });
 
 export type LLMConfigSchemaInput = z.infer<typeof llmConfigSchema>;
+
+export const skillThresholdSchema = z.object({
+  threshold: z.number().int().min(0).max(100),
+});
+
+export type SkillThresholdSchemaInput = z.infer<typeof skillThresholdSchema>;

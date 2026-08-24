@@ -49,6 +49,18 @@ describe("LLMSettingsPanel Unit Tests", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // LLMSettingsPanel now also fetches the skill-matching threshold on mount
+    // (T020) — default this to a resolved response so tests unrelated to that
+    // feature don't have to stub it individually.
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url === "/api/admin/skill-threshold") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ threshold: 60 }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
   });
 
   it("should render collapsed panel and show contents on expand", async () => {
@@ -76,9 +88,17 @@ describe("LLMSettingsPanel Unit Tests", () => {
   });
 
   it("should submit the form with new values when Save is clicked", async () => {
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ success: true }),
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url === "/api/admin/skill-threshold") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ threshold: 60 }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
     });
 
     render(
@@ -105,8 +125,10 @@ describe("LLMSettingsPanel Unit Tests", () => {
     });
 
     // Check request body matches initialValues if unchanged
-    const callArgs = (global.fetch as jest.Mock).mock.calls[0];
-    const fetchBody = JSON.parse(callArgs[1].body);
+    const callArgs = (global.fetch as jest.Mock).mock.calls.find(
+      (call) => call[0] === "/api/admin/llm-config",
+    );
+    const fetchBody = JSON.parse(callArgs![1].body);
     expect(fetchBody).toEqual(mockConfig);
 
     expect(message.success).toHaveBeenCalledWith(

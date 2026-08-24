@@ -24,6 +24,7 @@ jest.mock("@/lib/ai/circuit-breaker", () => ({
 // Mock Classification Service
 jest.mock("@/services/jobClassificationService", () => ({
   classifyJobListing: jest.fn(),
+  canonicalizeJobFacts: jest.fn(),
 }));
 
 // Mock Vector Service
@@ -36,7 +37,10 @@ import {
   isProviderBlocked,
   withCircuitBreaker,
 } from "@/lib/ai/circuit-breaker";
-import { classifyJobListing } from "@/services/jobClassificationService";
+import {
+  classifyJobListing,
+  canonicalizeJobFacts,
+} from "@/services/jobClassificationService";
 import { generateEmbedding } from "@/lib/ai/vector-service";
 
 const mockFindMany = prisma.jobListing.findMany as jest.Mock;
@@ -45,6 +49,7 @@ const mockExecuteRaw = prisma.$executeRaw as unknown as jest.Mock;
 const mockIsProviderBlocked = isProviderBlocked as jest.Mock;
 const mockWithCircuitBreaker = withCircuitBreaker as jest.Mock;
 const mockClassifyJobListing = classifyJobListing as jest.Mock;
+const mockCanonicalizeJobFacts = canonicalizeJobFacts as jest.Mock;
 const mockGenerateEmbedding = generateEmbedding as jest.Mock;
 
 const PARSING_PROVIDER_KEY = "AI_PROVIDER_PARSING";
@@ -106,6 +111,13 @@ describe("Classification Worker — runClassificationWorker", () => {
 
     // Default: classification returns a valid jobFacts payload
     mockClassifyJobListing.mockResolvedValue({ jobFacts: makeValidJobFacts() });
+
+    // Default: canonicalization (T008) is an identity pass-through — its own state-machine
+    // branches are covered by skillCanonicalizationService.test.ts (T009); here we only assert
+    // it is wired into the write path at the right point (before JobFactsSchema validation).
+    mockCanonicalizeJobFacts.mockImplementation((jobFacts: unknown) =>
+      Promise.resolve(jobFacts),
+    );
 
     // Default: embedding generation returns a vector
     mockGenerateEmbedding.mockResolvedValue(new Array(768).fill(0.5));
@@ -446,5 +458,89 @@ describe("Classification Worker — runClassificationWorker", () => {
         }),
       }),
     );
+  });
+
+  // ──────────────────────────────────────────────────
+  // T008/T011: canonicalization write-path wiring (FR-08)
+  //
+  // The 4-step canonicalization state machine itself (exact hit / alias-confirm / new-row /
+  // kind isolation) is unit-tested directly against `skillCanonicalizationService` in
+  // tests/unit/skillCanonicalizationService.test.ts (T009) — `jobClassificationService` is
+  // mocked at the module boundary here (matching this file's existing convention), so these
+  // tests assert only that the worker (a) calls `canonicalizeJobFacts` with the raw extraction
+  // before `JobFactsSchema` validation/persistence, and (b) persists whatever canonical result
+  // it returns — the wiring contract, not the resolution algorithm.
+  // ──────────────────────────────────────────────────
+
+  it("canonicalizes jobFacts before JobFactsSchema validation, and persists the canonicalized result", async () => {
+    const job = makeMockJob();
+    mockFindMany.mockResolvedValue([job]);
+    mockClassifyJobListing.mockResolvedValue({
+      jobFacts: makeValidJobFacts({ mustHave: ["Postgres", "TypeScript"] }),
+    });
+    mockCanonicalizeJobFacts.mockResolvedValue(
+      makeValidJobFacts({ mustHave: ["PostgreSQL", "TypeScript"] }),
+    );
+
+    const result = await runClassificationWorker();
+
+    // Canonicalization is called with the raw (pre-validation) extraction.
+    expect(mockCanonicalizeJobFacts).toHaveBeenCalledWith(
+      expect.objectContaining({ mustHave: ["Postgres", "TypeScript"] }),
+    );
+
+    // The persisted jobFacts reflect the canonicalized result, not the raw extraction.
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(1);
+    const persistedJson = (mockExecuteRaw.mock.calls[0] as unknown[])
+      .flat()
+      .find(
+        (part): part is string =>
+          typeof part === "string" && part.includes("mustHave"),
+      );
+    expect(persistedJson).toContain("PostgreSQL");
+    expect(persistedJson).not.toContain("Postgres,");
+
+    expect(result.processed).toBe(1);
+  });
+
+  it("double-call dedup: two spellings of the same technology across two jobs both persist the same canonical mustHave value", async () => {
+    const jobA = makeMockJob({ id: "job-A" });
+    const jobB = makeMockJob({ id: "job-B" });
+    mockFindMany.mockResolvedValue([jobA, jobB]);
+
+    mockClassifyJobListing
+      .mockResolvedValueOnce({
+        jobFacts: makeValidJobFacts({ mustHave: ["Postgres"] }),
+      })
+      .mockResolvedValueOnce({
+        jobFacts: makeValidJobFacts({ mustHave: ["PostgreSQL"] }),
+      });
+
+    // Simulates `resolveCanonicalSkills` converging both spellings on the same canonical
+    // displayName (the alias-confirm mechanism itself is covered by T009's exact-alias-hit
+    // and above-threshold-confirmed unit tests).
+    mockCanonicalizeJobFacts.mockImplementation(
+      (jobFacts: { mustHave: string[] }) =>
+        Promise.resolve({
+          ...jobFacts,
+          mustHave: jobFacts.mustHave.map(() => "PostgreSQL"),
+        }),
+    );
+
+    await runClassificationWorker();
+
+    expect(mockCanonicalizeJobFacts).toHaveBeenCalledTimes(2);
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(2);
+
+    const persistedPayloads = mockExecuteRaw.mock.calls.map((call) =>
+      (call as unknown[])
+        .flat()
+        .find(
+          (part): part is string =>
+            typeof part === "string" && part.includes("mustHave"),
+        ),
+    );
+    expect(persistedPayloads[0]).toContain("PostgreSQL");
+    expect(persistedPayloads[1]).toContain("PostgreSQL");
   });
 });

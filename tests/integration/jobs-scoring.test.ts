@@ -30,6 +30,39 @@ function makeVector(bias: number): string {
   return `[${vec.join(",")}]`;
 }
 
+// Phase 4 (US2) fixup: Stage-2's mustHave/niceToHave scoring now reads `SkillEmbedding` rows
+// via max-cosine (skillVectorLookupService) instead of case-insensitive string overlap. This
+// suite seeds fixtures with raw `$executeRawUnsafe` writes that never go through the
+// canonicalization write path, so "React"/"TypeScript"/"Node.js" have no cached vector by
+// default and correctly-but-differently graceful-degrade to a 0 item score (spectech.md's
+// documented degrade rule) instead of the >=skillMatchThreshold match the string-overlap era
+// produced. Seed canonical `SkillEmbedding` rows here for exactly the skills this suite expects
+// to resolve as "matched" — every fixture vector is a constant-fill vector, so any two of them
+// are cosine-identical (1.0) regardless of the fill value, mirroring the pattern already used
+// by tests/integration/profile-sync.test.ts's default 0.123-fill "react"/"node.js" rows. "Rust"
+// and "Go" (Low Match Job's mustHave) are deliberately left unseeded so they keep degrading to
+// 0, preserving this suite's great-vs-low composite-score ordering assertions.
+// `ON CONFLICT DO NOTHING` makes this idempotent against those pre-existing shared rows and safe
+// to re-run — no per-test cleanup, matching the codebase's existing convention of treating common
+// canonical skill vocabulary as a persistent, self-healing fixture rather than a per-test one.
+function makeSkillVector(): string {
+  return `[${new Array(EMBEDDING_DIMENSION).fill(0.5).join(",")}]`;
+}
+
+async function seedSkillEmbedding(
+  skill: string,
+  displayName: string,
+): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "SkillEmbedding" (skill, "displayName", kind, embedding)
+     VALUES ($1, $2, 'HARD'::"SkillKind", $3::vector)
+     ON CONFLICT (skill) DO NOTHING`,
+    skill,
+    displayName,
+    makeSkillVector(),
+  );
+}
+
 describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034)", () => {
   const mockAuth = auth as unknown as jest.Mock;
   const testEmail = `jobs-scoring-${Date.now()}@example.com`;
@@ -60,6 +93,12 @@ describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034
   };
 
   beforeAll(async () => {
+    await Promise.all([
+      seedSkillEmbedding("react", "React"),
+      seedSkillEmbedding("typescript", "TypeScript"),
+      seedSkillEmbedding("node.js", "Node.js"),
+    ]);
+
     const user = await prisma.user.create({
       data: {
         email: testEmail,

@@ -104,22 +104,6 @@ export function checkDisqualification(
 }
 
 /**
- * Case-insensitive overlap ratio (0-100) between a job's skill list (mustHave/niceToHave) and
- * the profile's skill list. Returns 100 when `target` is empty — nothing was requested, so
- * there's nothing to be missing.
- */
-export function computeOverlap(
-  target: string[],
-  profileSkills: string[],
-): number {
-  if (target.length === 0) return 100;
-
-  const profileSet = new Set(profileSkills.map((s) => s.toLowerCase()));
-  const matched = target.filter((skill) => profileSet.has(skill.toLowerCase()));
-  return Math.round((matched.length / target.length) * 100);
-}
-
-/**
  * Deterministic ordinal + years-ratio blend comparing the job's required seniority/years
  * against the candidate's own *declared preferences* (`UserPreferences.seniority`/
  * `totalYearsExperience` — not `profileFacts`, per `match-score-architecture.md` §3.5's
@@ -237,14 +221,36 @@ export interface MatchScoreResult {
 }
 
 /**
- * Stage-2 composite score for one Stage-1 candidate: weighted sum of must-have similarity
- * (0.45, from Stage 1's SQL), nice-to-have overlap (0.15), seniority fit (0.20), and tri-state
- * preferences fit (0.20) — unless `checkDisqualification` short-circuits to a hard 0.
+ * Stage-2 composite score for one Stage-1 candidate: weighted sum of must-have max-cosine
+ * (0.45), nice-to-have max-cosine (0.15), soft-skills max-cosine (0.15), seniority fit (0.15),
+ * and tri-state preferences fit (0.10) — unless `checkDisqualification` short-circuits to a
+ * hard 0 (spectech.md FR-18/FR-19, rebalancing Spec 014's 0.45/0.15/0.20/0.20).
+ *
+ * `mustHaveScore`/`niceToHaveScore`/`softSkillsScore` and their per-item `*ItemScores` maps are
+ * pre-fetched by the caller (`skillVectorLookupService.scoreMaxCosine`/`getMaxCosineScores`,
+ * called from `GET /api/jobs/route.ts`) and passed in as plain data — this function stays
+ * pure/no-I/O per its file-header contract (FR-12: no string-intersection comparison exists in
+ * parallel to the vector comparison; `computeOverlap` has been removed as a scoring source).
+ * `softSkillsScore` is computed the same way but isolated from the hard-skill vector space via
+ * `SkillKind` (FR-03, FR-11) — the caller fetches `SOFT`-kind vectors separately.
+ *
+ * `skillMatchThreshold` (0-100) is `SystemConfig.SKILL_ALIAS_SIMILARITY_THRESHOLD` (FR-13),
+ * read by the caller and passed in — FR-17 reuses this exact same threshold (not a second,
+ * independent value) for the `matchedSkills`/`missingSkills`/`niceToHaveMatched` classification.
  */
 export function computeMatchScore(
-  job: { jobFacts: JobFacts; mustHaveSimilarity: number },
+  job: {
+    jobFacts: JobFacts;
+    mustHaveScore: number;
+    mustHaveItemScores: Record<string, number>;
+    niceToHaveScore: number;
+    niceToHaveItemScores: Record<string, number>;
+    softSkillsScore: number;
+    softSkillsItemScores: Record<string, number>;
+  },
   profile: { profileFacts: ProfileFacts },
   preferences: UserPreferencesDTO,
+  skillMatchThreshold: number,
 ): MatchScoreResult {
   const elimination = checkDisqualification(job.jobFacts, preferences);
   if (elimination.disqualified) {
@@ -258,11 +264,9 @@ export function computeMatchScore(
     };
   }
 
-  const mustHaveScore = job.mustHaveSimilarity;
-  const niceToHaveScore = computeOverlap(
-    job.jobFacts.niceToHave,
-    profile.profileFacts.skills,
-  );
+  const mustHaveScore = job.mustHaveScore;
+  const niceToHaveScore = job.niceToHaveScore;
+  const softSkillsScore = job.softSkillsScore;
   const seniorityScore = computeSeniorityFit(
     job.jobFacts.seniority,
     preferences.seniority,
@@ -274,20 +278,21 @@ export function computeMatchScore(
   const score =
     mustHaveScore * 0.45 +
     niceToHaveScore * 0.15 +
-    seniorityScore * 0.2 +
-    preferencesScore * 0.2;
+    softSkillsScore * 0.15 +
+    seniorityScore * 0.15 +
+    preferencesScore * 0.1;
 
-  const profileSkillsLower = new Set(
-    profile.profileFacts.skills.map((s) => s.toLowerCase()),
-  );
-  const matchedSkills = job.jobFacts.mustHave.filter((skill) =>
-    profileSkillsLower.has(skill.toLowerCase()),
+  // FR-17: an item counts as "matched" when its max-cosine similarity (already computed
+  // per-item by the caller) reaches the shared FR-13 threshold, and "missing" otherwise —
+  // replaces the former case-insensitive exact-string overlap check.
+  const matchedSkills = job.jobFacts.mustHave.filter(
+    (skill) => (job.mustHaveItemScores[skill] ?? 0) >= skillMatchThreshold,
   );
   const missingSkills = job.jobFacts.mustHave.filter(
-    (skill) => !profileSkillsLower.has(skill.toLowerCase()),
+    (skill) => (job.mustHaveItemScores[skill] ?? 0) < skillMatchThreshold,
   );
-  const niceToHaveMatched = job.jobFacts.niceToHave.filter((skill) =>
-    profileSkillsLower.has(skill.toLowerCase()),
+  const niceToHaveMatched = job.jobFacts.niceToHave.filter(
+    (skill) => (job.niceToHaveItemScores[skill] ?? 0) >= skillMatchThreshold,
   );
 
   return {

@@ -1,7 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { Form, Select, Button, Collapse, Tag, Tooltip, App } from "antd";
+import { useEffect, useState } from "react";
+import {
+  Form,
+  Select,
+  Button,
+  Collapse,
+  Tag,
+  Tooltip,
+  App,
+  InputNumber,
+} from "antd";
 import { AlertCircle } from "lucide-react";
 import { LLMProviderConfig, CredentialStatus } from "@/types/admin";
 
@@ -23,6 +32,55 @@ export default function LLMSettingsPanel({
   >(blockedStatus || {});
   const [resetting, setResetting] = useState<Record<string, boolean>>({});
   const [form] = Form.useForm();
+
+  const [skillThreshold, setSkillThreshold] = useState<number | null>(null);
+  const [skillThresholdLoading, setSkillThresholdLoading] = useState(false);
+  const [skillThresholdForm] = Form.useForm();
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/skill-threshold")
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        if (cancelled) return;
+        setSkillThreshold(data.threshold);
+        skillThresholdForm.setFieldsValue({ threshold: data.threshold });
+      })
+      .catch(() => {
+        // Non-fatal: leave the field blank rather than block the rest of the panel.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const saveSkillThreshold = async (values: { threshold: number }) => {
+    setSkillThresholdLoading(true);
+    try {
+      const response = await fetch("/api/admin/skill-threshold", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threshold: values.threshold }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save skill matching threshold");
+      }
+
+      const data = await response.json();
+      setSkillThreshold(data.threshold);
+      message.success("Skill matching threshold saved successfully!");
+    } catch (error: unknown) {
+      const errMsg =
+        error instanceof Error
+          ? error.message
+          : "Failed to save skill matching threshold";
+      message.error(errMsg);
+    } finally {
+      setSkillThresholdLoading(false);
+    }
+  };
 
   const handleResetBlock = async (capabilityKey: string, dbKey: string) => {
     setResetting((prev) => ({ ...prev, [capabilityKey]: true }));
@@ -286,6 +344,58 @@ export default function LLMSettingsPanel({
               className="w-full sm:w-auto font-semibold px-8"
             >
               Save Configuration
+            </Button>
+          </Form.Item>
+        </Form>
+      ),
+    },
+    {
+      key: "skill-matching",
+      label: (
+        <span className="text-white font-semibold text-base">
+          Skill Matching
+        </span>
+      ),
+      children: (
+        <Form
+          form={skillThresholdForm}
+          layout="vertical"
+          onFinish={saveSkillThreshold}
+          requiredMark={false}
+          className="pt-2"
+        >
+          <Form.Item
+            name="threshold"
+            label={
+              <span className="text-zinc-300">
+                Alias-Confirmation Similarity Threshold (%)
+              </span>
+            }
+            tooltip="Minimum cosine similarity (0-100) required before a new skill is offered to the LLM as a possible alias of an existing canonical skill. Changing this only affects skills extracted after the change — existing rows are not reprocessed."
+            className="mb-2"
+            rules={[
+              { required: true, message: "Threshold is required" },
+              {
+                type: "number",
+                min: 0,
+                max: 100,
+                message: "Must be between 0 and 100",
+              },
+            ]}
+          >
+            <InputNumber min={0} max={100} size="large" className="w-full" />
+          </Form.Item>
+
+          <Form.Item className="mb-0 mt-6">
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={skillThresholdLoading}
+              disabled={skillThreshold === null}
+              size="large"
+              className="w-full sm:w-auto font-semibold px-8"
+            >
+              Save Threshold
             </Button>
           </Form.Item>
         </Form>

@@ -1,6 +1,17 @@
 import { generateJSON } from "../lib/ai/aiClient";
 import { logger } from "../lib/logging/logger";
 import type { JobFacts } from "../lib/validation/jobFactsSchema";
+import { resolveCanonicalSkills } from "./skillCanonicalizationService";
+
+/**
+ * Mirrors `JobFactsSchema`'s `.max(50)` cap on `mustHave`/`niceToHave`/
+ * `softSkills` (see jobFactsSchema.ts). Enforced here too so an oversized
+ * raw LLM extraction can't trigger unbounded sequential canonicalization
+ * calls before the schema validation ever runs (security fix, Phase 3
+ * rework) — most severe on the untrusted, unattended job-classification
+ * worker path (batches of up to 20 jobs/run).
+ */
+const MAX_SKILLS_PER_FIELD = 50;
 
 /** The subset of JobListing fields needed by the classification service. */
 export interface JobListingInput {
@@ -55,6 +66,57 @@ export async function classifyJobListing(
   );
 
   return { jobFacts };
+}
+
+/**
+ * Write-path canonicalization wiring (T008, spectech.md FR-08): rewrites `jobFacts.mustHave` +
+ * `jobFacts.niceToHave` (`kind: HARD`) and `jobFacts.softSkills` (`kind: SOFT`) to their
+ * resolved canonical `displayName` via `resolveCanonicalSkills`, before the caller
+ * (classification worker) runs `JobFactsSchema` validation and persists.
+ *
+ * Defensive: `resolveCanonicalSkills` is only called when a field is already the expected
+ * array-of-strings shape — a malformed LLM extraction is passed through untouched so the
+ * caller's `JobFactsSchema.safeParse` still catches and rejects it exactly as before this
+ * wiring existed (FR-22 behavior preserved). `mustHave` and `niceToHave` are canonicalized
+ * together (single `resolveCanonicalSkills` call, both `kind: HARD`) so a skill repeated
+ * across both lists dedupes to one embedding/LLM call (spectech.md Implementation Notes).
+ *
+ * @param jobFacts The raw (not yet schema-validated) extraction from `classifyJobListing`.
+ * @returns `jobFacts` with `mustHave`/`niceToHave`/`softSkills` rewritten to canonical names.
+ */
+export async function canonicalizeJobFacts(
+  jobFacts: JobFacts,
+): Promise<JobFacts> {
+  const hardSkillsValid =
+    Array.isArray(jobFacts.mustHave) && Array.isArray(jobFacts.niceToHave);
+  const hardMap = hardSkillsValid
+    ? await resolveCanonicalSkills(
+        [
+          ...jobFacts.mustHave.slice(0, MAX_SKILLS_PER_FIELD),
+          ...jobFacts.niceToHave.slice(0, MAX_SKILLS_PER_FIELD),
+        ],
+        "HARD",
+      )
+    : null;
+  const softMap = Array.isArray(jobFacts.softSkills)
+    ? await resolveCanonicalSkills(
+        jobFacts.softSkills.slice(0, MAX_SKILLS_PER_FIELD),
+        "SOFT",
+      )
+    : null;
+
+  return {
+    ...jobFacts,
+    mustHave: hardMap
+      ? jobFacts.mustHave.map((s) => hardMap.get(s) ?? s)
+      : jobFacts.mustHave,
+    niceToHave: hardMap
+      ? jobFacts.niceToHave.map((s) => hardMap.get(s) ?? s)
+      : jobFacts.niceToHave,
+    softSkills: softMap
+      ? jobFacts.softSkills.map((s) => softMap.get(s) ?? s)
+      : jobFacts.softSkills,
+  };
 }
 
 /**

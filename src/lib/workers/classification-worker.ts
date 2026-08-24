@@ -1,7 +1,10 @@
 import { prisma } from "../db/prisma";
 import { logger } from "../logging/logger";
 import { isProviderBlocked, withCircuitBreaker } from "../ai/circuit-breaker";
-import { classifyJobListing } from "../../services/jobClassificationService";
+import {
+  classifyJobListing,
+  canonicalizeJobFacts,
+} from "../../services/jobClassificationService";
 import { generateEmbedding } from "../ai/vector-service";
 import { JobFactsSchema } from "../validation/jobFactsSchema";
 
@@ -183,10 +186,15 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
         cooldownMs,
       );
 
+      // Canonicalize mustHave/niceToHave/softSkills against the write-path vocabulary
+      // (T008, FR-08) — before validation, so persisted JobFacts always carry canonical
+      // displayName values.
+      const canonicalizedJobFacts = await canonicalizeJobFacts(jobFacts);
+
       // Validate the extracted JobFacts shape — schema-invalid fails immediately,
       // with no attempts-loop retry (FR-22: a malformed structure won't self-correct
       // by retrying the same prompt).
-      const parseResult = JobFactsSchema.safeParse(jobFacts);
+      const parseResult = JobFactsSchema.safeParse(canonicalizedJobFacts);
       if (!parseResult.success) {
         const validationError = parseResult.error.message;
         logger.error(

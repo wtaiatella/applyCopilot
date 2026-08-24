@@ -2,6 +2,15 @@ import { prisma } from "../lib/db/prisma";
 import { generateJSON } from "../lib/ai/aiClient";
 import { logger } from "../lib/logging/logger";
 import type { ProfileFacts } from "../lib/validation/profileFactsSchema";
+import { resolveCanonicalSkills } from "./skillCanonicalizationService";
+
+/**
+ * Mirrors `ProfileFactsSchema`'s `.max(50)` cap on `skills`/`softSkills`
+ * (see profileFactsSchema.ts). Enforced here too so an oversized raw LLM
+ * extraction can't trigger unbounded sequential canonicalization calls
+ * before the schema validation ever runs (security fix, Phase 3 rework).
+ */
+const MAX_SKILLS_PER_FIELD = 50;
 
 export interface ProfileData {
   id: string;
@@ -208,6 +217,47 @@ export async function extractProfileFacts(
     });
     throw error;
   }
+}
+
+/**
+ * Write-path canonicalization wiring (T007, spectech.md FR-08): rewrites `profileFacts.skills`
+ * (`kind: HARD`) and `profileFacts.softSkills` (`kind: SOFT`) to their resolved canonical
+ * `displayName` via `resolveCanonicalSkills`, before the caller (`POST /api/profile/sync`)
+ * runs `ProfileFactsSchema` validation and persists.
+ *
+ * Defensive: `resolveCanonicalSkills` is only called when the field is already the expected
+ * array-of-strings shape — a malformed LLM extraction (e.g. `skills` not an array) is passed
+ * through untouched so the caller's `ProfileFactsSchema.safeParse` still catches and rejects it
+ * exactly as before this wiring existed (FR-22 behavior preserved).
+ *
+ * @param profileFacts The raw (not yet schema-validated) extraction from `extractProfileFacts`.
+ * @returns `profileFacts` with `skills`/`softSkills` rewritten to canonical display names.
+ */
+export async function canonicalizeProfileFacts(
+  profileFacts: ProfileFacts,
+): Promise<ProfileFacts> {
+  const skillsMap = Array.isArray(profileFacts.skills)
+    ? await resolveCanonicalSkills(
+        profileFacts.skills.slice(0, MAX_SKILLS_PER_FIELD),
+        "HARD",
+      )
+    : null;
+  const softSkillsMap = Array.isArray(profileFacts.softSkills)
+    ? await resolveCanonicalSkills(
+        profileFacts.softSkills.slice(0, MAX_SKILLS_PER_FIELD),
+        "SOFT",
+      )
+    : null;
+
+  return {
+    ...profileFacts,
+    skills: skillsMap
+      ? profileFacts.skills.map((s) => skillsMap.get(s) ?? s)
+      : profileFacts.skills,
+    softSkills: softSkillsMap
+      ? profileFacts.softSkills.map((s) => softSkillsMap.get(s) ?? s)
+      : profileFacts.softSkills,
+  };
 }
 
 /**

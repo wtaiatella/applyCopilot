@@ -206,7 +206,9 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     const priorProfile = await prisma.userProfile.findUnique({
       where: { userId: testUserId },
     });
-    const priorVectorResult = await prisma.$queryRaw<Array<{ embedding: string }>>`
+    const priorVectorResult = await prisma.$queryRaw<
+      Array<{ embedding: string }>
+    >`
       SELECT embedding::text FROM "UserProfile" WHERE "userId" = ${testUserId}
     `;
     const priorVector = priorVectorResult[0]?.embedding;
@@ -231,7 +233,9 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     const afterProfile = await prisma.userProfile.findUnique({
       where: { userId: testUserId },
     });
-    const afterVectorResult = await prisma.$queryRaw<Array<{ embedding: string }>>`
+    const afterVectorResult = await prisma.$queryRaw<
+      Array<{ embedding: string }>
+    >`
       SELECT embedding::text FROM "UserProfile" WHERE "userId" = ${testUserId}
     `;
 
@@ -252,7 +256,9 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     const priorProfile = await prisma.userProfile.findUnique({
       where: { userId: testUserId },
     });
-    const priorVectorResult = await prisma.$queryRaw<Array<{ embedding: string }>>`
+    const priorVectorResult = await prisma.$queryRaw<
+      Array<{ embedding: string }>
+    >`
       SELECT embedding::text FROM "UserProfile" WHERE "userId" = ${testUserId}
     `;
     const priorVector = priorVectorResult[0]?.embedding;
@@ -273,12 +279,123 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     const afterProfile = await prisma.userProfile.findUnique({
       where: { userId: testUserId },
     });
-    const afterVectorResult = await prisma.$queryRaw<Array<{ embedding: string }>>`
+    const afterVectorResult = await prisma.$queryRaw<
+      Array<{ embedding: string }>
+    >`
       SELECT embedding::text FROM "UserProfile" WHERE "userId" = ${testUserId}
     `;
 
     expect(afterProfile?.profileFacts).toEqual(priorProfile?.profileFacts);
     expect(afterProfile?.embeddingSyncedAt).toEqual(priorSyncedAt);
     expect(afterVectorResult[0]?.embedding).toEqual(priorVector);
+  });
+
+  // ──────────────────────────────────────────────────
+  // T007/T010: write-path canonicalization wiring (FR-08) — US-1 Independent Test
+  //
+  // The 4-step canonicalization state machine itself (exact hit / above-threshold
+  // LLM-confirm / kind isolation) is unit-tested directly against
+  // `skillCanonicalizationService` in tests/unit/skillCanonicalizationService.test.ts (T009).
+  // This exercises the real write path end-to-end: two sync calls with two different
+  // spellings of the same (unique-to-this-test) technology must converge on one
+  // `SkillEmbedding` row, with the second call recorded as a `SkillAlias` instead of a
+  // second canonical row.
+  // ──────────────────────────────────────────────────
+
+  describe("canonicalization write-path (double-call dedup)", () => {
+    const uniqueTech = `Zorbtech${Date.now()}`;
+    const uniqueTechAltSpelling = `${uniqueTech}-Alt`;
+    const normalizedTech = uniqueTech.toLowerCase();
+    const normalizedAlt = uniqueTechAltSpelling.toLowerCase();
+
+    // A one-hot pseudo-embedding isolated to a single dimension derived from this test run's
+    // timestamp — cosine-orthogonal (similarity 0) to any pre-existing SkillEmbedding row (e.g.
+    // "react"/"communication" seeded by earlier tests/runs, which use the shared 0.123-constant
+    // default vector), but cosine-identical (similarity 100) between the two spellings under
+    // test here — deterministically driving the top-1-above-threshold alias-confirm branch for
+    // the alternate spelling only, without disturbing any other test's exact-hit/new-canonical
+    // assertions.
+    const isolatedDim = Number(uniqueTech.replace(/\D/g, "")) % 768;
+    function pseudoVector(dim: number): number[] {
+      const v = new Array(768).fill(0);
+      v[dim] = 1;
+      return v;
+    }
+
+    afterEach(async () => {
+      // Clean up the vocabulary rows this describe block creates so repeated test runs
+      // don't accumulate unbounded `SkillEmbedding`/`SkillAlias` rows.
+      await prisma.skillAlias
+        .deleteMany({ where: { alias: normalizedAlt } })
+        .catch(() => {});
+      await prisma.skillEmbedding
+        .deleteMany({ where: { skill: normalizedTech } })
+        .catch(() => {});
+    });
+
+    it('calling sync with "Postgres" then "PostgreSQL"-style alternate spellings dedups to one SkillEmbedding + one SkillAlias', async () => {
+      mockGenerateEmbedding.mockImplementation((text: string) => {
+        if (text === normalizedTech || text === normalizedAlt) {
+          return Promise.resolve(pseudoVector(isolatedDim));
+        }
+        return Promise.resolve(new Array(768).fill(0.123));
+      });
+
+      mockGenerateJSON.mockImplementation(
+        (
+          _prompt: string,
+          capability: string,
+        ): Promise<Record<string, unknown>> => {
+          if (capability === "skillAlias") {
+            return Promise.resolve({ sameTechnology: true });
+          }
+          return Promise.resolve(makeValidProfileFacts());
+        },
+      );
+
+      // First call: genuinely new skill -> new canonical SkillEmbedding row.
+      mockGenerateJSON.mockImplementationOnce(() =>
+        Promise.resolve(makeValidProfileFacts({ skills: [uniqueTech] })),
+      );
+      const firstRes = await syncProfileHandler(makeRequest());
+      expect(firstRes.status).toBe(200);
+
+      const afterFirst = await prisma.skillEmbedding.findUnique({
+        where: { skill: normalizedTech },
+      });
+      expect(afterFirst).not.toBeNull();
+      expect(afterFirst?.displayName).toBe(uniqueTech);
+
+      // Second call: differently-spelled alternate of the same technology -> should resolve
+      // via alias-confirmation, writing a SkillAlias (not a second SkillEmbedding row).
+      mockGenerateJSON.mockImplementationOnce(() =>
+        Promise.resolve(
+          makeValidProfileFacts({ skills: [uniqueTechAltSpelling] }),
+        ),
+      );
+      const secondRes = await syncProfileHandler(makeRequest());
+      expect(secondRes.status).toBe(200);
+
+      const secondData = await secondRes.json();
+      // The persisted/returned skill was rewritten to the first call's canonical displayName.
+      expect(secondData.profileFacts.skills).toContain(uniqueTech);
+
+      const alias = await prisma.skillAlias.findUnique({
+        where: { alias: normalizedAlt },
+      });
+      expect(alias).not.toBeNull();
+      expect(alias?.skill).toBe(normalizedTech);
+
+      // No second SkillEmbedding row was created for the alternate spelling.
+      const embeddingForAlt = await prisma.skillEmbedding.findUnique({
+        where: { skill: normalizedAlt },
+      });
+      expect(embeddingForAlt).toBeNull();
+
+      const embeddingCountForTech = await prisma.skillEmbedding.count({
+        where: { skill: normalizedTech },
+      });
+      expect(embeddingCountForTech).toBe(1);
+    });
   });
 });

@@ -3,6 +3,12 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { getJobsWithSimilarity } from "@/lib/db/job-query";
 import { computeMatchScore } from "@/services/matchScorer";
+import {
+  fetchSkillVectors,
+  scoreMaxCosine,
+} from "@/services/skillVectorLookupService";
+import { getSimilarityThreshold } from "@/services/skillCanonicalizationService";
+import { SkillKind } from "@prisma/client";
 import type { ProfileFacts } from "@/lib/validation/profileFactsSchema";
 import type { JobFacts } from "@/lib/validation/jobFactsSchema";
 import type { UserPreferencesDTO } from "@/types/profile";
@@ -144,15 +150,68 @@ export async function GET(request: Request) {
       profileEmbedding !== null && profileRow?.profileFacts != null;
     const profileFacts = profileRow?.profileFacts ?? null;
 
+    // Batch-fetch the Stage-1 pool's distinct mustHave/niceToHave/softSkills/profile-skill
+    // vocabulary in ONE query per kind (spectech.md Technical Decisions), same call-site pattern
+    // already used for `mustHaveSimilarity` — per-job max-cosine scoring below then runs in-memory
+    // (no I/O) via `scoreMaxCosine`, never one query per job. HARD and SOFT skills are fetched
+    // separately (kind-partitioned reads, mirroring the write path — 015 rework, FR-03 isolation)
+    // so a skill string canonicalized under one kind can never be silently reused for the other.
+    let hardSkillVectors = new Map<string, number[]>();
+    let softSkillVectors = new Map<string, number[]>();
+    let skillMatchThreshold = 60; // FR-13 default; overwritten below when actually scoring
+    if (canScore && profileFacts) {
+      skillMatchThreshold = await getSimilarityThreshold();
+      const distinctHardSkillTargets = new Set<string>(profileFacts.skills);
+      const distinctSoftSkillTargets = new Set<string>(profileFacts.softSkills);
+      for (const job of stage1Jobs) {
+        if (job.jobFacts) {
+          for (const skill of job.jobFacts.mustHave) {
+            distinctHardSkillTargets.add(skill);
+          }
+          for (const skill of job.jobFacts.niceToHave) {
+            distinctHardSkillTargets.add(skill);
+          }
+          for (const skill of job.jobFacts.softSkills) {
+            distinctSoftSkillTargets.add(skill);
+          }
+        }
+      }
+      [hardSkillVectors, softSkillVectors] = await Promise.all([
+        fetchSkillVectors(Array.from(distinctHardSkillTargets), SkillKind.HARD),
+        fetchSkillVectors(Array.from(distinctSoftSkillTargets), SkillKind.SOFT),
+      ]);
+    }
+
     let scoredJobs: ScoredJob[] = stage1Jobs.map((job) => {
       if (canScore && job.jobFacts && job.mustHaveSimilarity !== null) {
+        const mustHave = scoreMaxCosine(
+          job.jobFacts.mustHave,
+          (profileFacts as ProfileFacts).skills,
+          hardSkillVectors,
+        );
+        const niceToHave = scoreMaxCosine(
+          job.jobFacts.niceToHave,
+          (profileFacts as ProfileFacts).skills,
+          hardSkillVectors,
+        );
+        const softSkills = scoreMaxCosine(
+          job.jobFacts.softSkills,
+          (profileFacts as ProfileFacts).softSkills,
+          softSkillVectors,
+        );
         const result = computeMatchScore(
           {
             jobFacts: job.jobFacts,
-            mustHaveSimilarity: job.mustHaveSimilarity,
+            mustHaveScore: mustHave.score,
+            mustHaveItemScores: mustHave.itemScores,
+            niceToHaveScore: niceToHave.score,
+            niceToHaveItemScores: niceToHave.itemScores,
+            softSkillsScore: softSkills.score,
+            softSkillsItemScores: softSkills.itemScores,
           },
           { profileFacts: profileFacts as ProfileFacts },
           preferences,
+          skillMatchThreshold,
         );
         return {
           ...job,

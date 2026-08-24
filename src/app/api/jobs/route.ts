@@ -6,8 +6,8 @@ import { computeMatchScore } from "@/services/matchScorer";
 import {
   fetchSkillVectors,
   scoreMaxCosine,
+  getMatchDisplayThreshold,
 } from "@/services/skillVectorLookupService";
-import { getSimilarityThreshold } from "@/services/skillCanonicalizationService";
 import { SkillKind } from "@prisma/client";
 import type { ProfileFacts } from "@/lib/validation/profileFactsSchema";
 import type { JobFacts } from "@/lib/validation/jobFactsSchema";
@@ -158,9 +158,9 @@ export async function GET(request: Request) {
     // so a skill string canonicalized under one kind can never be silently reused for the other.
     let hardSkillVectors = new Map<string, number[]>();
     let softSkillVectors = new Map<string, number[]>();
-    let skillMatchThreshold = 60; // FR-13 default; overwritten below when actually scoring
+    let skillMatchThreshold = 72; // FR-17 display-classification default; overwritten below
     if (canScore && profileFacts) {
-      skillMatchThreshold = await getSimilarityThreshold();
+      skillMatchThreshold = await getMatchDisplayThreshold();
       const distinctHardSkillTargets = new Set<string>(profileFacts.skills);
       const distinctSoftSkillTargets = new Set<string>(profileFacts.softSkills);
       for (const job of stage1Jobs) {

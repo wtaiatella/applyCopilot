@@ -1,5 +1,46 @@
 import { type SkillKind } from "@prisma/client";
 import { prisma } from "../lib/db/prisma";
+import { logger } from "../lib/logging/logger";
+
+/** `SystemConfig` key for the matched/missing display-classification threshold — separate from
+ * `skillCanonicalizationService.getSimilarityThreshold()`'s alias-confirmation gate (default 60).
+ * That threshold is recall-oriented on purpose: a false-positive top-1 candidate there only costs
+ * one extra LLM call, which then makes the real yes/no decision. This threshold has no LLM
+ * backstop — it directly decides what the user sees as "matched" vs "missing" — so it needs a
+ * higher bar. Calibrated empirically (2026-08-24, real `gemini-embedding-001` vectors already in
+ * this system's `SkillEmbedding` table) against known-should-not-match pairs (e.g. `java`↔
+ * `javascript` 67.1%, `php`↔`python` 68.1%, `mysql`↔`postgresql` 70.4% — all short skill-name
+ * embeddings sitting inside the anisotropy floor described in the 015 findings doc) vs.
+ * known-should-match pairs (`next.js`↔`react.js` 73.8%). No single threshold cleanly separates
+ * every case in this space (`rest apis`↔`restful api` — literally the same concept, worded
+ * differently — measured only 68.2%, below several of the false-positive pairs above; that gap is
+ * a write-path alias-merge miss, not something this read-path threshold can fix), so 72 is a
+ * pragmatic default clearing the worst false positives while keeping the one strong true-positive
+ * pair in the calibration set — not a value with a provably-correct margin. Tune via the admin
+ * panel against real production data as it accumulates.
+ */
+const MATCH_DISPLAY_THRESHOLD_KEY = "SKILL_MATCH_DISPLAY_THRESHOLD";
+const DEFAULT_MATCH_DISPLAY_THRESHOLD = 72;
+
+/**
+ * Reads the matched/missing display-classification threshold (FR-17) from `SystemConfig`.
+ * Consumed by the caller (`GET /api/jobs/route.ts`) and passed into
+ * `matchScorer.computeMatchScore`'s `skillMatchThreshold` param — kept separate from
+ * `skillCanonicalizationService.getSimilarityThreshold()` (see the module-level doc above for
+ * why these must not be the same value).
+ */
+export async function getMatchDisplayThreshold(): Promise<number> {
+  try {
+    const config = await prisma.systemConfig.findUnique({
+      where: { key: MATCH_DISPLAY_THRESHOLD_KEY },
+    });
+    const parsed = config?.value ? parseInt(config.value, 10) : NaN;
+    return Number.isFinite(parsed) ? parsed : DEFAULT_MATCH_DISPLAY_THRESHOLD;
+  } catch (error) {
+    logger.warn("skill_match_display_threshold_lookup_failed", { error });
+    return DEFAULT_MATCH_DISPLAY_THRESHOLD;
+  }
+}
 
 /**
  * Read-path batched vector fetch + `max-cosine` scoring (spectech.md FR-10/FR-11/FR-12,

@@ -37,6 +37,13 @@ export default function LLMSettingsPanel({
   const [skillThresholdLoading, setSkillThresholdLoading] = useState(false);
   const [skillThresholdForm] = Form.useForm();
 
+  const [matchDisplayThreshold, setMatchDisplayThreshold] = useState<
+    number | null
+  >(null);
+  const [matchDisplayThresholdLoading, setMatchDisplayThresholdLoading] =
+    useState(false);
+  const [matchDisplayThresholdForm] = Form.useForm();
+
   useEffect(() => {
     let cancelled = false;
     fetch("/api/admin/skill-threshold")
@@ -45,6 +52,26 @@ export default function LLMSettingsPanel({
         if (cancelled) return;
         setSkillThreshold(data.threshold);
         skillThresholdForm.setFieldsValue({ threshold: data.threshold });
+      })
+      .catch(() => {
+        // Non-fatal: leave the field blank rather than block the rest of the panel.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/skill-match-threshold")
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        if (cancelled) return;
+        setMatchDisplayThreshold(data.threshold);
+        matchDisplayThresholdForm.setFieldsValue({
+          threshold: data.threshold,
+        });
       })
       .catch(() => {
         // Non-fatal: leave the field blank rather than block the rest of the panel.
@@ -79,6 +106,33 @@ export default function LLMSettingsPanel({
       message.error(errMsg);
     } finally {
       setSkillThresholdLoading(false);
+    }
+  };
+
+  const saveMatchDisplayThreshold = async (values: { threshold: number }) => {
+    setMatchDisplayThresholdLoading(true);
+    try {
+      const response = await fetch("/api/admin/skill-match-threshold", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threshold: values.threshold }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save match display threshold");
+      }
+
+      const data = await response.json();
+      setMatchDisplayThreshold(data.threshold);
+      message.success("Match display threshold saved successfully!");
+    } catch (error: unknown) {
+      const errMsg =
+        error instanceof Error
+          ? error.message
+          : "Failed to save match display threshold";
+      message.error(errMsg);
+    } finally {
+      setMatchDisplayThresholdLoading(false);
     }
   };
 
@@ -425,6 +479,58 @@ export default function LLMSettingsPanel({
               htmlType="submit"
               loading={skillThresholdLoading}
               disabled={skillThreshold === null}
+              size="large"
+              className="w-full sm:w-auto font-semibold px-8"
+            >
+              Save Threshold
+            </Button>
+          </Form.Item>
+        </Form>
+      ),
+    },
+    {
+      key: "skill-match-display",
+      label: (
+        <span className="text-white font-semibold text-base">
+          Match Display Threshold
+        </span>
+      ),
+      children: (
+        <Form
+          form={matchDisplayThresholdForm}
+          layout="vertical"
+          onFinish={saveMatchDisplayThreshold}
+          requiredMark={false}
+          className="pt-2"
+        >
+          <Form.Item
+            name="threshold"
+            label={
+              <span className="text-zinc-300">
+                Matched/Missing Display Threshold (%)
+              </span>
+            }
+            tooltip="Minimum cosine similarity (0-100) required for a job's must-have/nice-to-have skill to show as 'matched' rather than 'missing' on a candidate's match card. Separate from the Alias-Confirmation threshold above — this one has no LLM double-check, so it needs a higher bar (default 72; calibrated 2026-08-24 against real production embeddings, see skillVectorLookupService.ts for the full rationale). Changing this only affects future score computations, not stored SkillEmbedding/SkillAlias rows."
+            className="mb-2"
+            rules={[
+              { required: true, message: "Threshold is required" },
+              {
+                type: "number",
+                min: 0,
+                max: 100,
+                message: "Must be between 0 and 100",
+              },
+            ]}
+          >
+            <InputNumber min={0} max={100} size="large" className="w-full" />
+          </Form.Item>
+
+          <Form.Item className="mb-0 mt-6">
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={matchDisplayThresholdLoading}
+              disabled={matchDisplayThreshold === null}
               size="large"
               className="w-full sm:w-auto font-semibold px-8"
             >

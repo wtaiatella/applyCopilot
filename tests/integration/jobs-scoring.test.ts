@@ -33,18 +33,24 @@ function makeVector(bias: number): string {
 // Phase 4 (US2) fixup: Stage-2's mustHave/niceToHave scoring now reads `SkillEmbedding` rows
 // via max-cosine (skillVectorLookupService) instead of case-insensitive string overlap. This
 // suite seeds fixtures with raw `$executeRawUnsafe` writes that never go through the
-// canonicalization write path, so "React"/"TypeScript"/"Node.js" have no cached vector by
-// default and correctly-but-differently graceful-degrade to a 0 item score (spectech.md's
-// documented degrade rule) instead of the >=skillMatchThreshold match the string-overlap era
-// produced. Seed canonical `SkillEmbedding` rows here for exactly the skills this suite expects
-// to resolve as "matched" — every fixture vector is a constant-fill vector, so any two of them
-// are cosine-identical (1.0) regardless of the fill value, mirroring the pattern already used
-// by tests/integration/profile-sync.test.ts's default 0.123-fill "react"/"node.js" rows. "Rust"
-// and "Go" (Low Match Job's mustHave) are deliberately left unseeded so they keep degrading to
-// 0, preserving this suite's great-vs-low composite-score ordering assertions.
-// `ON CONFLICT DO NOTHING` makes this idempotent against those pre-existing shared rows and safe
-// to re-run — no per-test cleanup, matching the codebase's existing convention of treating common
-// canonical skill vocabulary as a persistent, self-healing fixture rather than a per-test one.
+// canonicalization write path, so a not-yet-cached skill correctly-but-differently
+// graceful-degrades to a 0 item score (spectech.md's documented degrade rule) instead of the
+// >=skillMatchThreshold match the string-overlap era produced. Seed canonical `SkillEmbedding`
+// rows here for exactly the skills this suite expects to resolve as "matched" — every fixture
+// vector is a constant-fill vector, so any two of them are cosine-identical (1.0) regardless of
+// the fill value. "Rust" and "Go" (Low Match Job's mustHave) are deliberately left unseeded so
+// they keep degrading to 0, preserving this suite's great-vs-low composite-score ordering
+// assertions.
+//
+// IMPORTANT — fixture skill names are deliberately namespaced (`-TestFixture` suffix), NEVER the
+// bare real-world names ("React", "TypeScript", "Node.js"): this table is the shared,
+// production-facing canonical skill vocabulary — a bare-name row seeded with a fake constant
+// vector here would collide with (and silently corrupt) the real embedding for that skill
+// system-wide, since `SkillEmbedding.skill` is a single global key with no test/prod separation.
+// This happened for real during 015's own development (react/node.js/typescript rows were
+// contaminated by this exact pattern before the namespacing fix) — keep the suffix.
+// `ON CONFLICT DO NOTHING` makes this idempotent and safe to re-run — no per-test cleanup, since
+// the namespaced rows can never be mistaken for real canonical vocabulary.
 function makeSkillVector(): string {
   return `[${new Array(EMBEDDING_DIMENSION).fill(0.5).join(",")}]`;
 }
@@ -71,7 +77,11 @@ describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034
   const createdJobIds: string[] = [];
 
   const profileFacts = {
-    skills: ["React", "TypeScript", "Node.js"],
+    skills: [
+      "React-TestFixture",
+      "TypeScript-TestFixture",
+      "Node.js-TestFixture",
+    ],
     softSkills: [],
     seniority: "mid",
     totalYearsExperience: 4,
@@ -94,9 +104,9 @@ describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034
 
   beforeAll(async () => {
     await Promise.all([
-      seedSkillEmbedding("react", "React"),
-      seedSkillEmbedding("typescript", "TypeScript"),
-      seedSkillEmbedding("node.js", "Node.js"),
+      seedSkillEmbedding("react-testfixture", "React-TestFixture"),
+      seedSkillEmbedding("typescript-testfixture", "TypeScript-TestFixture"),
+      seedSkillEmbedding("node.js-testfixture", "Node.js-TestFixture"),
     ]);
 
     const user = await prisma.user.create({
@@ -134,7 +144,7 @@ describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034
         title: "Great Match Job",
         jobFacts: {
           ...baseJobFacts,
-          mustHave: ["React", "TypeScript"],
+          mustHave: ["React-TestFixture", "TypeScript-TestFixture"],
           seniority: "mid",
           yearsExperienceMin: 3,
         },
@@ -145,7 +155,11 @@ describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034
         title: "Disqualified Despite Great Skills",
         jobFacts: {
           ...baseJobFacts,
-          mustHave: ["React", "TypeScript", "Node.js"],
+          mustHave: [
+            "React-TestFixture",
+            "TypeScript-TestFixture",
+            "Node.js-TestFixture",
+          ],
           seniority: "mid",
           yearsExperienceMin: 3,
           requiresUsWorkAuth: true,
@@ -222,7 +236,10 @@ describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034
 
     const great = jobs.find((j) => j.title === "Great Match Job")!;
     expect(great.matchScore).not.toBeNull();
-    expect([...great.matchedSkills].sort()).toEqual(["React", "TypeScript"]);
+    expect([...great.matchedSkills].sort()).toEqual([
+      "React-TestFixture",
+      "TypeScript-TestFixture",
+    ]);
     expect(great.missingSkills).toEqual([]);
     expect(great.disqualified).toBe(false);
   });

@@ -62,10 +62,18 @@ function isWithinKeyLength(value: string): boolean {
 
 /**
  * Reads the alias-confirmation similarity threshold from `SystemConfig` (FR-13, default 60).
- * Exported so the read path (`GET /api/jobs/route.ts`, via `matchScorer.computeMatchScore`)
- * can reuse the exact same threshold for FR-17's matched/missing classification, per spectech.md
- * PRD Clarification #3 ("matched/missing reuses the same configurable threshold as the alias
- * gate, not a second independent value").
+ *
+ * Recall-oriented on purpose (§7 findings doc — see `match-score-precision-findings.md`): a
+ * generous/low value here only means paying one extra LLM call for a top-1 candidate that turns
+ * out not to be the same technology; the LLM confirmation is the real yes/no decision.
+ *
+ * NOT reused for FR-17's matched/missing display classification — that's a separate, higher-bar
+ * threshold (`skillVectorLookupService.getMatchDisplayThreshold()`, default 72) with no LLM
+ * backstop of its own. Empirical calibration (2026-08-24) showed the two gates need different
+ * values: 60 correctly triggers LLM review for near-duplicate candidates, but is inside the
+ * anisotropy noise floor for genuinely-different short skill names (`java`↔`javascript` measured
+ * 67.1% cosine) — fine when an LLM double-checks, wrong when shown directly to the user as
+ * "matched" with nothing double-checking it.
  */
 export async function getSimilarityThreshold(): Promise<number> {
   try {

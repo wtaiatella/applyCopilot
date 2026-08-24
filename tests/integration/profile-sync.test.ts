@@ -34,8 +34,14 @@ function makeValidProfileFacts(
   overrides: Partial<Record<string, unknown>> = {},
 ) {
   return {
-    skills: ["React", "Node.js"],
-    softSkills: ["Communication"],
+    // Deliberately namespaced (`-TestFixture`), never bare real-world skill names: this
+    // canonicalization write path persists into the shared, production-facing `SkillEmbedding`
+    // table (keyed globally by lowercased skill string, no test/prod separation) via the mocked
+    // `generateEmbedding` below — a bare "React"/"Node.js"/"Communication" row seeded with that
+    // fake vector would collide with (and silently corrupt) the real embedding for that skill
+    // system-wide. This happened for real during 015's development before this fix.
+    skills: ["React-TestFixture", "Node.js-TestFixture"],
+    softSkills: ["Communication-TestFixture"],
     seniority: "senior",
     totalYearsExperience: 5,
     domains: ["fintech"],
@@ -140,7 +146,9 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     expect(updatedProfile?.embeddingSyncedAt).not.toBeNull();
 
     // Verify the embedding vector was generated from the skills list (not the full text)
-    expect(mockGenerateEmbedding).toHaveBeenCalledWith("React Node.js");
+    expect(mockGenerateEmbedding).toHaveBeenCalledWith(
+      "React-TestFixture Node.js-TestFixture",
+    );
 
     // Verify embedding vector exists in DB by querying directly (since Prisma unsupported fails to return it via findUnique)
     const rawResult = await prisma.$queryRaw<Array<{ embedding: string }>>`

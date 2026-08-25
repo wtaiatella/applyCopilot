@@ -182,7 +182,7 @@ Requirements:
 
     // Fetch the updated skills list to return
     const updatedSkills = await prisma.skill.findMany({
-      where: { profileId: profile.id },
+      where: { profileId: profile.id, isArchived: false },
     });
 
     const responseData = updatedSkills.map((s) => ({

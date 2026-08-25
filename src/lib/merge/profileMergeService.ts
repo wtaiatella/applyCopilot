@@ -1,16 +1,15 @@
 import { prisma } from "../db/prisma";
 import { logger } from "../logging/logger";
-import { 
-  BasicDataDTO, 
-  ExperienceDTO, 
-  EducationDTO, 
+import { reconcileSkillMutation } from "../db/cvBulletMutations";
+import {
+  BasicDataDTO,
+  ExperienceDTO,
+  EducationDTO,
   ProjectDTO,
-  SkillDTO, 
-  ProficiencyLevel, 
-  BulletType 
+  SkillDTO,
+  ProficiencyLevel,
+  BulletType,
 } from "../../types/profile";
-
-
 
 export class ProfileMergeService {
   /**
@@ -39,11 +38,14 @@ export class ProfileMergeService {
    *  - Otherwise → create a new ProfileSummary marked as active, and deactivate
    *    all other summaries so there is always exactly one active summary after import
    */
-  static async mergeBasicData(profileId: string, incoming: Partial<BasicDataDTO>): Promise<void> {
+  static async mergeBasicData(
+    profileId: string,
+    incoming: Partial<BasicDataDTO>,
+  ): Promise<void> {
     logger.info(`Merging basic data for profile: ${profileId}`);
-    
+
     const updateData: Record<string, string | null> = {};
-    
+
     if (incoming.firstName) updateData.firstName = incoming.firstName;
     if (incoming.lastName) updateData.lastName = incoming.lastName;
     if (incoming.phone) updateData.phone = incoming.phone;
@@ -62,11 +64,13 @@ export class ProfileMergeService {
       });
 
       const duplicate = existingSummaries.find(
-        (s) => this.normalizeText(s.content) === normalizedContent
+        (s) => this.normalizeText(s.content) === normalizedContent,
       );
 
       if (!duplicate) {
-        logger.info(`CV import: creating ProfileSummary entry from imported title/summary for profile ${profileId}`);
+        logger.info(
+          `CV import: creating ProfileSummary entry from imported title/summary for profile ${profileId}`,
+        );
 
         // Deactivate all existing summaries so this import becomes the active one
         if (existingSummaries.length > 0) {
@@ -89,7 +93,9 @@ export class ProfileMergeService {
         });
       } else if (!duplicate.isActive) {
         // Summary already exists but was not active — activate it and deactivate others
-        logger.info(`CV import: re-activating existing ProfileSummary ${duplicate.id} for profile ${profileId}`);
+        logger.info(
+          `CV import: re-activating existing ProfileSummary ${duplicate.id} for profile ${profileId}`,
+        );
         await prisma.profileSummary.updateMany({
           where: { profileId },
           data: { isActive: false },
@@ -120,7 +126,10 @@ export class ProfileMergeService {
   /**
    * Merge experiences list
    */
-  static async mergeExperiences(profileId: string, incoming: Partial<ExperienceDTO>[]): Promise<void> {
+  static async mergeExperiences(
+    profileId: string,
+    incoming: Partial<ExperienceDTO>[],
+  ): Promise<void> {
     logger.info(`Merging experiences for profile: ${profileId}`);
 
     for (const incExp of incoming) {
@@ -138,10 +147,12 @@ export class ProfileMergeService {
 
       // Match by normalized company only
       const exactMatch = existingExps.find(
-        (e) => this.normalizeText(e.company) === normCompany
+        (e) => this.normalizeText(e.company) === normCompany,
       );
 
-      const startDate = incExp.startDate ? new Date(incExp.startDate) : new Date();
+      const startDate = incExp.startDate
+        ? new Date(incExp.startDate)
+        : new Date();
       const endDate = incExp.endDate ? new Date(incExp.endDate) : null;
       const current = incExp.current ?? false;
 
@@ -150,7 +161,10 @@ export class ProfileMergeService {
         const mergedContext = [
           ...exactMatch.freeFormContext,
           ...(incExp.freeFormContext ?? []).filter(
-            (c) => !exactMatch.freeFormContext.some((e) => this.normalizeText(e) === this.normalizeText(c))
+            (c) =>
+              !exactMatch.freeFormContext.some(
+                (e) => this.normalizeText(e) === this.normalizeText(c),
+              ),
           ),
         ];
 
@@ -158,8 +172,10 @@ export class ProfileMergeService {
           where: { id: exactMatch.id },
           data: {
             startDate: incExp.startDate ? startDate : exactMatch.startDate,
-            endDate: incExp.endDate !== undefined ? endDate : exactMatch.endDate,
-            current: incExp.current !== undefined ? current : exactMatch.current,
+            endDate:
+              incExp.endDate !== undefined ? endDate : exactMatch.endDate,
+            current:
+              incExp.current !== undefined ? current : exactMatch.current,
             freeFormContext: mergedContext,
           },
         });
@@ -184,7 +200,7 @@ export class ProfileMergeService {
                 where: { id },
                 data: { isArchived },
               });
-            }
+            },
           );
         }
       } else {
@@ -223,7 +239,10 @@ export class ProfileMergeService {
    * The AI fallback that inferred projects from work experiences was removed;
    * users can generate project suggestions manually via the profile page.
    */
-  static async mergeProjects(profileId: string, incoming: Partial<ProjectDTO>[]): Promise<void> {
+  static async mergeProjects(
+    profileId: string,
+    incoming: Partial<ProjectDTO>[],
+  ): Promise<void> {
     logger.info(`Merging projects for profile: ${profileId}`);
 
     for (const incProj of incoming) {
@@ -236,7 +255,9 @@ export class ProfileMergeService {
         include: { bullets: true },
       });
 
-      const match = existingProjs.find((p) => this.normalizeText(p.name) === normName);
+      const match = existingProjs.find(
+        (p) => this.normalizeText(p.name) === normName,
+      );
 
       const startDate = incProj.startDate ? new Date(incProj.startDate) : null;
       const endDate = incProj.endDate ? new Date(incProj.endDate) : null;
@@ -245,12 +266,17 @@ export class ProfileMergeService {
 
       if (match) {
         // Merge technologies (union arrays)
-        const combinedTech = Array.from(new Set([...match.technologies, ...technologies]));
+        const combinedTech = Array.from(
+          new Set([...match.technologies, ...technologies]),
+        );
 
         const mergedProjContext = [
           ...match.freeFormContext,
           ...(incProj.freeFormContext ?? []).filter(
-            (c) => !match.freeFormContext.some((e) => this.normalizeText(e) === this.normalizeText(c))
+            (c) =>
+              !match.freeFormContext.some(
+                (e) => this.normalizeText(e) === this.normalizeText(c),
+              ),
           ),
         ];
 
@@ -279,7 +305,7 @@ export class ProfileMergeService {
                 where: { id },
                 data: { isArchived },
               });
-            }
+            },
           );
         }
       } else {
@@ -314,7 +340,10 @@ export class ProfileMergeService {
   /**
    * Merge education list
    */
-  static async mergeEducation(profileId: string, incoming: Partial<EducationDTO>[]): Promise<void> {
+  static async mergeEducation(
+    profileId: string,
+    incoming: Partial<EducationDTO>[],
+  ): Promise<void> {
     logger.info(`Merging education for profile: ${profileId}`);
 
     for (const incEd of incoming) {
@@ -329,10 +358,14 @@ export class ProfileMergeService {
       });
 
       const match = existingEds.find(
-        (e) => this.normalizeText(e.institution) === normInst && this.normalizeText(e.degree) === normDeg
+        (e) =>
+          this.normalizeText(e.institution) === normInst &&
+          this.normalizeText(e.degree) === normDeg,
       );
 
-      const startDate = incEd.startDate ? new Date(incEd.startDate) : new Date();
+      const startDate = incEd.startDate
+        ? new Date(incEd.startDate)
+        : new Date();
       const endDate = incEd.endDate ? new Date(incEd.endDate) : null;
       const current = incEd.current ?? false;
       const hideEndDate = incEd.hideEndDate ?? false;
@@ -343,7 +376,10 @@ export class ProfileMergeService {
         const mergedEdContext = [
           ...match.freeFormContext,
           ...(incEd.freeFormContext ?? []).filter(
-            (c) => !match.freeFormContext.some((e) => this.normalizeText(e) === this.normalizeText(c))
+            (c) =>
+              !match.freeFormContext.some(
+                (e) => this.normalizeText(e) === this.normalizeText(c),
+              ),
           ),
         ];
 
@@ -354,7 +390,8 @@ export class ProfileMergeService {
             startDate: incEd.startDate ? startDate : match.startDate,
             endDate: incEd.endDate !== undefined ? endDate : match.endDate,
             current: incEd.current !== undefined ? current : match.current,
-            hideEndDate: incEd.hideEndDate !== undefined ? hideEndDate : match.hideEndDate,
+            hideEndDate:
+              incEd.hideEndDate !== undefined ? hideEndDate : match.hideEndDate,
             freeFormContext: mergedEdContext,
           },
         });
@@ -378,7 +415,7 @@ export class ProfileMergeService {
                 where: { id },
                 data: { isArchived },
               });
-            }
+            },
           );
         }
       } else {
@@ -415,7 +452,10 @@ export class ProfileMergeService {
   /**
    * Merge skills list
    */
-  static async mergeSkills(profileId: string, incoming: Partial<SkillDTO>[]): Promise<void> {
+  static async mergeSkills(
+    profileId: string,
+    incoming: Partial<SkillDTO>[],
+  ): Promise<void> {
     logger.info(`Merging skills for profile: ${profileId}`);
 
     const proficiencyMap: Record<ProficiencyLevel, number> = {
@@ -437,31 +477,46 @@ export class ProfileMergeService {
 
       const normName = this.normalizeText(incSkill.name);
 
+      // isArchived: false — an archived row is a retired, CV-pinned historical skill (see
+      // lib/db/cvBulletMutations.ts's reconcileSkillMutation); matching against it here would
+      // either resurrect dead data or silently mutate a supposedly-immutable CV's content.
       const existingSkills = await prisma.skill.findMany({
-        where: { profileId },
+        where: { profileId, isArchived: false },
       });
 
-      const match = existingSkills.find((s) => this.normalizeText(s.name) === normName);
-      
+      const match = existingSkills.find(
+        (s) => this.normalizeText(s.name) === normName,
+      );
+
       const yearsExperience = incSkill.yearsExperience ?? null;
       const proficiency = incSkill.proficiency ?? "INTERMEDIATE";
 
       if (match) {
         // Keep the higher proficiency
-        const existingVal = proficiencyMap[match.proficiency as ProficiencyLevel] || 2;
-        const incomingVal = proficiencyMap[proficiency as ProficiencyLevel] || 2;
-        const finalProficiency = reverseProficiencyMap[Math.max(existingVal, incomingVal)];
+        const existingVal =
+          proficiencyMap[match.proficiency as ProficiencyLevel] || 2;
+        const incomingVal =
+          proficiencyMap[proficiency as ProficiencyLevel] || 2;
+        const finalProficiency =
+          reverseProficiencyMap[Math.max(existingVal, incomingVal)];
 
         // Keep the higher years of experience
-        const finalYears = Math.max(match.yearsExperience ?? 0, yearsExperience ?? 0) || null;
+        const finalYears =
+          Math.max(match.yearsExperience ?? 0, yearsExperience ?? 0) || null;
 
-        await prisma.skill.update({
-          where: { id: match.id },
-          data: {
-            proficiency: finalProficiency,
-            yearsExperience: finalYears,
-          },
-        });
+        // Reconciled (not a bare update): if `match` is already locked into a generated CV,
+        // this archives it and creates a fresh active row instead of mutating pinned CV
+        // content in place — same rule PUT /api/profile/skills follows.
+        await prisma.$transaction((tx) =>
+          reconcileSkillMutation(
+            tx,
+            match.id,
+            profileId,
+            match.name,
+            finalProficiency,
+            finalYears,
+          ),
+        );
       } else {
         await prisma.skill.create({
           data: {
@@ -480,15 +535,25 @@ export class ProfileMergeService {
    */
   private static async mergeBullets(
     existingBullets: Array<{ id: string; text: string; isArchived: boolean }>,
-    incomingBullets: Partial<{ text: string; type: string; sortOrder: number }>[],
-    createFn: (text: string, type: BulletType, sortOrder: number) => Promise<void>,
-    setArchiveFn: (id: string, isArchived: boolean) => Promise<void>
+    incomingBullets: Partial<{
+      text: string;
+      type: string;
+      sortOrder: number;
+    }>[],
+    createFn: (
+      text: string,
+      type: BulletType,
+      sortOrder: number,
+    ) => Promise<void>,
+    setArchiveFn: (id: string, isArchived: boolean) => Promise<void>,
   ): Promise<void> {
     for (const [idx, incB] of incomingBullets.entries()) {
       if (!incB.text) continue;
 
       const normText = this.normalizeText(incB.text);
-      const match = existingBullets.find((b) => this.normalizeText(b.text) === normText);
+      const match = existingBullets.find(
+        (b) => this.normalizeText(b.text) === normText,
+      );
 
       if (match) {
         // Rule: If matching bullet is archived, unarchive it!
@@ -501,10 +566,9 @@ export class ProfileMergeService {
         await createFn(
           incB.text,
           (incB.type as BulletType) || "BULLET",
-          incB.sortOrder ?? idx
+          incB.sortOrder ?? idx,
         );
       }
     }
   }
-
 }

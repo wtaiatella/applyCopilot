@@ -72,7 +72,7 @@ export async function fetchUserProfileData(
           bullets: true,
         },
       },
-      skills: true,
+      skills: { where: { isArchived: false } },
     },
   });
 

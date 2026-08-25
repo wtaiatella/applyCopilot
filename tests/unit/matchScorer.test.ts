@@ -393,6 +393,9 @@ describe("computeMatchScore", () => {
       matchedSkills: [],
       missingSkills: [],
       niceToHaveMatched: [],
+      niceToHaveMissing: [],
+      softSkillsMatched: [],
+      softSkillsMissing: [],
       disqualified: true,
       disqualifyReason: expect.stringMatching(/US work authorization/),
     });

@@ -16,10 +16,14 @@ const baseJob = {
   matchedSkills: ["Node.js", "PostgreSQL"],
   missingSkills: ["Kubernetes"],
   niceToHaveMatched: ["GraphQL"],
+  niceToHaveMissing: ["Redis"],
+  softSkillsMatched: ["Communication"],
+  softSkillsMissing: ["Leadership"],
   disqualified: false,
   disqualifyReason: null,
   jobFacts: {
     niceToHave: ["GraphQL", "Redis"],
+    softSkills: ["Communication", "Leadership"],
     seniority: "senior",
     yearsExperienceMin: 5,
     workMode: "remote",
@@ -55,14 +59,22 @@ describe("JobDetailsPanel — Match Comparison section (FR-16, Cenário 4)", () 
     expect(screen.getByText("Kubernetes")).toBeInTheDocument();
   });
 
-  it("renders nice-to-have skills and Conditions & Preferences comparison rows", async () => {
+  it("renders nice-to-have and soft-skills matched/missing breakdowns and Conditions & Preferences comparison rows", async () => {
     render(<JobDetailsPanel job={baseJob} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Nice-to-Have Skills")).toBeInTheDocument();
+      expect(
+        screen.getByText("Matched Nice-to-Have Skills"),
+      ).toBeInTheDocument();
     });
 
+    expect(screen.getByText("Missing Nice-to-Have Skills")).toBeInTheDocument();
+    expect(screen.getByText("GraphQL")).toBeInTheDocument();
     expect(screen.getByText("Redis")).toBeInTheDocument();
+    expect(screen.getByText("Matched Soft Skills")).toBeInTheDocument();
+    expect(screen.getByText("Missing Soft Skills")).toBeInTheDocument();
+    expect(screen.getByText("Communication")).toBeInTheDocument();
+    expect(screen.getByText("Leadership")).toBeInTheDocument();
     expect(screen.getByText("Conditions & Preferences")).toBeInTheDocument();
     expect(screen.getByText(/Work Mode: remote/)).toBeInTheDocument();
     expect(screen.getByText(/Worldwide: Yes/)).toBeInTheDocument();

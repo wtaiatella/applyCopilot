@@ -124,14 +124,18 @@ export async function canonicalizeJobFacts(
 
   return {
     ...jobFacts,
+    // Dedupe after canonicalization (not before): two differently-spelled raw extractions
+    // (e.g. "Postgres" and "PostgreSQL") only collapse to the same string once mapped through
+    // `hardMap`/`softMap` — deduping the raw array first would miss that. Preserves first-seen
+    // order (Set insertion order) so display ordering stays stable.
     mustHave: hardMap
-      ? jobFacts.mustHave.map((s) => hardMap.get(s) ?? s)
+      ? Array.from(new Set(jobFacts.mustHave.map((s) => hardMap.get(s) ?? s)))
       : jobFacts.mustHave,
     niceToHave: hardMap
-      ? jobFacts.niceToHave.map((s) => hardMap.get(s) ?? s)
+      ? Array.from(new Set(jobFacts.niceToHave.map((s) => hardMap.get(s) ?? s)))
       : jobFacts.niceToHave,
     softSkills: softMap
-      ? jobFacts.softSkills.map((s) => softMap.get(s) ?? s)
+      ? Array.from(new Set(jobFacts.softSkills.map((s) => softMap.get(s) ?? s)))
       : jobFacts.softSkills,
   };
 }

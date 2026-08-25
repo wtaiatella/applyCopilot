@@ -216,6 +216,9 @@ export interface MatchScoreResult {
   matchedSkills: string[];
   missingSkills: string[];
   niceToHaveMatched: string[];
+  niceToHaveMissing: string[];
+  softSkillsMatched: string[];
+  softSkillsMissing: string[];
   disqualified: boolean;
   disqualifyReason: string | null;
 }
@@ -259,6 +262,9 @@ export function computeMatchScore(
       matchedSkills: [],
       missingSkills: [],
       niceToHaveMatched: [],
+      niceToHaveMissing: [],
+      softSkillsMatched: [],
+      softSkillsMissing: [],
       disqualified: true,
       disqualifyReason: elimination.reason ?? null,
     };
@@ -294,12 +300,24 @@ export function computeMatchScore(
   const niceToHaveMatched = job.jobFacts.niceToHave.filter(
     (skill) => (job.niceToHaveItemScores[skill] ?? 0) >= skillMatchThreshold,
   );
+  const niceToHaveMissing = job.jobFacts.niceToHave.filter(
+    (skill) => (job.niceToHaveItemScores[skill] ?? 0) < skillMatchThreshold,
+  );
+  const softSkillsMatched = job.jobFacts.softSkills.filter(
+    (skill) => (job.softSkillsItemScores[skill] ?? 0) >= skillMatchThreshold,
+  );
+  const softSkillsMissing = job.jobFacts.softSkills.filter(
+    (skill) => (job.softSkillsItemScores[skill] ?? 0) < skillMatchThreshold,
+  );
 
   return {
     score: Math.round(score),
     matchedSkills,
     missingSkills,
     niceToHaveMatched,
+    niceToHaveMissing,
+    softSkillsMatched,
+    softSkillsMissing,
     disqualified: false,
     disqualifyReason: null,
   };

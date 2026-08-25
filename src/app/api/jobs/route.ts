@@ -56,6 +56,9 @@ interface ScoredJob {
   matchedSkills: string[];
   missingSkills: string[];
   niceToHaveMatched: string[];
+  niceToHaveMissing: string[];
+  softSkillsMatched: string[];
+  softSkillsMissing: string[];
   disqualified: boolean;
   disqualifyReason: string | null;
 }
@@ -219,6 +222,9 @@ export async function GET(request: Request) {
           matchedSkills: result.matchedSkills,
           missingSkills: result.missingSkills,
           niceToHaveMatched: result.niceToHaveMatched,
+          niceToHaveMissing: result.niceToHaveMissing,
+          softSkillsMatched: result.softSkillsMatched,
+          softSkillsMissing: result.softSkillsMissing,
           disqualified: result.disqualified,
           disqualifyReason: result.disqualifyReason,
         };
@@ -232,6 +238,9 @@ export async function GET(request: Request) {
         matchedSkills: [],
         missingSkills: [],
         niceToHaveMatched: [],
+        niceToHaveMissing: [],
+        softSkillsMatched: [],
+        softSkillsMissing: [],
         disqualified: false,
         disqualifyReason: null,
       };
@@ -289,12 +298,16 @@ export async function GET(request: Request) {
       matchedSkills: job.matchedSkills,
       missingSkills: job.missingSkills,
       niceToHaveMatched: job.niceToHaveMatched,
+      niceToHaveMissing: job.niceToHaveMissing,
+      softSkillsMatched: job.softSkillsMatched,
+      softSkillsMissing: job.softSkillsMissing,
       disqualified: job.disqualified,
       disqualifyReason: job.disqualifyReason,
       favorite: favoritedJobIds.has(job.id),
       jobFacts: job.jobFacts
         ? {
             niceToHave: job.jobFacts.niceToHave,
+            softSkills: job.jobFacts.softSkills,
             seniority: job.jobFacts.seniority,
             yearsExperienceMin: job.jobFacts.yearsExperienceMin,
             workMode: job.jobFacts.workMode,

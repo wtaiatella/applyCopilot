@@ -32,6 +32,7 @@ const { Title, Text, Paragraph } = Typography;
 
 interface JobFactsSummary {
   niceToHave: string[];
+  softSkills: string[];
   seniority: string | null;
   yearsExperienceMin: number | null;
   workMode: string | null;
@@ -59,6 +60,9 @@ interface JobListing {
   matchedSkills?: string[];
   missingSkills?: string[];
   niceToHaveMatched?: string[];
+  niceToHaveMissing?: string[];
+  softSkillsMatched?: string[];
+  softSkillsMissing?: string[];
   disqualified?: boolean;
   disqualifyReason?: string | null;
   jobFacts?: JobFactsSummary | null;
@@ -330,29 +334,108 @@ export default function JobDetailsPanel({ job }: JobDetailsPanelProps) {
             </div>
 
             {job.jobFacts && job.jobFacts.niceToHave.length > 0 && (
-              <div className="mt-4 space-y-2">
-                <div className="text-xs font-bold uppercase tracking-wider text-cyan-400">
-                  Nice-to-Have Skills
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1">
+                    <CheckCircle2 size={12} />
+                    Matched Nice-to-Have Skills
+                  </div>
+                  {job.niceToHaveMatched && job.niceToHaveMatched.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {job.niceToHaveMatched.map((skill) => (
+                        <Tag
+                          key={skill}
+                          className="m-0 border-0 bg-cyan-950/40 text-cyan-400 text-xs py-0.5 px-2 rounded font-medium"
+                        >
+                          {skill}
+                        </Tag>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-zinc-500">
+                      None identified.
+                    </div>
+                  )}
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {job.jobFacts.niceToHave.map((skill) => {
-                    const matched = job.niceToHaveMatched?.includes(skill);
-                    return (
-                      <Tag
-                        key={skill}
-                        className={
-                          matched
-                            ? "m-0 border-0 bg-emerald-950/40 text-emerald-400 text-xs py-0.5 px-2 rounded font-medium"
-                            : "m-0 border border-zinc-700 bg-transparent text-zinc-400 text-xs py-0.5 px-2 rounded font-medium"
-                        }
-                      >
-                        {skill}
-                      </Tag>
-                    );
-                  })}
+
+                <div className="space-y-2">
+                  <div className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                    <Lightbulb size={12} />
+                    Missing Nice-to-Have Skills
+                  </div>
+                  {job.niceToHaveMissing && job.niceToHaveMissing.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {job.niceToHaveMissing.map((skill) => (
+                        <Tag
+                          key={skill}
+                          className="m-0 border border-zinc-700 bg-transparent text-zinc-400 text-xs py-0.5 px-2 rounded font-medium"
+                        >
+                          {skill}
+                        </Tag>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-zinc-500">
+                      All nice-to-have skills matched.
+                    </div>
+                  )}
                 </div>
               </div>
             )}
+
+            {job.jobFacts &&
+              job.jobFacts.softSkills &&
+              job.jobFacts.softSkills.length > 0 && (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold uppercase tracking-wider text-violet-400 flex items-center gap-1">
+                      <CheckCircle2 size={12} />
+                      Matched Soft Skills
+                    </div>
+                    {job.softSkillsMatched &&
+                    job.softSkillsMatched.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {job.softSkillsMatched.map((skill) => (
+                          <Tag
+                            key={skill}
+                            className="m-0 border-0 bg-violet-950/40 text-violet-400 text-xs py-0.5 px-2 rounded font-medium"
+                          >
+                            {skill}
+                          </Tag>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-zinc-500">
+                        None identified.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                      <Lightbulb size={12} />
+                      Missing Soft Skills
+                    </div>
+                    {job.softSkillsMissing &&
+                    job.softSkillsMissing.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {job.softSkillsMissing.map((skill) => (
+                          <Tag
+                            key={skill}
+                            className="m-0 border border-zinc-700 bg-transparent text-zinc-400 text-xs py-0.5 px-2 rounded font-medium"
+                          >
+                            {skill}
+                          </Tag>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-zinc-500">
+                        All soft skills matched.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
             <Divider className="my-4 border-zinc-800" />
 

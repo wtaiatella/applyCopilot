@@ -265,11 +265,20 @@ export async function canonicalizeProfileFacts(
 
   return {
     ...profileFacts,
+    // Dedupe after canonicalization (not before) — see jobClassificationService.ts's
+    // canonicalizeJobFacts for why order matters (two raw spellings only collapse to the same
+    // string once mapped through skillsMap/softSkillsMap).
     skills: skillsMap
-      ? profileFacts.skills.map((s) => skillsMap.get(s) ?? s)
+      ? Array.from(
+          new Set(profileFacts.skills.map((s) => skillsMap.get(s) ?? s)),
+        )
       : profileFacts.skills,
     softSkills: softSkillsMap
-      ? profileFacts.softSkills.map((s) => softSkillsMap.get(s) ?? s)
+      ? Array.from(
+          new Set(
+            profileFacts.softSkills.map((s) => softSkillsMap.get(s) ?? s),
+          ),
+        )
       : profileFacts.softSkills,
   };
 }

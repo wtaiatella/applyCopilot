@@ -1,6 +1,5 @@
 import {
   checkDisqualification,
-  computeOverlap,
   computeSeniorityFit,
   computePreferencesFit,
   computeMatchScore,
@@ -8,6 +7,15 @@ import {
 import type { JobFacts } from "@/lib/validation/jobFactsSchema";
 import type { ProfileFacts } from "@/lib/validation/profileFactsSchema";
 import type { UserPreferencesDTO } from "@/types/profile";
+
+// Default FR-13 threshold used across fixtures unless a test overrides it.
+const DEFAULT_THRESHOLD = 60;
+
+/** Builds a flat item-score map (0-100) for every skill in `skills`, all set to `score`. Tests
+ * that need per-skill differentiation build the map inline instead. */
+function itemScores(skills: string[], score: number): Record<string, number> {
+  return Object.fromEntries(skills.map((s) => [s, score]));
+}
 
 // --- Fixture factories -------------------------------------------------------------------
 
@@ -362,26 +370,6 @@ describe("computeSeniorityFit", () => {
   });
 });
 
-// --- computeOverlap --------------------------------------------------------------------------
-
-describe("computeOverlap", () => {
-  it("returns 100 when the target list is empty (nothing requested)", () => {
-    expect(computeOverlap([], ["React"])).toBe(100);
-  });
-
-  it("returns 0 when there is no overlap at all", () => {
-    expect(computeOverlap(["GraphQL", "AWS"], ["React", "Vue"])).toBe(0);
-  });
-
-  it("returns a partial percentage for a partial overlap", () => {
-    expect(computeOverlap(["GraphQL", "AWS"], ["AWS"])).toBe(50);
-  });
-
-  it("returns 100 for a full overlap, case-insensitively", () => {
-    expect(computeOverlap(["graphql", "AWS"], ["GraphQL", "aws"])).toBe(100);
-  });
-});
-
 // --- computeMatchScore (end-to-end weighting + matched/missing) ------------------------------
 
 describe("computeMatchScore", () => {
@@ -389,63 +377,280 @@ describe("computeMatchScore", () => {
     const result = computeMatchScore(
       {
         jobFacts: makeJobFacts({ requiresUsWorkAuth: true }),
-        mustHaveSimilarity: 95,
+        mustHaveScore: 95,
+        mustHaveItemScores: {},
+        niceToHaveScore: 100,
+        niceToHaveItemScores: {},
+        softSkillsScore: 80,
+        softSkillsItemScores: {},
       },
       { profileFacts: makeProfileFacts() },
       makePrefs({ hasUsWorkAuth: false }),
+      DEFAULT_THRESHOLD,
     );
     expect(result).toEqual({
       score: 0,
       matchedSkills: [],
       missingSkills: [],
       niceToHaveMatched: [],
+      niceToHaveMissing: [],
+      softSkillsMatched: [],
+      softSkillsMissing: [],
       disqualified: true,
       disqualifyReason: expect.stringMatching(/US work authorization/),
     });
   });
 
-  it("computes the weighted sum (0.45/0.15/0.20/0.20) when not disqualified", () => {
-    // mustHaveSimilarity=100 (0.45), niceToHave full overlap=100 (0.15),
-    // seniority exact match, unstated years -> ordinal-only = 100 (0.20),
-    // no preferences set, work-mode unstated -> 75 (0.20)
+  it("computes the weighted sum (0.45/0.15/0.15/0.15/0.10) when not disqualified", () => {
+    // mustHaveScore (max-cosine)=100 (0.45), niceToHaveScore (max-cosine)=100 (0.15),
+    // softSkillsScore (max-cosine)=100 (0.15), seniority exact match, unstated years ->
+    // ordinal-only = 100 (0.15), no preferences set, work-mode unstated -> 75 (0.10)
     const result = computeMatchScore(
       {
         jobFacts: makeJobFacts({
           mustHave: ["React"],
           niceToHave: ["GraphQL"],
+          softSkills: ["Communication"],
           seniority: "mid",
           yearsExperienceMin: null,
           workMode: null,
         }),
-        mustHaveSimilarity: 100,
+        mustHaveScore: 100,
+        mustHaveItemScores: itemScores(["React"], 100),
+        niceToHaveScore: 100,
+        niceToHaveItemScores: itemScores(["GraphQL"], 100),
+        softSkillsScore: 100,
+        softSkillsItemScores: itemScores(["Communication"], 100),
       },
-      { profileFacts: makeProfileFacts({ skills: ["React", "GraphQL"] }) },
+      {
+        profileFacts: makeProfileFacts({
+          skills: ["React", "GraphQL"],
+          softSkills: ["Communication"],
+        }),
+      },
       makePrefs({ seniority: "mid" }),
+      DEFAULT_THRESHOLD,
     );
 
-    // 100*0.45 + 100*0.15 + 100*0.20 + 75*0.20 = 45 + 15 + 20 + 15 = 95
-    expect(result.score).toBe(95);
+    // 100*0.45 + 100*0.15 + 100*0.15 + 100*0.15 + 75*0.10 = 45 + 15 + 15 + 15 + 7.5 = 97.5 -> 98
+    expect(result.score).toBe(98);
     expect(result.disqualified).toBe(false);
     expect(result.matchedSkills).toEqual(["React"]);
     expect(result.missingSkills).toEqual([]);
     expect(result.niceToHaveMatched).toEqual(["GraphQL"]);
   });
 
-  it("computes matchedSkills/missingSkills as the correct set difference against mustHave", () => {
+  it("softSkillsScore is computed (not fixed at 0/100) and participates with weight 0.15 (T017)", () => {
+    const base = {
+      jobFacts: makeJobFacts({
+        mustHave: ["React"],
+        niceToHave: ["GraphQL"],
+        softSkills: ["Communication"],
+        seniority: "mid" as const,
+        yearsExperienceMin: null,
+        workMode: null,
+      }),
+      mustHaveScore: 100,
+      mustHaveItemScores: itemScores(["React"], 100),
+      niceToHaveScore: 100,
+      niceToHaveItemScores: itemScores(["GraphQL"], 100),
+    };
+    const profile = {
+      profileFacts: makeProfileFacts({
+        skills: ["React", "GraphQL"],
+        softSkills: ["Communication"],
+      }),
+    };
+    const prefs = makePrefs({ seniority: "mid" });
+
+    const low = computeMatchScore(
+      {
+        ...base,
+        softSkillsScore: 20,
+        softSkillsItemScores: itemScores(["Communication"], 20),
+      },
+      profile,
+      prefs,
+      DEFAULT_THRESHOLD,
+    );
+    const high = computeMatchScore(
+      {
+        ...base,
+        softSkillsScore: 90,
+        softSkillsItemScores: itemScores(["Communication"], 90),
+      },
+      profile,
+      prefs,
+      DEFAULT_THRESHOLD,
+    );
+
+    // softSkillsScore is not a fixed 0/100 contributor — varying it alone moves the composite.
+    expect(high.score).toBeGreaterThan(low.score);
+    // Weight is exactly 0.15: a delta of 70 in softSkillsScore should move the composite by
+    // round(70 * 0.15) = 10.5 -> the two rounded composite scores differ by ~10-11 points.
+    expect(high.score - low.score).toBeGreaterThanOrEqual(10);
+    expect(high.score - low.score).toBeLessThanOrEqual(11);
+  });
+
+  it("computes matchedSkills/missingSkills using the FR-13/FR-17 shared threshold, not string-exact overlap", () => {
     const result = computeMatchScore(
       {
         jobFacts: makeJobFacts({
           mustHave: ["React", "TypeScript", "Node.js"],
           niceToHave: [],
         }),
-        mustHaveSimilarity: 50,
+        mustHaveScore: 50,
+        mustHaveItemScores: {
+          React: 100,
+          TypeScript: 100,
+          "Node.js": 30, // below the 60 threshold -> missing
+        },
+        niceToHaveScore: 100,
+        niceToHaveItemScores: {},
+        softSkillsScore: 100,
+        softSkillsItemScores: {},
       },
       { profileFacts: makeProfileFacts({ skills: ["React", "TypeScript"] }) },
       makePrefs(),
+      DEFAULT_THRESHOLD,
     );
 
     expect(result.matchedSkills.sort()).toEqual(["React", "TypeScript"].sort());
     expect(result.missingSkills).toEqual(["Node.js"]);
+  });
+
+  it("AC-5: an alias-resolved pair below 100 but at/above the threshold counts as matched, not missing (partial credit)", () => {
+    // "kubernetes" profile vs "K8s" mustHave — different strings, same canonical vector once
+    // resolved by skillCanonicalizationService, so their max-cosine similarity is high (e.g. 92)
+    // even though the strings never matched exactly under the old computeOverlap.
+    const result = computeMatchScore(
+      {
+        jobFacts: makeJobFacts({ mustHave: ["K8s"], niceToHave: [] }),
+        mustHaveScore: 92,
+        mustHaveItemScores: { K8s: 92 },
+        niceToHaveScore: 100,
+        niceToHaveItemScores: {},
+        softSkillsScore: 100,
+        softSkillsItemScores: {},
+      },
+      { profileFacts: makeProfileFacts({ skills: ["kubernetes"] }) },
+      makePrefs(),
+      DEFAULT_THRESHOLD,
+    );
+
+    expect(result.matchedSkills).toEqual(["K8s"]);
+    expect(result.missingSkills).toEqual([]);
+  });
+
+  it("classifies an item exactly at the threshold as matched (>=, not >)", () => {
+    const result = computeMatchScore(
+      {
+        jobFacts: makeJobFacts({ mustHave: ["Rust"], niceToHave: [] }),
+        mustHaveScore: 60,
+        mustHaveItemScores: { Rust: 60 },
+        niceToHaveScore: 100,
+        niceToHaveItemScores: {},
+        softSkillsScore: 100,
+        softSkillsItemScores: {},
+      },
+      { profileFacts: makeProfileFacts({ skills: [] }) },
+      makePrefs(),
+      DEFAULT_THRESHOLD,
+    );
+
+    expect(result.matchedSkills).toEqual(["Rust"]);
+  });
+
+  it("classifies an item one point below the threshold as missing", () => {
+    const result = computeMatchScore(
+      {
+        jobFacts: makeJobFacts({ mustHave: ["Rust"], niceToHave: [] }),
+        mustHaveScore: 59,
+        mustHaveItemScores: { Rust: 59 },
+        niceToHaveScore: 100,
+        niceToHaveItemScores: {},
+        softSkillsScore: 100,
+        softSkillsItemScores: {},
+      },
+      { profileFacts: makeProfileFacts({ skills: [] }) },
+      makePrefs(),
+      DEFAULT_THRESHOLD,
+    );
+
+    expect(result.missingSkills).toEqual(["Rust"]);
+  });
+
+  it("T017: composite weights (0.45/0.15/0.15/0.15/0.10) sum to 1.00", () => {
+    const weights = [0.45, 0.15, 0.15, 0.15, 0.1];
+    const sum = weights.reduce((a, b) => a + b, 0);
+    expect(sum).toBeCloseTo(1.0, 10);
+
+    // Cross-check against the actual scorer: with every sub-score fixed at 100 except one,
+    // the composite score isolates exactly that sub-score's weight (all sub-scores use
+    // 0-100 scale; disqualification/preferences untouched by this rebalance).
+    const allHundred = computeMatchScore(
+      {
+        jobFacts: makeJobFacts({
+          mustHave: ["React"],
+          niceToHave: ["GraphQL"],
+          softSkills: ["Communication"],
+          seniority: "mid",
+          yearsExperienceMin: null,
+          workMode: null,
+        }),
+        mustHaveScore: 100,
+        mustHaveItemScores: itemScores(["React"], 100),
+        niceToHaveScore: 100,
+        niceToHaveItemScores: itemScores(["GraphQL"], 100),
+        softSkillsScore: 100,
+        softSkillsItemScores: itemScores(["Communication"], 100),
+      },
+      {
+        profileFacts: makeProfileFacts({
+          skills: ["React", "GraphQL"],
+          softSkills: ["Communication"],
+        }),
+      },
+      makePrefs({ seniority: "mid" }),
+      DEFAULT_THRESHOLD,
+    );
+    // seniority exact match=100 (0.15), preferencesScore neutral 75 (0.10) — everything else
+    // pinned at 100, so the composite equals 100*(0.45+0.15+0.15+0.15) + 75*0.10 = 90 + 7.5 = 97.5
+    expect(allHundred.score).toBe(98); // Math.round(97.5)
+  });
+
+  it("T017: checkDisqualification and preferencesScore (Tri-State) are byte-identical to pre-change fixtures, unaffected by the weight rebalance", () => {
+    // Same disqualification fixture as the existing "short-circuits" test above — proves the
+    // disqualification path (and its reason string) is untouched by the softSkills/weight change.
+    const disqualification = checkDisqualification(
+      makeJobFacts({ requiresUsWorkAuth: true }),
+      makePrefs({ hasUsWorkAuth: false }),
+    );
+    expect(disqualification).toEqual({
+      disqualified: true,
+      reason: "Requires US work authorization, which you do not have",
+    });
+
+    // Same Tri-State preferencesScore fixtures as the dedicated computePreferencesFit describe
+    // block above — proves the Tri-State model's numeric outputs are unchanged.
+    expect(
+      computePreferencesFit(
+        makeJobFacts({ isWorldwide: true, workMode: null, salaryMin: null }),
+        makePrefs({ onlyWorldwide: true, salaryMin: null }),
+      ),
+    ).toBe(83);
+    expect(
+      computePreferencesFit(
+        makeJobFacts({ isWorldwide: null, workMode: null, salaryMin: null }),
+        makePrefs({ onlyWorldwide: true, salaryMin: null }),
+      ),
+    ).toBe(73); // round((70 + 75 + 75) / 3)
+    expect(
+      computePreferencesFit(
+        makeJobFacts({ isWorldwide: false, workMode: null, salaryMin: null }),
+        makePrefs({ onlyWorldwide: true, salaryMin: null }),
+      ),
+    ).toBe(50);
   });
 });
 
@@ -463,8 +668,8 @@ describe("computeMatchScore fixture matrix (SC-01, ≥60pp score spread)", () =>
       const candidateSeniority =
         SENIORITIES[(i + Math.floor(i / 5)) % SENIORITIES.length];
       const workMode = WORK_MODES[i % WORK_MODES.length];
-      // Similarity spans the full 0-100 range across the fixture set.
-      const mustHaveSimilarity = (i * 97) % 101;
+      // Max-cosine score spans the full 0-100 range across the fixture set.
+      const mustHaveScore = (i * 97) % 101;
       // Alternate profile skill coverage between none, partial, and full.
       const jobMustHave = ["React", "TypeScript", "Node.js"];
       const profileSkills =
@@ -473,18 +678,27 @@ describe("computeMatchScore fixture matrix (SC-01, ≥60pp score spread)", () =>
           : i % 3 === 1
             ? ["React"]
             : ["React", "TypeScript", "Node.js"];
+      // "GraphQL" is never in profileSkills — mirrors the old computeOverlap-based variability
+      // (0 when niceToHave=["GraphQL"], 100/empty-target-convention when niceToHave=[]).
+      const jobNiceToHave = i % 2 === 0 ? ["GraphQL"] : [];
+      const niceToHaveScore = jobNiceToHave.length === 0 ? 100 : 0;
 
       const result = computeMatchScore(
         {
           jobFacts: makeJobFacts({
             mustHave: jobMustHave,
-            niceToHave: i % 2 === 0 ? ["GraphQL"] : [],
+            niceToHave: jobNiceToHave,
             seniority,
             yearsExperienceMin: i % 4,
             workMode,
             employmentType: "permanent",
           }),
-          mustHaveSimilarity,
+          mustHaveScore,
+          mustHaveItemScores: itemScores(jobMustHave, mustHaveScore),
+          niceToHaveScore,
+          niceToHaveItemScores: itemScores(jobNiceToHave, niceToHaveScore),
+          softSkillsScore: 100,
+          softSkillsItemScores: {},
         },
         {
           profileFacts: makeProfileFacts({
@@ -500,6 +714,7 @@ describe("computeMatchScore fixture matrix (SC-01, ≥60pp score spread)", () =>
           acceptsHybrid: true,
           acceptsOnsite: true,
         }),
+        DEFAULT_THRESHOLD,
       );
 
       scores.push(result.score);

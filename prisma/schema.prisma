@@ -541,3 +541,27 @@ model JobFavorite {
   @@unique([profileId, jobListingId])
 }
 
+// --- Match Score Precision (015) ---
+
+enum SkillKind {
+  HARD
+  SOFT
+}
+
+model SkillEmbedding {
+  skill       String    @id @db.VarChar(100)          // lowercase lookup key, e.g. "postgresql"
+  displayName String                                  // commercial capitalization, e.g. "PostgreSQL"
+  kind        SkillKind
+  embedding   Unsupported("vector(768)")
+  createdAt   DateTime  @default(now())
+
+  aliases     SkillAlias[]
+}
+
+model SkillAlias {
+  alias     String          @id @db.VarChar(100)       // lowercase, e.g. "react.js"
+  skill     String
+  skillRef  SkillEmbedding  @relation(fields: [skill], references: [skill], onDelete: Cascade)
+  createdAt DateTime        @default(now())
+}
+

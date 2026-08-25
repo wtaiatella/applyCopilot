@@ -1,6 +1,18 @@
 import { generateJSON } from "../lib/ai/aiClient";
 import { logger } from "../lib/logging/logger";
 import type { JobFacts } from "../lib/validation/jobFactsSchema";
+import { resolveCanonicalSkills } from "./skillCanonicalizationService";
+import { SkillKeySchema } from "../lib/validation/skillEmbeddingSchema";
+
+/**
+ * Mirrors `JobFactsSchema`'s `.max(50)` cap on `mustHave`/`niceToHave`/
+ * `softSkills` (see jobFactsSchema.ts). Enforced here too so an oversized
+ * raw LLM extraction can't trigger unbounded sequential canonicalization
+ * calls before the schema validation ever runs (security fix, Phase 3
+ * rework) — most severe on the untrusted, unattended job-classification
+ * worker path (batches of up to 20 jobs/run).
+ */
+const MAX_SKILLS_PER_FIELD = 50;
 
 /** The subset of JobListing fields needed by the classification service. */
 export interface JobListingInput {
@@ -55,6 +67,77 @@ export async function classifyJobListing(
   );
 
   return { jobFacts };
+}
+
+/**
+ * Write-path canonicalization wiring (T008, spectech.md FR-08): rewrites `jobFacts.mustHave` +
+ * `jobFacts.niceToHave` (`kind: HARD`) and `jobFacts.softSkills` (`kind: SOFT`) to their
+ * resolved canonical `displayName` via `resolveCanonicalSkills`, before the caller
+ * (classification worker) runs `JobFactsSchema` validation and persists.
+ *
+ * Defensive: `resolveCanonicalSkills` is only called when a field is already the expected
+ * array-of-strings shape — a malformed LLM extraction is passed through untouched so the
+ * caller's `JobFactsSchema.safeParse` still catches and rejects it exactly as before this
+ * wiring existed (FR-22 behavior preserved). `mustHave` and `niceToHave` are canonicalized
+ * together (single `resolveCanonicalSkills` call, both `kind: HARD`) so a skill repeated
+ * across both lists dedupes to one embedding/LLM call (spectech.md Implementation Notes).
+ *
+ * Per-string length pre-check (fast-follow, 015 QA §7.0 finding): a candidate exceeding
+ * `JobFactsSchema`'s own per-item `.max(100)` (same bound as `SkillKeySchema`) is excluded from
+ * the batch sent to `resolveCanonicalSkills` — untrusted scraped job-posting text is the highest-
+ * volume, least-trusted source of oversized/garbled extraction, and an oversized candidate can
+ * never resolve to a persistable canonical entry anyway; `JobFactsSchema.safeParse` will reject
+ * the whole record downstream regardless, so there is no point spending an embedding/LLM call on
+ * it (up to 150 candidates per job across mustHave+niceToHave+softSkills). The candidate is left
+ * as its original string in the output (falls through via `?? s` below).
+ *
+ * @param jobFacts The raw (not yet schema-validated) extraction from `classifyJobListing`.
+ * @returns `jobFacts` with `mustHave`/`niceToHave`/`softSkills` rewritten to canonical names.
+ */
+export async function canonicalizeJobFacts(
+  jobFacts: JobFacts,
+): Promise<JobFacts> {
+  const withinLength = (s: unknown): s is string =>
+    typeof s === "string" && SkillKeySchema.safeParse(s).success;
+
+  const hardSkillsValid =
+    Array.isArray(jobFacts.mustHave) && Array.isArray(jobFacts.niceToHave);
+  const hardMap = hardSkillsValid
+    ? await resolveCanonicalSkills(
+        [
+          ...jobFacts.mustHave
+            .filter(withinLength)
+            .slice(0, MAX_SKILLS_PER_FIELD),
+          ...jobFacts.niceToHave
+            .filter(withinLength)
+            .slice(0, MAX_SKILLS_PER_FIELD),
+        ],
+        "HARD",
+      )
+    : null;
+  const softMap = Array.isArray(jobFacts.softSkills)
+    ? await resolveCanonicalSkills(
+        jobFacts.softSkills.filter(withinLength).slice(0, MAX_SKILLS_PER_FIELD),
+        "SOFT",
+      )
+    : null;
+
+  return {
+    ...jobFacts,
+    // Dedupe after canonicalization (not before): two differently-spelled raw extractions
+    // (e.g. "Postgres" and "PostgreSQL") only collapse to the same string once mapped through
+    // `hardMap`/`softMap` — deduping the raw array first would miss that. Preserves first-seen
+    // order (Set insertion order) so display ordering stays stable.
+    mustHave: hardMap
+      ? Array.from(new Set(jobFacts.mustHave.map((s) => hardMap.get(s) ?? s)))
+      : jobFacts.mustHave,
+    niceToHave: hardMap
+      ? Array.from(new Set(jobFacts.niceToHave.map((s) => hardMap.get(s) ?? s)))
+      : jobFacts.niceToHave,
+    softSkills: softMap
+      ? Array.from(new Set(jobFacts.softSkills.map((s) => softMap.get(s) ?? s)))
+      : jobFacts.softSkills,
+  };
 }
 
 /**

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
 import { llmConfigSchema } from "@/lib/validation/adminSchemas";
+import { getBlockedUntilKey } from "@/lib/ai/circuit-breaker";
 import {
   LLMProvider,
   EmbeddingProvider,
@@ -22,7 +23,11 @@ export async function GET() {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const configs = await prisma.systemConfig.findMany({
+    // Step 1: resolve which provider is currently configured per capability. The circuit
+    // breaker's block key is scoped to (capability, provider) — see circuit-breaker.ts — so the
+    // *_BLOCKED_UNTIL key to look up depends on knowing the provider first (a provider switch
+    // must not inherit a different provider's cooldown).
+    const providerConfigs = await prisma.systemConfig.findMany({
       where: {
         key: {
           in: [
@@ -31,43 +36,71 @@ export async function GET() {
             "AI_PROVIDER_SUMMARIES",
             "AI_PROVIDER_PROFILE",
             "AI_PROVIDER_EMBEDDING",
-            "AI_PROVIDER_DEFAULT_BLOCKED_UNTIL",
-            "AI_PROVIDER_PARSING_BLOCKED_UNTIL",
-            "AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL",
-            "AI_PROVIDER_PROFILE_BLOCKED_UNTIL",
-            "AI_PROVIDER_EMBEDDING_BLOCKED_UNTIL",
           ],
         },
       },
     });
+    const providerConfigMap = new Map(
+      providerConfigs.map((c) => [c.key, c.value]),
+    );
 
-    const configMap = new Map(configs.map((c) => [c.key, c.value]));
-
-    const defaultProvider = (configMap.get("AI_PROVIDER_DEFAULT") ||
+    const defaultProvider = (providerConfigMap.get("AI_PROVIDER_DEFAULT") ||
       "ollama") as LLMProvider;
-    const parsingProvider = (configMap.get("AI_PROVIDER_PARSING") ||
+    const parsingProvider = (providerConfigMap.get("AI_PROVIDER_PARSING") ||
       "ollama") as LLMProvider;
-    const summariesProvider = (configMap.get("AI_PROVIDER_SUMMARIES") ||
+    const summariesProvider = (providerConfigMap.get("AI_PROVIDER_SUMMARIES") ||
       "gemini") as LLMProvider;
-    const profileProvider = (configMap.get("AI_PROVIDER_PROFILE") ||
+    const profileProvider = (providerConfigMap.get("AI_PROVIDER_PROFILE") ||
       "ollama") as LLMProvider;
-    const embeddingProvider = (configMap.get("AI_PROVIDER_EMBEDDING") ||
+    const embeddingProvider = (providerConfigMap.get("AI_PROVIDER_EMBEDDING") ||
       "ollama") as EmbeddingProvider;
 
-    const defaultBlockedUntil = configMap.get(
-      "AI_PROVIDER_DEFAULT_BLOCKED_UNTIL",
+    // Step 2: look up the block entry for exactly the (capability, currently-selected provider)
+    // pair — not a stale key left over from a provider this capability no longer uses.
+    const blockedKeys = {
+      defaultProvider: getBlockedUntilKey(
+        "AI_PROVIDER_DEFAULT",
+        defaultProvider,
+      ),
+      parsingProvider: getBlockedUntilKey(
+        "AI_PROVIDER_PARSING",
+        parsingProvider,
+      ),
+      summariesProvider: getBlockedUntilKey(
+        "AI_PROVIDER_SUMMARIES",
+        summariesProvider,
+      ),
+      profileProvider: getBlockedUntilKey(
+        "AI_PROVIDER_PROFILE",
+        profileProvider,
+      ),
+      embeddingProvider: getBlockedUntilKey(
+        "AI_PROVIDER_EMBEDDING",
+        embeddingProvider,
+      ),
+    };
+
+    const blockedConfigs = await prisma.systemConfig.findMany({
+      where: { key: { in: Object.values(blockedKeys) } },
+    });
+    const blockedConfigMap = new Map(
+      blockedConfigs.map((c) => [c.key, c.value]),
     );
-    const parsingBlockedUntil = configMap.get(
-      "AI_PROVIDER_PARSING_BLOCKED_UNTIL",
+
+    const defaultBlockedUntil = blockedConfigMap.get(
+      blockedKeys.defaultProvider,
     );
-    const summariesBlockedUntil = configMap.get(
-      "AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL",
+    const parsingBlockedUntil = blockedConfigMap.get(
+      blockedKeys.parsingProvider,
     );
-    const profileBlockedUntil = configMap.get(
-      "AI_PROVIDER_PROFILE_BLOCKED_UNTIL",
+    const summariesBlockedUntil = blockedConfigMap.get(
+      blockedKeys.summariesProvider,
     );
-    const embeddingBlockedUntil = configMap.get(
-      "AI_PROVIDER_EMBEDDING_BLOCKED_UNTIL",
+    const profileBlockedUntil = blockedConfigMap.get(
+      blockedKeys.profileProvider,
+    );
+    const embeddingBlockedUntil = blockedConfigMap.get(
+      blockedKeys.embeddingProvider,
     );
 
     const now = new Date();
@@ -146,14 +179,17 @@ export async function PATCH(req: Request) {
     }
 
     const { key } = body;
-    if (
-      ![
-        "AI_PROVIDER_DEFAULT",
-        "AI_PROVIDER_PARSING",
-        "AI_PROVIDER_SUMMARIES",
-        "AI_PROVIDER_PROFILE",
-      ].includes(key)
-    ) {
+    const capabilityByKey: Record<
+      string,
+      "default" | "parsing" | "summaries" | "profile"
+    > = {
+      AI_PROVIDER_DEFAULT: "default",
+      AI_PROVIDER_PARSING: "parsing",
+      AI_PROVIDER_SUMMARIES: "summaries",
+      AI_PROVIDER_PROFILE: "profile",
+    };
+    const capability = capabilityByKey[key];
+    if (!capability) {
       return NextResponse.json(
         { error: "Invalid provider key" },
         { status: 400 },
@@ -161,12 +197,18 @@ export async function PATCH(req: Request) {
     }
 
     const { resetProviderBlock } = await import("@/lib/ai/circuit-breaker");
-    await resetProviderBlock(key);
+    const { resolveAIConfig } = await import("@/lib/ai/aiClient");
+    // Reset only the block for the capability's CURRENTLY-configured provider — the block key
+    // is scoped to (capability, provider), so this must match what §resolveAIConfig would
+    // actually route to right now.
+    const { provider } = await resolveAIConfig(capability);
+    await resetProviderBlock(key, provider);
 
     logger.info("LLM provider block reset manually by admin", {
       userId: session.user.id,
       email: session.user.email,
       providerKey: key,
+      provider,
     });
 
     return NextResponse.json({ success: true });

@@ -11,13 +11,25 @@ const ollamaClient = new Ollama({
   host: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
 });
 
+/** `gemma-26b`/`gemma-31b` route through the same `googleGenAI` client as `gemini` (shared
+ * `GEMINI_API_KEY`) in `generateText`/`generateJSON` — they are Gemini-API-hosted Gemma models,
+ * not a separate SDK/endpoint. Unlike `gemini`, their model id is fixed per provider value
+ * (`GEMMA_26B_MODEL`/`GEMMA_31B_MODEL`), not the shared `GEMINI_MODEL` key — so selecting one of
+ * these providers always uses that specific Gemma model regardless of `GEMINI_MODEL`. No
+ * embedding support (Gemma has no `embedContent` endpoint) — not offered for the `embedding`
+ * capability. */
 interface AIResolution {
-  provider: "ollama" | "gemini" | "claude";
+  provider: "ollama" | "gemini" | "claude" | "gemma-26b" | "gemma-31b";
   model: string;
 }
 
 /** Capabilities routed through the chat/JSON LLM path (generateText/generateJSON). */
-type ChatCapability = "parsing" | "summaries" | "default" | "profile";
+type ChatCapability =
+  | "parsing"
+  | "summaries"
+  | "default"
+  | "profile"
+  | "skillAlias";
 
 export async function resolveAIConfig(
   capability: ChatCapability | "embedding",
@@ -33,9 +45,11 @@ export async function resolveAIConfig(
           ? "AI_PROVIDER_SUMMARIES"
           : capability === "profile"
             ? "AI_PROVIDER_PROFILE"
-            : capability === "embedding"
-              ? "AI_PROVIDER_EMBEDDING"
-              : "AI_PROVIDER_DEFAULT";
+            : capability === "skillAlias"
+              ? "AI_PROVIDER_SKILLALIAS"
+              : capability === "embedding"
+                ? "AI_PROVIDER_EMBEDDING"
+                : "AI_PROVIDER_DEFAULT";
 
     // Try fetching from database SystemConfig
     const dbProvider = await prisma.systemConfig.findUnique({
@@ -66,13 +80,33 @@ export async function resolveAIConfig(
           ? process.env.AI_PROVIDER_SUMMARIES
           : capability === "profile"
             ? process.env.AI_PROVIDER_PROFILE
-            : capability === "embedding"
-              ? process.env.AI_PROVIDER_EMBEDDING
-              : process.env.AI_PROVIDER_DEFAULT) || "ollama";
+            : capability === "skillAlias"
+              ? process.env.AI_PROVIDER_SKILLALIAS
+              : capability === "embedding"
+                ? process.env.AI_PROVIDER_EMBEDDING
+                : process.env.AI_PROVIDER_DEFAULT) || "ollama";
   }
 
   const provider =
-    (providerStr.toLowerCase() as "ollama" | "gemini" | "claude") || "ollama";
+    (providerStr.toLowerCase() as
+      | "ollama"
+      | "gemini"
+      | "claude"
+      | "gemma-26b"
+      | "gemma-31b") || "ollama";
+
+  // Gemma has no embedding endpoint — the `embedding` capability never resolves to it (the
+  // provider-select UI/schema don't offer it there either), but guard defensively in case a
+  // stale SystemConfig row set AI_PROVIDER_EMBEDDING to a gemma value before this UI existed.
+  if (
+    capability === "embedding" &&
+    (provider === "gemma-26b" || provider === "gemma-31b")
+  ) {
+    return {
+      provider: "ollama",
+      model: process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text",
+    };
+  }
 
   // Resolve model based on resolved provider (capability-aware: embedding models are a
   // structurally different key set from chat models, see spectech Technical Decisions)
@@ -86,7 +120,11 @@ export async function resolveAIConfig(
           ? "GEMINI_MODEL"
           : provider === "claude"
             ? "CLAUDE_MODEL"
-            : "OLLAMA_MODEL";
+            : provider === "gemma-26b"
+              ? "GEMMA_26B_MODEL"
+              : provider === "gemma-31b"
+                ? "GEMMA_31B_MODEL"
+                : "OLLAMA_MODEL";
 
     const dbModel = await prisma.systemConfig.findUnique({
       where: { key: modelKey },
@@ -106,7 +144,11 @@ export async function resolveAIConfig(
           ? process.env.GEMINI_MODEL || "gemini-3-pro"
           : provider === "claude"
             ? process.env.CLAUDE_MODEL || "claude-haiku-4-5"
-            : process.env.OLLAMA_MODEL || "granite4.1:8b") || "";
+            : provider === "gemma-26b"
+              ? process.env.GEMMA_26B_MODEL || "gemma-4-26b-a4b-it"
+              : provider === "gemma-31b"
+                ? process.env.GEMMA_31B_MODEL || "gemma-4-31b-it"
+                : process.env.OLLAMA_MODEL || "granite4.1:8b") || "";
   }
 
   return { provider, model: modelStr };
@@ -122,7 +164,11 @@ export async function generateText(
     `Routing AI request: ${capability} -> ${provider} using ${model}`,
   );
 
-  if (provider === "gemini") {
+  if (
+    provider === "gemini" ||
+    provider === "gemma-26b" ||
+    provider === "gemma-31b"
+  ) {
     const contentPrompt = systemPrompt
       ? `${systemPrompt}\n\n${prompt}`
       : prompt;
@@ -197,7 +243,11 @@ export async function generateJSON<T>(
 
   let responseText = "";
 
-  if (provider === "gemini") {
+  if (
+    provider === "gemini" ||
+    provider === "gemma-26b" ||
+    provider === "gemma-31b"
+  ) {
     const response = await googleGenAI.models.generateContent({
       model,
       contents: `${jsonSystemPrompt}\n\nInput:\n${prompt}`,

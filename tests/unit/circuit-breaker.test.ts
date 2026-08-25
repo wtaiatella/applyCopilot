@@ -51,13 +51,20 @@ describe("Circuit Breaker — isBlockingHttpStatus", () => {
 });
 
 describe("Circuit Breaker — getBlockedUntilKey", () => {
-  it("appends _BLOCKED_UNTIL suffix to provider config key", () => {
-    expect(getBlockedUntilKey("AI_PROVIDER_PARSING")).toBe(
-      "AI_PROVIDER_PARSING_BLOCKED_UNTIL"
+  it("scopes the key by BOTH capability and provider (uppercased)", () => {
+    expect(getBlockedUntilKey("AI_PROVIDER_PARSING", "gemini")).toBe(
+      "AI_PROVIDER_PARSING_GEMINI_BLOCKED_UNTIL",
     );
-    expect(getBlockedUntilKey("AI_PROVIDER_SUMMARIES")).toBe(
-      "AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL"
+    expect(getBlockedUntilKey("AI_PROVIDER_SUMMARIES", "claude")).toBe(
+      "AI_PROVIDER_SUMMARIES_CLAUDE_BLOCKED_UNTIL",
     );
+  });
+
+  it("produces a different key for a different provider on the same capability", () => {
+    const geminiKey = getBlockedUntilKey("AI_PROVIDER_PARSING", "gemini");
+    const gemmaKey = getBlockedUntilKey("AI_PROVIDER_PARSING", "gemma-26b");
+    expect(geminiKey).not.toBe(gemmaKey);
+    expect(gemmaKey).toBe("AI_PROVIDER_PARSING_GEMMA-26B_BLOCKED_UNTIL");
   });
 });
 
@@ -69,41 +76,76 @@ describe("Circuit Breaker — isProviderBlocked", () => {
   it("returns false when no block entry exists in SystemConfig", async () => {
     mockFindUnique.mockResolvedValue(null);
 
-    const result = await isProviderBlocked("AI_PROVIDER_PARSING");
+    const result = await isProviderBlocked("AI_PROVIDER_PARSING", "gemini");
 
     expect(result).toBe(false);
     expect(mockFindUnique).toHaveBeenCalledWith({
-      where: { key: "AI_PROVIDER_PARSING_BLOCKED_UNTIL" },
+      where: { key: "AI_PROVIDER_PARSING_GEMINI_BLOCKED_UNTIL" },
     });
   });
 
   it("returns true when block timestamp is in the future", async () => {
     const futureTimestamp = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min from now
-    mockFindUnique.mockResolvedValue({ key: "AI_PROVIDER_PARSING_BLOCKED_UNTIL", value: futureTimestamp });
+    mockFindUnique.mockResolvedValue({
+      key: "AI_PROVIDER_PARSING_GEMINI_BLOCKED_UNTIL",
+      value: futureTimestamp,
+    });
 
-    const result = await isProviderBlocked("AI_PROVIDER_PARSING");
+    const result = await isProviderBlocked("AI_PROVIDER_PARSING", "gemini");
 
     expect(result).toBe(true);
   });
 
+  it("returns false for a DIFFERENT provider on the same capability even while gemini is blocked", async () => {
+    // Simulates the bug this suite guards against: switching a capability's provider must not
+    // inherit a block that was recorded against the previous provider.
+    mockFindUnique.mockImplementation(({ where: { key } }) => {
+      if (key === "AI_PROVIDER_PARSING_GEMINI_BLOCKED_UNTIL") {
+        return Promise.resolve({
+          key,
+          value: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        });
+      }
+      return Promise.resolve(null);
+    });
+
+    const geminiBlocked = await isProviderBlocked(
+      "AI_PROVIDER_PARSING",
+      "gemini",
+    );
+    const gemmaBlocked = await isProviderBlocked(
+      "AI_PROVIDER_PARSING",
+      "gemma-26b",
+    );
+
+    expect(geminiBlocked).toBe(true);
+    expect(gemmaBlocked).toBe(false);
+  });
+
   it("returns false and cleans up when block timestamp has expired", async () => {
     const pastTimestamp = new Date(Date.now() - 60 * 1000).toISOString(); // 1 minute ago
-    mockFindUnique.mockResolvedValue({ key: "AI_PROVIDER_PARSING_BLOCKED_UNTIL", value: pastTimestamp });
+    mockFindUnique.mockResolvedValue({
+      key: "AI_PROVIDER_PARSING_GEMINI_BLOCKED_UNTIL",
+      value: pastTimestamp,
+    });
     mockDelete.mockResolvedValue({});
 
-    const result = await isProviderBlocked("AI_PROVIDER_PARSING");
+    const result = await isProviderBlocked("AI_PROVIDER_PARSING", "gemini");
 
     expect(result).toBe(false);
     expect(mockDelete).toHaveBeenCalledWith({
-      where: { key: "AI_PROVIDER_PARSING_BLOCKED_UNTIL" },
+      where: { key: "AI_PROVIDER_PARSING_GEMINI_BLOCKED_UNTIL" },
     });
   });
 
   it("returns false and resets when stored value is an invalid date string", async () => {
-    mockFindUnique.mockResolvedValue({ key: "AI_PROVIDER_PARSING_BLOCKED_UNTIL", value: "not-a-date" });
+    mockFindUnique.mockResolvedValue({
+      key: "AI_PROVIDER_PARSING_GEMINI_BLOCKED_UNTIL",
+      value: "not-a-date",
+    });
     mockDelete.mockResolvedValue({});
 
-    const result = await isProviderBlocked("AI_PROVIDER_PARSING");
+    const result = await isProviderBlocked("AI_PROVIDER_PARSING", "gemini");
 
     expect(result).toBe(false);
     expect(mockDelete).toHaveBeenCalled();
@@ -113,7 +155,7 @@ describe("Circuit Breaker — isProviderBlocked", () => {
     mockFindUnique.mockRejectedValue(new Error("DB connection lost"));
 
     // Should not throw, should return false (fail open)
-    const result = await isProviderBlocked("AI_PROVIDER_PARSING");
+    const result = await isProviderBlocked("AI_PROVIDER_PARSING", "gemini");
 
     expect(result).toBe(false);
   });
@@ -124,17 +166,19 @@ describe("Circuit Breaker — blockProvider", () => {
     jest.clearAllMocks();
   });
 
-  it("upserts the BLOCKED_UNTIL key in SystemConfig with a future timestamp", async () => {
+  it("upserts the BLOCKED_UNTIL key (scoped to capability+provider) with a future timestamp", async () => {
     mockUpsert.mockResolvedValue({});
 
     const before = Date.now();
-    await blockProvider("AI_PROVIDER_PARSING", 60 * 60 * 1000);
+    await blockProvider("AI_PROVIDER_PARSING", "gemini", 60 * 60 * 1000);
     const after = Date.now();
 
     expect(mockUpsert).toHaveBeenCalledTimes(1);
 
     const call = mockUpsert.mock.calls[0][0];
-    expect(call.where).toEqual({ key: "AI_PROVIDER_PARSING_BLOCKED_UNTIL" });
+    expect(call.where).toEqual({
+      key: "AI_PROVIDER_PARSING_GEMINI_BLOCKED_UNTIL",
+    });
 
     // Verify the stored timestamp is between before + 1hr and after + 1hr
     const storedTimestamp = new Date(call.create.value).getTime();
@@ -146,7 +190,7 @@ describe("Circuit Breaker — blockProvider", () => {
     mockUpsert.mockResolvedValue({});
 
     const before = Date.now();
-    await blockProvider("AI_PROVIDER_SUMMARIES");
+    await blockProvider("AI_PROVIDER_SUMMARIES", "claude");
 
     const call = mockUpsert.mock.calls[0][0];
     const storedTime = new Date(call.create.value).getTime();
@@ -160,7 +204,9 @@ describe("Circuit Breaker — blockProvider", () => {
     mockUpsert.mockRejectedValue(new Error("DB write error"));
 
     // Should not propagate the error
-    await expect(blockProvider("AI_PROVIDER_PARSING")).resolves.not.toThrow();
+    await expect(
+      blockProvider("AI_PROVIDER_PARSING", "gemini"),
+    ).resolves.not.toThrow();
   });
 });
 
@@ -169,13 +215,13 @@ describe("Circuit Breaker — resetProviderBlock", () => {
     jest.clearAllMocks();
   });
 
-  it("deletes the BLOCKED_UNTIL key from SystemConfig", async () => {
+  it("deletes the BLOCKED_UNTIL key scoped to capability+provider", async () => {
     mockDelete.mockResolvedValue({});
 
-    await resetProviderBlock("AI_PROVIDER_PARSING");
+    await resetProviderBlock("AI_PROVIDER_PARSING", "gemini");
 
     expect(mockDelete).toHaveBeenCalledWith({
-      where: { key: "AI_PROVIDER_PARSING_BLOCKED_UNTIL" },
+      where: { key: "AI_PROVIDER_PARSING_GEMINI_BLOCKED_UNTIL" },
     });
   });
 
@@ -184,7 +230,9 @@ describe("Circuit Breaker — resetProviderBlock", () => {
     (notFoundError as Error & { code: string }).code = "P2025";
     mockDelete.mockRejectedValue(notFoundError);
 
-    await expect(resetProviderBlock("AI_PROVIDER_PARSING")).resolves.not.toThrow();
+    await expect(
+      resetProviderBlock("AI_PROVIDER_PARSING", "gemini"),
+    ).resolves.not.toThrow();
   });
 
   it("rethrows non-P2025 DB errors", async () => {
@@ -193,7 +241,9 @@ describe("Circuit Breaker — resetProviderBlock", () => {
     mockDelete.mockRejectedValue(dbError);
 
     // Should not throw — the error is logged but swallowed for resilience
-    await expect(resetProviderBlock("AI_PROVIDER_PARSING")).resolves.not.toThrow();
+    await expect(
+      resetProviderBlock("AI_PROVIDER_PARSING", "gemini"),
+    ).resolves.not.toThrow();
   });
 });
 
@@ -204,61 +254,89 @@ describe("Circuit Breaker — withCircuitBreaker", () => {
   });
 
   it("returns the result of the wrapped function on success", async () => {
-    const result = await withCircuitBreaker("AI_PROVIDER_PARSING", async () => "success-value");
+    const result = await withCircuitBreaker(
+      "AI_PROVIDER_PARSING",
+      "gemini",
+      async () => "success-value",
+    );
 
     expect(result).toBe("success-value");
     expect(mockUpsert).not.toHaveBeenCalled();
   });
 
-  it("blocks the provider and re-throws on HTTP 429 error (status property)", async () => {
-    const rateLimitError = Object.assign(new Error("Rate limit exceeded"), { status: 429 });
+  it("blocks the (capability, provider) pair and re-throws on HTTP 429 error (status property)", async () => {
+    const rateLimitError = Object.assign(new Error("Rate limit exceeded"), {
+      status: 429,
+    });
 
     await expect(
-      withCircuitBreaker("AI_PROVIDER_PARSING", async () => {
+      withCircuitBreaker("AI_PROVIDER_PARSING", "gemini", async () => {
         throw rateLimitError;
-      })
+      }),
     ).rejects.toThrow("Rate limit exceeded");
 
     expect(mockUpsert).toHaveBeenCalledTimes(1);
     expect(mockUpsert.mock.calls[0][0].where).toEqual({
-      key: "AI_PROVIDER_PARSING_BLOCKED_UNTIL",
+      key: "AI_PROVIDER_PARSING_GEMINI_BLOCKED_UNTIL",
     });
   });
 
-  it("blocks the provider on HTTP 401 error (statusCode property)", async () => {
-    const authError = Object.assign(new Error("Unauthorized"), { statusCode: 401 });
+  it("blocks the (capability, provider) pair on HTTP 401 error (statusCode property)", async () => {
+    const authError = Object.assign(new Error("Unauthorized"), {
+      statusCode: 401,
+    });
 
     await expect(
-      withCircuitBreaker("AI_PROVIDER_SUMMARIES", async () => {
+      withCircuitBreaker("AI_PROVIDER_SUMMARIES", "claude", async () => {
         throw authError;
-      })
+      }),
     ).rejects.toThrow("Unauthorized");
 
     expect(mockUpsert).toHaveBeenCalledTimes(1);
     expect(mockUpsert.mock.calls[0][0].where).toEqual({
-      key: "AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL",
+      key: "AI_PROVIDER_SUMMARIES_CLAUDE_BLOCKED_UNTIL",
+    });
+  });
+
+  it("blocks a gemma-26b failure under its own key, distinct from gemini", async () => {
+    const rateLimitError = Object.assign(new Error("Rate limit exceeded"), {
+      status: 429,
+    });
+
+    await expect(
+      withCircuitBreaker("AI_PROVIDER_PARSING", "gemma-26b", async () => {
+        throw rateLimitError;
+      }),
+    ).rejects.toThrow("Rate limit exceeded");
+
+    expect(mockUpsert.mock.calls[0][0].where).toEqual({
+      key: "AI_PROVIDER_PARSING_GEMMA-26B_BLOCKED_UNTIL",
     });
   });
 
   it("blocks the provider on HTTP 402 error detected in message string", async () => {
-    const quotaError = new Error("Request failed with status 402 Payment Required");
+    const quotaError = new Error(
+      "Request failed with status 402 Payment Required",
+    );
 
     await expect(
-      withCircuitBreaker("AI_PROVIDER_PARSING", async () => {
+      withCircuitBreaker("AI_PROVIDER_PARSING", "gemini", async () => {
         throw quotaError;
-      })
+      }),
     ).rejects.toThrow("402");
 
     expect(mockUpsert).toHaveBeenCalledTimes(1);
   });
 
   it("re-throws non-blocking errors WITHOUT blocking the provider", async () => {
-    const serverError = Object.assign(new Error("Internal server error"), { status: 500 });
+    const serverError = Object.assign(new Error("Internal server error"), {
+      status: 500,
+    });
 
     await expect(
-      withCircuitBreaker("AI_PROVIDER_PARSING", async () => {
+      withCircuitBreaker("AI_PROVIDER_PARSING", "gemini", async () => {
         throw serverError;
-      })
+      }),
     ).rejects.toThrow("Internal server error");
 
     // Provider should NOT be blocked for a 500 error
@@ -269,9 +347,9 @@ describe("Circuit Breaker — withCircuitBreaker", () => {
     const genericError = new Error("Network connection refused");
 
     await expect(
-      withCircuitBreaker("AI_PROVIDER_PARSING", async () => {
+      withCircuitBreaker("AI_PROVIDER_PARSING", "gemini", async () => {
         throw genericError;
-      })
+      }),
     ).rejects.toThrow("Network connection refused");
 
     expect(mockUpsert).not.toHaveBeenCalled();

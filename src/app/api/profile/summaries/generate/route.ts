@@ -25,10 +25,15 @@ export async function POST(req: Request) {
     });
 
     if (summaryCount >= 10) {
-      logger.warn(`User ${userId} hit summary AI generation rate limit`, { summaryCount });
+      logger.warn(`User ${userId} hit summary AI generation rate limit`, {
+        summaryCount,
+      });
       return NextResponse.json(
-        { error: "Rate limit reached. You can only generate 10 summaries per hour." },
-        { status: 429 }
+        {
+          error:
+            "Rate limit reached. You can only generate 10 summaries per hour.",
+        },
+        { status: 429 },
       );
     }
 
@@ -58,7 +63,7 @@ export async function POST(req: Request) {
         projects: {
           include: { bullets: { orderBy: { sortOrder: "asc" } } },
         },
-        skills: true,
+        skills: { where: { isArchived: false } },
       },
     });
 
@@ -72,7 +77,7 @@ export async function POST(req: Request) {
         (exp) =>
           `- ${exp.position} at ${exp.company} (${exp.startDate.toISOString().split("T")[0]} to ${
             exp.endDate ? exp.endDate.toISOString().split("T")[0] : "Present"
-          }):\n  ${exp.bullets.map((b) => `* ${b.text}`).join("\n  ")}`
+          }):\n  ${exp.bullets.map((b) => `* ${b.text}`).join("\n  ")}`,
       )
       .join("\n\n");
 
@@ -81,18 +86,20 @@ export async function POST(req: Request) {
         (proj) =>
           `- Project ${proj.name} (Tech: ${proj.technologies.join(", ")}):\n  ${proj.bullets
             .map((b) => `* ${b.text}`)
-            .join("\n  ")}`
+            .join("\n  ")}`,
       )
       .join("\n\n");
 
-    const skillsText = profile.skills.map((s) => `${s.name} (${s.proficiency})`).join(", ");
+    const skillsText = profile.skills
+      .map((s) => `${s.name} (${s.proficiency})`)
+      .join(", ");
 
     const eduText = profile.education
       .map(
         (edu) =>
           `- ${edu.degree} in ${edu.fieldOfStudy || "N/A"} from ${edu.institution} (${
             edu.startDate.toISOString().split("T")[0]
-          } to ${edu.endDate ? edu.endDate.toISOString().split("T")[0] : "Present"})`
+          } to ${edu.endDate ? edu.endDate.toISOString().split("T")[0] : "Present"})`,
       )
       .join("\n\n");
 
@@ -126,7 +133,10 @@ Return ONLY a valid JSON object matching the following structure (no other text,
 }`;
 
     // 6. Call LLM
-    const generated = await generateJSON<{ title: string; content: string }>(prompt, "summaries");
+    const generated = await generateJSON<{ title: string; content: string }>(
+      prompt,
+      "summaries",
+    );
 
     // 7. Log usage
     await prisma.aIUsageLog.create({
@@ -142,6 +152,9 @@ Return ONLY a valid JSON object matching the following structure (no other text,
   } catch (error) {
     const err = error as Error;
     logger.error("Failed to generate AI summary", { error: err.message });
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

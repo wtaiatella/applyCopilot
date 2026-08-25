@@ -50,6 +50,10 @@ jest.mock("../../src/lib/db/prisma", () => ({
       update: jest.fn(),
       create: jest.fn(),
     },
+    cVBullet: {
+      count: jest.fn(),
+    },
+    $transaction: jest.fn(),
   },
 }));
 
@@ -58,12 +62,23 @@ describe("ProfileMergeService", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // mergeSkills now reconciles each matched skill through reconcileSkillMutation inside a
+    // prisma.$transaction — run the callback against the same mocked `prisma` object (tx ===
+    // prisma here) so existing `prisma.skill.update`/`.create` assertions below still apply.
+    // Default: no existing skill is CV-locked, so reconcileSkillMutation takes its "simple
+    // update" path (a plain skill.update), matching this file's pre-existing expectations.
+    (prisma.$transaction as jest.Mock).mockImplementation((cb) => cb(prisma));
+    (prisma.cVBullet.count as jest.Mock).mockResolvedValue(0);
   });
 
   describe("normalizeText", () => {
     it("should normalize string casing, spaces, and punctuation", () => {
-      expect(ProfileMergeService.normalizeText(" Google, Inc. ")).toBe("google inc");
-      expect(ProfileMergeService.normalizeText("Self-Employed!!")).toBe("selfemployed");
+      expect(ProfileMergeService.normalizeText(" Google, Inc. ")).toBe(
+        "google inc",
+      );
+      expect(ProfileMergeService.normalizeText("Self-Employed!!")).toBe(
+        "selfemployed",
+      );
       expect(ProfileMergeService.normalizeText("")).toBe("");
     });
   });
@@ -91,7 +106,12 @@ describe("ProfileMergeService", () => {
       };
 
       (prisma.profileSummary.findMany as jest.Mock).mockResolvedValue([
-        { id: "s1", title: "Old Title", content: "Old Content", isActive: true },
+        {
+          id: "s1",
+          title: "Old Title",
+          content: "Old Content",
+          isActive: true,
+        },
       ]);
 
       await ProfileMergeService.mergeBasicData(profileId, basicData);
@@ -131,8 +151,18 @@ describe("ProfileMergeService", () => {
       };
 
       (prisma.profileSummary.findMany as jest.Mock).mockResolvedValue([
-        { id: "s1", title: "Other Title", content: "Other Content", isActive: true },
-        { id: "s2", title: "Staff Engineer", content: "Passionate about full-stack architectures.", isActive: false },
+        {
+          id: "s1",
+          title: "Other Title",
+          content: "Other Content",
+          isActive: true,
+        },
+        {
+          id: "s2",
+          title: "Staff Engineer",
+          content: "Passionate about full-stack architectures.",
+          isActive: false,
+        },
       ]);
 
       await ProfileMergeService.mergeBasicData(profileId, basicData);
@@ -160,7 +190,12 @@ describe("ProfileMergeService", () => {
       };
 
       (prisma.profileSummary.findMany as jest.Mock).mockResolvedValue([
-        { id: "s2", title: "Staff Engineer", content: "Passionate about full-stack architectures.", isActive: true },
+        {
+          id: "s2",
+          title: "Staff Engineer",
+          content: "Passionate about full-stack architectures.",
+          isActive: true,
+        },
       ]);
 
       await ProfileMergeService.mergeBasicData(profileId, basicData);
@@ -181,9 +216,13 @@ describe("ProfileMergeService", () => {
       };
 
       (prisma.experience.findMany as jest.Mock).mockResolvedValue([]);
-      (prisma.experience.create as jest.Mock).mockResolvedValue({ id: "new-exp-id" });
+      (prisma.experience.create as jest.Mock).mockResolvedValue({
+        id: "new-exp-id",
+      });
 
-      await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as unknown as ExperienceDTO[]);
+      await ProfileMergeService.mergeExperiences(profileId, [
+        incomingExp,
+      ] as unknown as ExperienceDTO[]);
 
       expect(prisma.experience.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -220,7 +259,9 @@ describe("ProfileMergeService", () => {
         },
       ]);
 
-      await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as unknown as ExperienceDTO[]);
+      await ProfileMergeService.mergeExperiences(profileId, [
+        incomingExp,
+      ] as unknown as ExperienceDTO[]);
 
       expect(prisma.experience.update).toHaveBeenCalled();
       expect(prisma.experience.create).not.toHaveBeenCalled();
@@ -231,9 +272,9 @@ describe("ProfileMergeService", () => {
         company: "Avalara",
         position: "Senior Engineer",
         bullets: [
-          { text: "Active Bullet" },     // unchanged
-          { text: "Archived Bullet" },   // needs reactivation
-          { text: "Brand New Bullet" },  // needs creation
+          { text: "Active Bullet" }, // unchanged
+          { text: "Archived Bullet" }, // needs reactivation
+          { text: "Brand New Bullet" }, // needs creation
         ],
       };
 
@@ -250,7 +291,9 @@ describe("ProfileMergeService", () => {
         },
       ]);
 
-      await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as unknown as ExperienceDTO[]);
+      await ProfileMergeService.mergeExperiences(profileId, [
+        incomingExp,
+      ] as unknown as ExperienceDTO[]);
 
       expect(prisma.experienceBullet.update).toHaveBeenCalledWith({
         where: { id: "b2" },
@@ -285,7 +328,9 @@ describe("ProfileMergeService", () => {
         },
       ]);
 
-      await ProfileMergeService.mergeExperiences(profileId, [incomingExp] as unknown as ExperienceDTO[]);
+      await ProfileMergeService.mergeExperiences(profileId, [
+        incomingExp,
+      ] as unknown as ExperienceDTO[]);
 
       expect(prisma.experience.update).toHaveBeenCalledWith({
         where: { id: "existing-exp-id" },
@@ -332,7 +377,9 @@ describe("ProfileMergeService", () => {
       };
 
       (prisma.project.findMany as jest.Mock).mockResolvedValue([]);
-      (prisma.project.create as jest.Mock).mockResolvedValue({ id: "new-proj-id" });
+      (prisma.project.create as jest.Mock).mockResolvedValue({
+        id: "new-proj-id",
+      });
 
       await ProfileMergeService.mergeProjects(profileId, [incomingProj]);
 
@@ -358,10 +405,7 @@ describe("ProfileMergeService", () => {
       const incomingProj = {
         name: "ApplyCopilot",
         freeFormContext: ["Note X", "Note Y"],
-        bullets: [
-          { text: "Archived Bullet" },
-          { text: "New Bullet" },
-        ],
+        bullets: [{ text: "Archived Bullet" }, { text: "New Bullet" }],
       };
 
       (prisma.project.findMany as jest.Mock).mockResolvedValue([
@@ -369,9 +413,7 @@ describe("ProfileMergeService", () => {
           id: "existing-proj-id",
           name: "ApplyCopilot",
           freeFormContext: ["Note X"],
-          bullets: [
-            { id: "pb1", text: "Archived Bullet", isArchived: true },
-          ],
+          bullets: [{ id: "pb1", text: "Archived Bullet", isArchived: true }],
           technologies: [],
         },
       ]);
@@ -411,7 +453,9 @@ describe("ProfileMergeService", () => {
       };
 
       (prisma.education.findMany as jest.Mock).mockResolvedValue([]);
-      (prisma.education.create as jest.Mock).mockResolvedValue({ id: "new-ed-id" });
+      (prisma.education.create as jest.Mock).mockResolvedValue({
+        id: "new-ed-id",
+      });
 
       await ProfileMergeService.mergeEducation(profileId, [incomingEd]);
 
@@ -438,10 +482,7 @@ describe("ProfileMergeService", () => {
         institution: "UFSC",
         degree: "B.S. Computer Science",
         freeFormContext: ["Thesis about AI", "Thesis about compilers"],
-        bullets: [
-          { text: "Archived Bullet" },
-          { text: "New Bullet" },
-        ],
+        bullets: [{ text: "Archived Bullet" }, { text: "New Bullet" }],
       };
 
       (prisma.education.findMany as jest.Mock).mockResolvedValue([
@@ -450,9 +491,7 @@ describe("ProfileMergeService", () => {
           institution: "UFSC",
           degree: "B.S. Computer Science",
           freeFormContext: ["Thesis about AI"],
-          bullets: [
-            { id: "eb1", text: "Archived Bullet", isArchived: true },
-          ],
+          bullets: [{ id: "eb1", text: "Archived Bullet", isArchived: true }],
         },
       ]);
 
@@ -484,13 +523,31 @@ describe("ProfileMergeService", () => {
   describe("mergeSkills", () => {
     it("should keep the higher proficiency level and higher years of experience", async () => {
       const incomingSkills = [
-        { name: "TypeScript", proficiency: "EXPERT" as const, yearsExperience: 3 },
-        { name: "Next.js", proficiency: "INTERMEDIATE" as const, yearsExperience: 5 },
+        {
+          name: "TypeScript",
+          proficiency: "EXPERT" as const,
+          yearsExperience: 3,
+        },
+        {
+          name: "Next.js",
+          proficiency: "INTERMEDIATE" as const,
+          yearsExperience: 5,
+        },
       ];
 
       (prisma.skill.findMany as jest.Mock).mockResolvedValue([
-        { id: "s1", name: "TypeScript", proficiency: "ADVANCED", yearsExperience: 5 },
-        { id: "s2", name: "Next.js", proficiency: "EXPERT", yearsExperience: 2 },
+        {
+          id: "s1",
+          name: "TypeScript",
+          proficiency: "ADVANCED",
+          yearsExperience: 5,
+        },
+        {
+          id: "s2",
+          name: "Next.js",
+          proficiency: "EXPERT",
+          yearsExperience: 2,
+        },
       ]);
 
       await ProfileMergeService.mergeSkills(profileId, incomingSkills);
@@ -498,6 +555,7 @@ describe("ProfileMergeService", () => {
       expect(prisma.skill.update).toHaveBeenCalledWith({
         where: { id: "s1" },
         data: {
+          name: "TypeScript",
           proficiency: "EXPERT",
           yearsExperience: 5,
         },
@@ -506,8 +564,43 @@ describe("ProfileMergeService", () => {
       expect(prisma.skill.update).toHaveBeenCalledWith({
         where: { id: "s2" },
         data: {
+          name: "Next.js",
           proficiency: "EXPERT",
           yearsExperience: 5,
+        },
+      });
+    });
+
+    it("archives the existing skill and creates a fresh row when it is locked into a generated CV", async () => {
+      const incomingSkills = [
+        { name: "Python", proficiency: "EXPERT" as const, yearsExperience: 4 },
+      ];
+
+      (prisma.skill.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: "s1",
+          name: "Python",
+          proficiency: "INTERMEDIATE",
+          yearsExperience: 2,
+        },
+      ]);
+      (prisma.cVBullet.count as jest.Mock).mockResolvedValue(1);
+      (prisma.skill.create as jest.Mock).mockResolvedValue({ id: "s1-new" });
+
+      await ProfileMergeService.mergeSkills(profileId, incomingSkills);
+
+      expect(prisma.skill.update).toHaveBeenCalledWith({
+        where: { id: "s1" },
+        data: { isArchived: true, isActive: false },
+      });
+      expect(prisma.skill.create).toHaveBeenCalledWith({
+        data: {
+          profileId,
+          name: "Python",
+          proficiency: "EXPERT",
+          yearsExperience: 4,
+          isActive: true,
+          isArchived: false,
         },
       });
     });

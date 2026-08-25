@@ -11,6 +11,7 @@ const { Text, Title } = Typography;
 
 export interface JobFactsSummary {
   niceToHave: string[];
+  softSkills: string[];
   seniority: string | null;
   yearsExperienceMin: number | null;
   workMode: string | null;
@@ -39,6 +40,9 @@ export interface Job {
   matchedSkills?: string[];
   missingSkills?: string[];
   niceToHaveMatched?: string[];
+  niceToHaveMissing?: string[];
+  softSkillsMatched?: string[];
+  softSkillsMissing?: string[];
   disqualified?: boolean;
   disqualifyReason?: string | null;
   jobFacts?: JobFactsSummary | null;

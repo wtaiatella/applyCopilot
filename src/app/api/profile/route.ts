@@ -90,7 +90,7 @@ export async function GET() {
             startDate: "desc",
           },
         },
-        skills: true,
+        skills: { where: { isArchived: false } },
         references: true,
         summaries: {
           orderBy: {
@@ -187,7 +187,7 @@ export async function GET() {
               startDate: "desc",
             },
           },
-          skills: true,
+          skills: { where: { isArchived: false } },
           references: true,
           summaries: {
             orderBy: {

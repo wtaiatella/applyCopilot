@@ -76,7 +76,7 @@ export async function POST(
     const profile = await prisma.userProfile.findUnique({
       where: { userId },
       include: {
-        skills: true,
+        skills: { where: { isArchived: false } },
         experiences: {
           orderBy: { startDate: "desc" },
         },

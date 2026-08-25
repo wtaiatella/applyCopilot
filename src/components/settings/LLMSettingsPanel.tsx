@@ -1,7 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { Form, Select, Button, Collapse, Tag, Tooltip, App } from "antd";
+import { useEffect, useState } from "react";
+import {
+  Form,
+  Select,
+  Button,
+  Collapse,
+  Tag,
+  Tooltip,
+  App,
+  InputNumber,
+} from "antd";
 import { AlertCircle } from "lucide-react";
 import { LLMProviderConfig, CredentialStatus } from "@/types/admin";
 
@@ -23,6 +32,109 @@ export default function LLMSettingsPanel({
   >(blockedStatus || {});
   const [resetting, setResetting] = useState<Record<string, boolean>>({});
   const [form] = Form.useForm();
+
+  const [skillThreshold, setSkillThreshold] = useState<number | null>(null);
+  const [skillThresholdLoading, setSkillThresholdLoading] = useState(false);
+  const [skillThresholdForm] = Form.useForm();
+
+  const [matchDisplayThreshold, setMatchDisplayThreshold] = useState<
+    number | null
+  >(null);
+  const [matchDisplayThresholdLoading, setMatchDisplayThresholdLoading] =
+    useState(false);
+  const [matchDisplayThresholdForm] = Form.useForm();
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/skill-threshold")
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        if (cancelled) return;
+        setSkillThreshold(data.threshold);
+        skillThresholdForm.setFieldsValue({ threshold: data.threshold });
+      })
+      .catch(() => {
+        // Non-fatal: leave the field blank rather than block the rest of the panel.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/skill-match-threshold")
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        if (cancelled) return;
+        setMatchDisplayThreshold(data.threshold);
+        matchDisplayThresholdForm.setFieldsValue({
+          threshold: data.threshold,
+        });
+      })
+      .catch(() => {
+        // Non-fatal: leave the field blank rather than block the rest of the panel.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const saveSkillThreshold = async (values: { threshold: number }) => {
+    setSkillThresholdLoading(true);
+    try {
+      const response = await fetch("/api/admin/skill-threshold", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threshold: values.threshold }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save skill matching threshold");
+      }
+
+      const data = await response.json();
+      setSkillThreshold(data.threshold);
+      message.success("Skill matching threshold saved successfully!");
+    } catch (error: unknown) {
+      const errMsg =
+        error instanceof Error
+          ? error.message
+          : "Failed to save skill matching threshold";
+      message.error(errMsg);
+    } finally {
+      setSkillThresholdLoading(false);
+    }
+  };
+
+  const saveMatchDisplayThreshold = async (values: { threshold: number }) => {
+    setMatchDisplayThresholdLoading(true);
+    try {
+      const response = await fetch("/api/admin/skill-match-threshold", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threshold: values.threshold }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save match display threshold");
+      }
+
+      const data = await response.json();
+      setMatchDisplayThreshold(data.threshold);
+      message.success("Match display threshold saved successfully!");
+    } catch (error: unknown) {
+      const errMsg =
+        error instanceof Error
+          ? error.message
+          : "Failed to save match display threshold";
+      message.error(errMsg);
+    } finally {
+      setMatchDisplayThresholdLoading(false);
+    }
+  };
 
   const handleResetBlock = async (capabilityKey: string, dbKey: string) => {
     setResetting((prev) => ({ ...prev, [capabilityKey]: true }));
@@ -104,6 +216,11 @@ export default function LLMSettingsPanel({
       unconfigured.push("Claude (Default)");
     if (values.defaultProvider === "ollama" && !credentialStatus.ollama)
       unconfigured.push("Ollama (Default)");
+    // gemma-26b/gemma-31b share GEMINI_API_KEY with "gemini" — same credential check.
+    if (values.defaultProvider === "gemma-26b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 26B (Default)");
+    if (values.defaultProvider === "gemma-31b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 31B (Default)");
 
     if (values.parsingProvider === "gemini" && !credentialStatus.gemini)
       unconfigured.push("Gemini (Parsing)");
@@ -111,6 +228,10 @@ export default function LLMSettingsPanel({
       unconfigured.push("Claude (Parsing)");
     if (values.parsingProvider === "ollama" && !credentialStatus.ollama)
       unconfigured.push("Ollama (Parsing)");
+    if (values.parsingProvider === "gemma-26b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 26B (Parsing)");
+    if (values.parsingProvider === "gemma-31b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 31B (Parsing)");
 
     if (values.summariesProvider === "gemini" && !credentialStatus.gemini)
       unconfigured.push("Gemini (Summaries)");
@@ -118,6 +239,10 @@ export default function LLMSettingsPanel({
       unconfigured.push("Claude (Summaries)");
     if (values.summariesProvider === "ollama" && !credentialStatus.ollama)
       unconfigured.push("Ollama (Summaries)");
+    if (values.summariesProvider === "gemma-26b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 26B (Summaries)");
+    if (values.summariesProvider === "gemma-31b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 31B (Summaries)");
 
     if (values.profileProvider === "gemini" && !credentialStatus.gemini)
       unconfigured.push("Gemini (Profile)");
@@ -125,6 +250,10 @@ export default function LLMSettingsPanel({
       unconfigured.push("Claude (Profile)");
     if (values.profileProvider === "ollama" && !credentialStatus.ollama)
       unconfigured.push("Ollama (Profile)");
+    if (values.profileProvider === "gemma-26b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 26B (Profile)");
+    if (values.profileProvider === "gemma-31b" && !credentialStatus.gemini)
+      unconfigured.push("Gemma 4 31B (Profile)");
 
     if (values.embeddingProvider === "gemini" && !credentialStatus.gemini)
       unconfigured.push("Gemini (Embedding)");
@@ -169,6 +298,14 @@ export default function LLMSettingsPanel({
       badgeColor = isConfigured ? "success" : "error";
       tooltipText =
         "Requires CLAUDE_API_KEY from Anthropic Console to be added to environment variables.";
+    } else if (value === "gemma-26b" || value === "gemma-31b") {
+      // Gemma models are hosted on the same Gemini API — shares GEMINI_API_KEY, no separate
+      // credential. No embedding support (not offered on the embedding provider dropdown).
+      isConfigured = credentialStatus.gemini;
+      badgeText = isConfigured ? "✓ Configured" : "⚠️ API key not set";
+      badgeColor = isConfigured ? "success" : "warning";
+      tooltipText =
+        "Uses the same GEMINI_API_KEY as Gemini (Gemma models are served via the Gemini API). No embedding support.";
     }
 
     return (
@@ -198,6 +335,14 @@ export default function LLMSettingsPanel({
     { value: "ollama", label: getProviderLabel("ollama", "Ollama (Local)") },
     { value: "gemini", label: getProviderLabel("gemini", "Gemini") },
     { value: "claude", label: getProviderLabel("claude", "Claude") },
+    {
+      value: "gemma-26b",
+      label: getProviderLabel("gemma-26b", "Gemma 4 26B"),
+    },
+    {
+      value: "gemma-31b",
+      label: getProviderLabel("gemma-31b", "Gemma 4 31B"),
+    },
   ];
 
   // Claude has no embedding API — narrower option set than the other four provider dropdowns.
@@ -286,6 +431,110 @@ export default function LLMSettingsPanel({
               className="w-full sm:w-auto font-semibold px-8"
             >
               Save Configuration
+            </Button>
+          </Form.Item>
+        </Form>
+      ),
+    },
+    {
+      key: "skill-matching",
+      label: (
+        <span className="text-white font-semibold text-base">
+          Skill Matching
+        </span>
+      ),
+      children: (
+        <Form
+          form={skillThresholdForm}
+          layout="vertical"
+          onFinish={saveSkillThreshold}
+          requiredMark={false}
+          className="pt-2"
+        >
+          <Form.Item
+            name="threshold"
+            label={
+              <span className="text-zinc-300">
+                Alias-Confirmation Similarity Threshold (%)
+              </span>
+            }
+            tooltip="Minimum cosine similarity (0-100) required before a new skill is offered to the LLM as a possible alias of an existing canonical skill. Changing this only affects skills extracted after the change — existing rows are not reprocessed."
+            className="mb-2"
+            rules={[
+              { required: true, message: "Threshold is required" },
+              {
+                type: "number",
+                min: 0,
+                max: 100,
+                message: "Must be between 0 and 100",
+              },
+            ]}
+          >
+            <InputNumber min={0} max={100} size="large" className="w-full" />
+          </Form.Item>
+
+          <Form.Item className="mb-0 mt-6">
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={skillThresholdLoading}
+              disabled={skillThreshold === null}
+              size="large"
+              className="w-full sm:w-auto font-semibold px-8"
+            >
+              Save Threshold
+            </Button>
+          </Form.Item>
+        </Form>
+      ),
+    },
+    {
+      key: "skill-match-display",
+      label: (
+        <span className="text-white font-semibold text-base">
+          Match Display Threshold
+        </span>
+      ),
+      children: (
+        <Form
+          form={matchDisplayThresholdForm}
+          layout="vertical"
+          onFinish={saveMatchDisplayThreshold}
+          requiredMark={false}
+          className="pt-2"
+        >
+          <Form.Item
+            name="threshold"
+            label={
+              <span className="text-zinc-300">
+                Matched/Missing Display Threshold (%)
+              </span>
+            }
+            tooltip="Minimum cosine similarity (0-100) required for a job's must-have/nice-to-have skill to show as 'matched' rather than 'missing' on a candidate's match card. Separate from the Alias-Confirmation threshold above — this one has no LLM double-check, so it needs a higher bar (default 72; calibrated 2026-08-24 against real production embeddings, see skillVectorLookupService.ts for the full rationale). Changing this only affects future score computations, not stored SkillEmbedding/SkillAlias rows."
+            className="mb-2"
+            rules={[
+              { required: true, message: "Threshold is required" },
+              {
+                type: "number",
+                min: 0,
+                max: 100,
+                message: "Must be between 0 and 100",
+              },
+            ]}
+          >
+            <InputNumber min={0} max={100} size="large" className="w-full" />
+          </Form.Item>
+
+          <Form.Item className="mb-0 mt-6">
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={matchDisplayThresholdLoading}
+              disabled={matchDisplayThreshold === null}
+              size="large"
+              className="w-full sm:w-auto font-semibold px-8"
+            >
+              Save Threshold
             </Button>
           </Form.Item>
         </Form>

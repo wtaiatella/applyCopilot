@@ -1,11 +1,24 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
-import { generateJSON } from "@/lib/ai/aiClient";
+import { generateJSON, resolveAIConfig } from "@/lib/ai/aiClient";
+import {
+  withCircuitBreaker,
+  isProviderBlocked,
+  isBlockingHttpStatus,
+  extractHttpStatus,
+} from "@/lib/ai/circuit-breaker";
 import { logger } from "@/lib/logging/logger";
 import { ProfileMergeService } from "@/lib/merge/profileMergeService";
 
 const MAX_SUGGEST_PER_HOUR = 10;
+
+/** Same SystemConfig key the admin panel's "Default" provider + its Reset-block button already
+ * target (src/app/api/admin/llm-config/route.ts) — this route previously called `generateJSON`
+ * directly with no circuit-breaker protection, so a 429 here kept getting re-hit on every
+ * subsequent click with no cooldown (unlike the classification worker / skill canonicalization
+ * write paths, which have been circuit-breaker-protected since earlier in this ticket). */
+const DEFAULT_PROVIDER_KEY = "AI_PROVIDER_DEFAULT";
 
 interface SuggestedSkill {
   name: string;
@@ -27,13 +40,33 @@ export async function POST(req: Request) {
     // Rate limiting: 10 suggestions per hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const usageCount = await prisma.aIUsageLog.count({
-      where: { userId, action: "suggest_skills", createdAt: { gte: oneHourAgo } },
+      where: {
+        userId,
+        action: "suggest_skills",
+        createdAt: { gte: oneHourAgo },
+      },
     });
 
     if (usageCount >= MAX_SUGGEST_PER_HOUR) {
       return NextResponse.json(
-        { error: `Rate limit reached. You can only generate ${MAX_SUGGEST_PER_HOUR} skill suggestions per hour.` },
-        { status: 429 }
+        {
+          error: `Rate limit reached. You can only generate ${MAX_SUGGEST_PER_HOUR} skill suggestions per hour.`,
+        },
+        { status: 429 },
+      );
+    }
+
+    // Fail fast if the "default" capability's currently-configured provider is already
+    // circuit-broken (e.g. a recent 429 from Gemini) — avoids spending the DB reads below just
+    // to hit the same rate limit again, and gives the user a clear, actionable message instead
+    // of a generic 500 crash.
+    const { provider: defaultProvider } = await resolveAIConfig("default");
+    if (await isProviderBlocked(DEFAULT_PROVIDER_KEY, defaultProvider)) {
+      return NextResponse.json(
+        {
+          error: `The AI provider (${defaultProvider}) is temporarily rate-limited. Please try again in a few minutes, or ask an admin to switch/reset the provider in Settings.`,
+        },
+        { status: 429 },
       );
     }
 
@@ -43,13 +76,19 @@ export async function POST(req: Request) {
       include: {
         experiences: {
           include: {
-            bullets: { where: { isArchived: false }, orderBy: { sortOrder: "asc" } },
+            bullets: {
+              where: { isArchived: false },
+              orderBy: { sortOrder: "asc" },
+            },
           },
           orderBy: { startDate: "desc" },
         },
         projects: {
           include: {
-            bullets: { where: { isArchived: false }, orderBy: { sortOrder: "asc" } },
+            bullets: {
+              where: { isArchived: false },
+              orderBy: { sortOrder: "asc" },
+            },
           },
           orderBy: { startDate: "desc" },
         },
@@ -62,8 +101,11 @@ export async function POST(req: Request) {
 
     if (profile.experiences.length === 0 && profile.projects.length === 0) {
       return NextResponse.json(
-        { error: "No work experiences or projects found. Add them first so the AI can extract skills." },
-        { status: 422 }
+        {
+          error:
+            "No work experiences or projects found. Add them first so the AI can extract skills.",
+        },
+        { status: 422 },
       );
     }
 
@@ -106,9 +148,15 @@ Requirements:
 - Capitalize skill names correctly (e.g., "JavaScript" instead of "javascript", "SQL" instead of "sql", "React" instead of "reactjs").
 - Return up to 20 relevant skills.`;
 
-    logger.info(`Extracting skills for user ${userId} based on ${profile.experiences.length} experiences and ${profile.projects.length} projects`);
+    logger.info(
+      `Extracting skills for user ${userId} based on ${profile.experiences.length} experiences and ${profile.projects.length} projects`,
+    );
 
-    const result = await generateJSON<SuggestedSkillsResponse>(prompt, "default");
+    const result = await withCircuitBreaker(
+      DEFAULT_PROVIDER_KEY,
+      defaultProvider,
+      () => generateJSON<SuggestedSkillsResponse>(prompt, "default"),
+    );
 
     const suggestedSkills = result.skills || [];
 
@@ -118,7 +166,7 @@ Requirements:
         suggestedSkills.map((s) => ({
           name: s.name,
           proficiency: "INTERMEDIATE",
-        }))
+        })),
       );
     }
 
@@ -127,7 +175,10 @@ Requirements:
       data: { userId, action: "suggest_skills" },
     });
 
-    logger.info("Skills suggestions generated and merged successfully", { userId, count: suggestedSkills.length });
+    logger.info("Skills suggestions generated and merged successfully", {
+      userId,
+      count: suggestedSkills.length,
+    });
 
     // Fetch the updated skills list to return
     const updatedSkills = await prisma.skill.findMany({
@@ -144,6 +195,23 @@ Requirements:
     return NextResponse.json(responseData);
   } catch (error) {
     logger.error("Failed to suggest skills", { error });
-    return NextResponse.json({ error: "Failed to generate skills suggestions" }, { status: 500 });
+
+    // Surface a clear, actionable message for a rate-limit/quota/auth failure instead of a
+    // generic 500 — withCircuitBreaker above already recorded the block for next time.
+    const statusCode = extractHttpStatus(error);
+    if (statusCode !== null && isBlockingHttpStatus(statusCode)) {
+      return NextResponse.json(
+        {
+          error:
+            "The AI provider is temporarily rate-limited or unavailable. Please try again in a few minutes.",
+        },
+        { status: 429 },
+      );
+    }
+
+    return NextResponse.json(
+      { error: "Failed to generate skills suggestions" },
+      { status: 500 },
+    );
   }
 }

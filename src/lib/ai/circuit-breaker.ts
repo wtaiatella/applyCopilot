@@ -197,8 +197,11 @@ export async function withCircuitBreaker<T>(
 
 /**
  * Attempts to extract an HTTP status code from various error shapes thrown by LLM SDKs.
+ * Exported so callers can build a clearer user-facing error message/status when a request fails
+ * with a blocking status (e.g. 429) — instead of a generic 500 with no indication it was a
+ * rate-limit/quota issue the user should just retry later.
  */
-function extractHttpStatus(error: unknown): number | null {
+export function extractHttpStatus(error: unknown): number | null {
   if (error && typeof error === "object") {
     const err = error as Record<string, unknown>;
 

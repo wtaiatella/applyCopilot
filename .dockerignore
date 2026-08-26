@@ -40,7 +40,6 @@ dist/
 *.db
 *.db-journal
 mongodb_data/
-redis_data/
 ollama_data/
 
 # Documentation

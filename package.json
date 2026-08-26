@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "run-dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
+    "start-dev": "next start -p 3001",
     "lint": "eslint",
     "test": "jest --runInBand --detectOpenHandles",
     "test:watch": "jest --watch",

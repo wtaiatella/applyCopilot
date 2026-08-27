@@ -215,6 +215,22 @@ describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034
     await safeCleanup("jobs-scoring.test.ts afterAll user", async () => {
       await prisma.user.delete({ where: { id: userId } });
     });
+    await safeCleanup(
+      "jobs-scoring.test.ts afterAll skillEmbedding",
+      async () => {
+        await prisma.skillEmbedding.deleteMany({
+          where: {
+            skill: {
+              in: [
+                "react-testfixture",
+                "typescript-testfixture",
+                "node.js-testfixture",
+              ],
+            },
+          },
+        });
+      },
+    );
     await prisma.$disconnect();
     await pool.end();
   });

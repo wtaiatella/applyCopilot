@@ -110,6 +110,27 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
       });
     }
 
+    // Clean up the -TestFixture SkillEmbedding rows this suite's real canonicalization
+    // pass writes into the shared, global SkillEmbedding table (see makeValidProfileFacts's
+    // comment) — never rethrows, so this is a straightforward .catch() -> safeCleanup swap
+    // rather than requiring any collision logic.
+    await safeCleanup(
+      "profile-sync.test.ts afterAll skillEmbedding",
+      async () => {
+        await prisma.skillEmbedding.deleteMany({
+          where: {
+            skill: {
+              in: [
+                "react-testfixture",
+                "node.js-testfixture",
+                "communication-testfixture",
+              ],
+            },
+          },
+        });
+      },
+    );
+
     await prisma.$disconnect();
     await pool.end();
   });

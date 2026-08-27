@@ -12,6 +12,19 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
+import { safeCleanup } from "./helpers/test-fixtures";
+
+// Mirrors the repo-root resolution in src/app/api/auth/forgot-password/route.ts —
+// that route writes to `<repoRoot>/debug/emails`, where repoRoot only walks up one
+// level when cwd ends in "frontend" (a legacy nested-repo layout). This suite must
+// resolve the same directory, not assume the nested layout unconditionally.
+function getRepoRoot(): string {
+  const cwd = process.cwd();
+  if (cwd.endsWith("frontend")) {
+    return path.join(cwd, "..");
+  }
+  return cwd;
+}
 
 describe("Authentication & Password Reset Integration Tests", () => {
   const testEmail = `auth-integration-${Date.now()}@example.com`;
@@ -21,15 +34,15 @@ describe("Authentication & Password Reset Integration Tests", () => {
   afterAll(async () => {
     // Clean up test user
     if (createdUserId) {
-      await prisma.user
-        .delete({
+      await safeCleanup("auth.test.ts afterAll createdUser", async () => {
+        await prisma.user.delete({
           where: { id: createdUserId },
-        })
-        .catch(() => {});
+        });
+      });
     }
 
     // Clean up temporary debug email files
-    const debugEmailsDir = path.join(process.cwd(), "..", "debug", "emails");
+    const debugEmailsDir = path.join(getRepoRoot(), "debug", "emails");
     if (fs.existsSync(debugEmailsDir)) {
       const files = fs.readdirSync(debugEmailsDir);
       for (const file of files) {
@@ -139,7 +152,7 @@ describe("Authentication & Password Reset Integration Tests", () => {
       expect(tokens2[1].expiresAt.getTime()).toBeGreaterThan(Date.now()); // Second token is active
 
       // Verify email file written in debug directory
-      const debugEmailsDir = path.join(process.cwd(), "..", "debug", "emails");
+      const debugEmailsDir = path.join(getRepoRoot(), "debug", "emails");
       const files = fs.readdirSync(debugEmailsDir);
       const userFiles = files.filter((file) => file.includes(testEmail));
       expect(userFiles.length).toBeGreaterThanOrEqual(1);

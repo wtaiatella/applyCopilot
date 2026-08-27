@@ -5,6 +5,7 @@ import "dotenv/config";
 import { prisma, pool } from "@/lib/db/prisma";
 import { getJobsWithSimilarity } from "@/lib/db/job-query";
 import { EMBEDDING_DIMENSION } from "@/lib/ai/vector-service";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 describe("Vector Similarity Search Integration Tests (Stage 1, 768d, FR-12)", () => {
   const createdJobIds: string[] = [];
@@ -128,11 +129,11 @@ describe("Vector Similarity Search Integration Tests (Stage 1, 768d, FR-12)", ()
   afterAll(async () => {
     // Cleanup created jobs
     if (createdJobIds.length > 0) {
-      await prisma.jobListing
-        .deleteMany({
+      await safeCleanup("vector-query: delete createdJobIds", async () => {
+        await prisma.jobListing.deleteMany({
           where: { id: { in: createdJobIds } },
-        })
-        .catch(() => {});
+        });
+      });
     }
 
     await prisma.$disconnect();

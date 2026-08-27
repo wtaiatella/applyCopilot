@@ -28,6 +28,7 @@ jest.mock("@/lib/auth/auth", () => ({
 
 import { generateJSON } from "@/lib/ai/aiClient";
 import { generateEmbedding } from "@/lib/ai/vector-service";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 const mockGenerateJSON = generateJSON as jest.Mock;
 const mockGenerateEmbedding = generateEmbedding as jest.Mock;
@@ -102,12 +103,33 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
   afterAll(async () => {
     // Clean up database records
     if (testUserId) {
-      await prisma.user
-        .delete({
+      await safeCleanup("profile-sync.test.ts afterAll", async () => {
+        await prisma.user.delete({
           where: { id: testUserId },
-        })
-        .catch(() => {});
+        });
+      });
     }
+
+    // Clean up the -TestFixture SkillEmbedding rows this suite's real canonicalization
+    // pass writes into the shared, global SkillEmbedding table (see makeValidProfileFacts's
+    // comment) — never rethrows, so this is a straightforward .catch() -> safeCleanup swap
+    // rather than requiring any collision logic.
+    await safeCleanup(
+      "profile-sync.test.ts afterAll skillEmbedding",
+      async () => {
+        await prisma.skillEmbedding.deleteMany({
+          where: {
+            skill: {
+              in: [
+                "react-testfixture",
+                "node.js-testfixture",
+                "communication-testfixture",
+              ],
+            },
+          },
+        });
+      },
+    );
 
     await prisma.$disconnect();
     await pool.end();
@@ -202,7 +224,9 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     );
 
     // Cleanup
-    await prisma.user.delete({ where: { id: emptyUser.id } }).catch(() => {});
+    await safeCleanup("profile-sync.test.ts emptyUser cleanup", async () => {
+      await prisma.user.delete({ where: { id: emptyUser.id } });
+    });
   });
 
   // ──────────────────────────────────────────────────
@@ -336,12 +360,19 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     afterEach(async () => {
       // Clean up the vocabulary rows this describe block creates so repeated test runs
       // don't accumulate unbounded `SkillEmbedding`/`SkillAlias` rows.
-      await prisma.skillAlias
-        .deleteMany({ where: { alias: normalizedAlt } })
-        .catch(() => {});
-      await prisma.skillEmbedding
-        .deleteMany({ where: { skill: normalizedTech } })
-        .catch(() => {});
+      await safeCleanup("profile-sync.test.ts skillAlias cleanup", async () => {
+        await prisma.skillAlias.deleteMany({
+          where: { alias: normalizedAlt },
+        });
+      });
+      await safeCleanup(
+        "profile-sync.test.ts skillEmbedding cleanup",
+        async () => {
+          await prisma.skillEmbedding.deleteMany({
+            where: { skill: normalizedTech },
+          });
+        },
+      );
     });
 
     it('calling sync with "Postgres" then "PostgreSQL"-style alternate spellings dedups to one SkillEmbedding + one SkillAlias', async () => {

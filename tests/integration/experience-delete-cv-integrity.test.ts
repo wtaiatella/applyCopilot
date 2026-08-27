@@ -6,6 +6,7 @@ import { POST as createExperienceHandler } from "@/app/api/profile/experiences/r
 import { DELETE as deleteExperienceHandler } from "@/app/api/profile/experiences/[id]/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -31,7 +32,12 @@ describe("DELETE /api/profile/experiences/[id] — archive-not-cascade for CV-re
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup(
+      "experience-delete-cv-integrity.test.ts afterAll",
+      async () => {
+        await prisma.user.delete({ where: { id: testUserId } });
+      },
+    );
     await prisma.$disconnect();
     await pool.end();
   });
@@ -127,6 +133,21 @@ describe("DELETE /api/profile/experiences/[id] — archive-not-cascade for CV-re
 
     // Clean up CV & CVBullet records (cascade delete on CV will remove CVBullet).
     await prisma.cV.delete({ where: { id: cv.id } });
+    await safeCleanup(
+      "experience-delete-cv-integrity.test.ts jobListing",
+      async () => {
+        await prisma.jobListing.delete({ where: { id: jobListing.id } });
+      },
+    );
+    // `bulletId` is the AC.3-verified archived-and-detached (experienceId: null) survivor of the
+    // deleted Experience — ExperienceBullet.experienceId's `onDelete: SetNull` means it's never
+    // otherwise cleaned up once its parent Experience row is gone (T017 rework).
+    await safeCleanup(
+      "experience-delete-cv-integrity.test.ts bullet",
+      async () => {
+        await prisma.experienceBullet.delete({ where: { id: bulletId } });
+      },
+    );
   });
 
   it("regression: hard-deletes an unreferenced bullet on Experience delete (no CV reference)", async () => {

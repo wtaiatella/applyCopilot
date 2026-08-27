@@ -6,6 +6,7 @@ import { GET as pdfHandler } from "@/app/api/cv/[cvId]/pdf/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import type { CVSnapshotData } from "@/types/cv";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -106,7 +107,12 @@ describe("GET /api/cv/[cvId]/pdf — repeatable, no status change (AC.7)", () =>
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup("cv-pdf afterAll user", async () =>
+      prisma.user.delete({ where: { id: testUserId } }),
+    );
+    await safeCleanup("cv-pdf afterAll jobListing", async () =>
+      prisma.jobListing.delete({ where: { id: jobListingId } }),
+    );
     await prisma.$disconnect();
     await pool.end();
   });
@@ -165,6 +171,8 @@ describe("GET /api/cv/[cvId]/pdf — repeatable, no status change (AC.7)", () =>
     const res = await pdfHandler(req, { params: Promise.resolve({ cvId }) });
     expect(res.status).toBe(404);
 
-    await prisma.user.delete({ where: { id: otherUser.id } }).catch(() => {});
+    await safeCleanup("cv-pdf 404-test otherUser", async () =>
+      prisma.user.delete({ where: { id: otherUser.id } }),
+    );
   });
 });

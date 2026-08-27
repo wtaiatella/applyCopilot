@@ -5,6 +5,7 @@ import "dotenv/config";
 import { POST as stageHandler } from "@/app/api/applications/[applicationId]/stage/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -15,6 +16,7 @@ describe("POST /api/applications/[applicationId]/stage — dropdown/drag-and-dro
   const testEmail = `application-stage-test-${Date.now()}@example.com`;
   let testUserId: string;
   let testProfileId: string;
+  const jobListingIds: string[] = [];
 
   beforeAll(async () => {
     const user = await prisma.user.create({
@@ -30,7 +32,14 @@ describe("POST /api/applications/[applicationId]/stage — dropdown/drag-and-dro
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup("application-stage: delete testUser", async () => {
+      await prisma.user.delete({ where: { id: testUserId } });
+    });
+    await safeCleanup("application-stage: delete jobListings", async () => {
+      await prisma.jobListing.deleteMany({
+        where: { id: { in: jobListingIds } },
+      });
+    });
     await prisma.$disconnect();
     await pool.end();
   });
@@ -55,6 +64,7 @@ describe("POST /api/applications/[applicationId]/stage — dropdown/drag-and-dro
         url: "https://example.com/job",
       },
     });
+    jobListingIds.push(jobListing.id);
     const cv = await prisma.cV.create({
       data: {
         profileId: testProfileId,

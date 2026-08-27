@@ -5,6 +5,7 @@ import "dotenv/config";
 import { GET as getListHandler } from "@/app/api/application-tracker/list/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -103,21 +104,26 @@ describe("GET /api/application-tracker/list — consolidated List view read (009
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
-    await prisma.jobListing
-      .deleteMany({
-        where: {
-          id: {
-            in: [
-              favoriteOnlyJobId,
-              analyzedOnlyJobId,
-              draftedJobId,
-              appliedJobId,
-            ],
+    await safeCleanup("application-tracker-list: delete testUser", async () => {
+      await prisma.user.delete({ where: { id: testUserId } });
+    });
+    await safeCleanup(
+      "application-tracker-list: delete jobListings",
+      async () => {
+        await prisma.jobListing.deleteMany({
+          where: {
+            id: {
+              in: [
+                favoriteOnlyJobId,
+                analyzedOnlyJobId,
+                draftedJobId,
+                appliedJobId,
+              ],
+            },
           },
-        },
-      })
-      .catch(() => {});
+        });
+      },
+    );
     await prisma.$disconnect();
     await pool.end();
   });

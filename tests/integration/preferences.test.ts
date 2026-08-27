@@ -8,6 +8,7 @@ import {
 } from "@/app/api/profile/preferences/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -48,10 +49,14 @@ describe("GET/PUT /api/profile/preferences (T019/T022)", () => {
 
   afterAll(async () => {
     if (testUserId) {
-      await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+      await safeCleanup("preferences.test.ts afterAll testUser", async () => {
+        await prisma.user.delete({ where: { id: testUserId } });
+      });
     }
     if (otherUserId) {
-      await prisma.user.delete({ where: { id: otherUserId } }).catch(() => {});
+      await safeCleanup("preferences.test.ts afterAll otherUser", async () => {
+        await prisma.user.delete({ where: { id: otherUserId } });
+      });
     }
     await prisma.$disconnect();
     await pool.end();

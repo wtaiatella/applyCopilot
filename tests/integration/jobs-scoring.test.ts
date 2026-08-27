@@ -6,6 +6,7 @@ import { GET as getJobsHandler } from "@/app/api/jobs/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import { EMBEDDING_DIMENSION } from "@/lib/ai/vector-service";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -200,13 +201,36 @@ describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034
   });
 
   afterAll(async () => {
-    await prisma.userPreferences
-      .deleteMany({ where: { profileId } })
-      .catch(() => {});
-    await prisma.jobListing
-      .deleteMany({ where: { id: { in: createdJobIds } } })
-      .catch(() => {});
-    await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    await safeCleanup(
+      "jobs-scoring.test.ts afterAll userPreferences",
+      async () => {
+        await prisma.userPreferences.deleteMany({ where: { profileId } });
+      },
+    );
+    await safeCleanup("jobs-scoring.test.ts afterAll jobListing", async () => {
+      await prisma.jobListing.deleteMany({
+        where: { id: { in: createdJobIds } },
+      });
+    });
+    await safeCleanup("jobs-scoring.test.ts afterAll user", async () => {
+      await prisma.user.delete({ where: { id: userId } });
+    });
+    await safeCleanup(
+      "jobs-scoring.test.ts afterAll skillEmbedding",
+      async () => {
+        await prisma.skillEmbedding.deleteMany({
+          where: {
+            skill: {
+              in: [
+                "react-testfixture",
+                "typescript-testfixture",
+                "node.js-testfixture",
+              ],
+            },
+          },
+        });
+      },
+    );
     await prisma.$disconnect();
     await pool.end();
   });
@@ -313,7 +337,9 @@ describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034
       expect(jobs.every((j) => j.matchScore === null)).toBe(true);
       expect(jobs.every((j) => j.disqualified === false)).toBe(true);
     } finally {
-      await prisma.user.delete({ where: { id: otherUser.id } }).catch(() => {});
+      await safeCleanup("jobs-scoring.test.ts noembed otherUser", async () => {
+        await prisma.user.delete({ where: { id: otherUser.id } });
+      });
     }
   });
 });

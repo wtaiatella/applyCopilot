@@ -11,6 +11,7 @@ import { auth } from "@/lib/auth/auth";
 import { generateJSON } from "@/lib/ai/aiClient";
 import { buildCVJobContext, loadOwnedCV } from "@/lib/db/cvEntityAccess";
 import type { CVSnapshotData } from "@/types/cv";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -126,7 +127,12 @@ describe("CV Composer job-aware AI routes (Phase 5, US3)", () => {
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup("cv-ai afterAll user", async () =>
+      prisma.user.delete({ where: { id: testUserId } }),
+    );
+    await safeCleanup("cv-ai afterAll jobListing", async () =>
+      prisma.jobListing.delete({ where: { id: jobListingId } }),
+    );
     await prisma.$disconnect();
     await pool.end();
   });
@@ -668,10 +674,13 @@ describe("CV Composer job-aware AI routes (Phase 5, US3)", () => {
     });
 
     afterAll(async () => {
-      await prisma.jobAnalysis
-        .delete({ where: { id: analysisAId } })
-        .catch(() => {});
-      await prisma.user.delete({ where: { id: testUserIdB } }).catch(() => {});
+      await safeCleanup(
+        "cv-ai reduced-context afterAll jobAnalysis",
+        async () => prisma.jobAnalysis.delete({ where: { id: analysisAId } }),
+      );
+      await safeCleanup("cv-ai reduced-context afterAll userB", async () =>
+        prisma.user.delete({ where: { id: testUserIdB } }),
+      );
     });
 
     it("falls back to reduced-context mode for User B rather than returning User A's cached analysis", async () => {

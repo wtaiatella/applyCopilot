@@ -9,6 +9,7 @@ import {
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import { generateJSON } from "@/lib/ai/aiClient";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 // Mock auth middleware
 jest.mock("@/lib/auth/auth", () => ({
@@ -100,14 +101,21 @@ describe("JobListing On-Demand Deep Analysis Endpoint Integration Tests", () => 
 
   afterAll(async () => {
     // Clean up database records
-    await prisma.jobAnalysis
-      .deleteMany({ where: { jobId: testJobId } })
-      .catch(() => {});
-    await prisma.jobListing
-      .deleteMany({ where: { id: testJobId } })
-      .catch(() => {});
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
-    await prisma.user.delete({ where: { id: userBId } }).catch(() => {});
+    await safeCleanup(
+      "deep-analysis.test.ts afterAll jobAnalysis",
+      async () => {
+        await prisma.jobAnalysis.deleteMany({ where: { jobId: testJobId } });
+      },
+    );
+    await safeCleanup("deep-analysis.test.ts afterAll jobListing", async () => {
+      await prisma.jobListing.deleteMany({ where: { id: testJobId } });
+    });
+    await safeCleanup("deep-analysis.test.ts afterAll testUser", async () => {
+      await prisma.user.delete({ where: { id: testUserId } });
+    });
+    await safeCleanup("deep-analysis.test.ts afterAll userB", async () => {
+      await prisma.user.delete({ where: { id: userBId } });
+    });
     await prisma.$disconnect();
     await pool.end();
   });

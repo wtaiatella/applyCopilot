@@ -6,6 +6,7 @@ import { PUT as putSnapshotHandler } from "@/app/api/cv/[cvId]/snapshot/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import type { CVSnapshotData } from "@/types/cv";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -41,6 +42,7 @@ describe("PUT /api/cv/[cvId]/snapshot — autosave (DRAFT-only)", () => {
   let jobListingId: string;
   let draftCvId: string;
   let appliedCvId: string;
+  const jobListingIds: string[] = [];
 
   beforeAll(async () => {
     const user = await prisma.user.create({
@@ -64,6 +66,7 @@ describe("PUT /api/cv/[cvId]/snapshot — autosave (DRAFT-only)", () => {
       },
     });
     jobListingId = jobListing.id;
+    jobListingIds.push(jobListing.id);
 
     const draftCv = await prisma.cV.create({
       data: {
@@ -85,6 +88,7 @@ describe("PUT /api/cv/[cvId]/snapshot — autosave (DRAFT-only)", () => {
         url: "https://example.com/job2",
       },
     });
+    jobListingIds.push(jobListing2.id);
 
     const appliedCv = await prisma.cV.create({
       data: {
@@ -100,7 +104,12 @@ describe("PUT /api/cv/[cvId]/snapshot — autosave (DRAFT-only)", () => {
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup("cv-snapshot afterAll user", async () =>
+      prisma.user.delete({ where: { id: testUserId } }),
+    );
+    await safeCleanup("cv-snapshot afterAll jobListings", async () =>
+      prisma.jobListing.deleteMany({ where: { id: { in: jobListingIds } } }),
+    );
     await prisma.$disconnect();
     await pool.end();
   });
@@ -212,6 +221,7 @@ describe("PUT /api/cv/[cvId]/snapshot — autosave (DRAFT-only)", () => {
           url: "https://example.com/job-guard",
         },
       });
+      jobListingIds.push(jobListing.id);
       const guardCv = await prisma.cV.create({
         data: {
           profileId: testProfileId,

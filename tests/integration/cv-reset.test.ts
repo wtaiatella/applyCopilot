@@ -6,6 +6,10 @@ import { POST as resetCVHandler } from "@/app/api/cv/[cvId]/reset/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import type { CVSnapshotData } from "@/types/cv";
+import {
+  safeCleanup,
+  deleteProfileExperienceBullets,
+} from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -39,6 +43,7 @@ describe("POST /api/cv/[cvId]/reset — re-clone from live Profile (DRAFT-only)"
   let testProfileId: string;
   let draftCvId: string;
   let appliedCvId: string;
+  const jobListingIds: string[] = [];
 
   beforeAll(async () => {
     const user = await prisma.user.create({
@@ -78,6 +83,7 @@ describe("POST /api/cv/[cvId]/reset — re-clone from live Profile (DRAFT-only)"
         url: "https://example.com/job",
       },
     });
+    jobListingIds.push(jobListing.id);
 
     const draftCv = await prisma.cV.create({
       data: {
@@ -100,6 +106,7 @@ describe("POST /api/cv/[cvId]/reset — re-clone from live Profile (DRAFT-only)"
         url: "https://example.com/job2",
       },
     });
+    jobListingIds.push(jobListing2.id);
 
     const appliedCv = await prisma.cV.create({
       data: {
@@ -115,7 +122,17 @@ describe("POST /api/cv/[cvId]/reset — re-clone from live Profile (DRAFT-only)"
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    // T017 rework: ExperienceBullet.experienceId is SetNull (not Cascade), so it must be
+    // hard-deleted here, while still attached, before the user cascade orphans it instead.
+    await safeCleanup("cv-reset afterAll bullets", async () =>
+      deleteProfileExperienceBullets(testProfileId),
+    );
+    await safeCleanup("cv-reset afterAll user", async () =>
+      prisma.user.delete({ where: { id: testUserId } }),
+    );
+    await safeCleanup("cv-reset afterAll jobListings", async () =>
+      prisma.jobListing.deleteMany({ where: { id: { in: jobListingIds } } }),
+    );
     await prisma.$disconnect();
     await pool.end();
   });
@@ -184,6 +201,7 @@ describe("POST /api/cv/[cvId]/reset — re-clone from live Profile (DRAFT-only)"
           url: "https://example.com/job-guard",
         },
       });
+      jobListingIds.push(jobListing.id);
       const guardCv = await prisma.cV.create({
         data: {
           profileId: testProfileId,

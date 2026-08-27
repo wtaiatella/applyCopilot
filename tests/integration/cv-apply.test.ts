@@ -7,6 +7,10 @@ import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import * as cvReconciliationService from "@/services/cvReconciliationService";
 import type { CVSnapshotData } from "@/types/cv";
+import {
+  safeCleanup,
+  deleteProfileExperienceBullets,
+} from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -26,6 +30,7 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
   let testUserId: string;
   let testProfileId: string;
   let jobListingId: string;
+  const jobListingIds: string[] = [];
 
   beforeAll(async () => {
     const user = await prisma.user.create({
@@ -49,10 +54,21 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
       },
     });
     jobListingId = jobListing.id;
+    jobListingIds.push(jobListing.id);
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    // T017 rework: ExperienceBullet.experienceId is SetNull (not Cascade), so it must be
+    // hard-deleted here, while still attached, before the user cascade orphans it instead.
+    await safeCleanup("cv-apply afterAll bullets", async () =>
+      deleteProfileExperienceBullets(testProfileId),
+    );
+    await safeCleanup("cv-apply afterAll user", async () =>
+      prisma.user.delete({ where: { id: testUserId } }),
+    );
+    await safeCleanup("cv-apply afterAll jobListings", async () =>
+      prisma.jobListing.deleteMany({ where: { id: { in: jobListingIds } } }),
+    );
     await prisma.$disconnect();
     await pool.end();
   });
@@ -106,6 +122,7 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
         url: "https://example.com/job-main",
       },
     });
+    jobListingIds.push(job2.id);
 
     const snapshot: CVSnapshotData = {
       version: 1,
@@ -265,6 +282,7 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
         url: "https://example.com/prior",
       },
     });
+    jobListingIds.push(priorJob.id);
     const priorCV = await prisma.cV.create({
       data: {
         profileId: testProfileId,
@@ -292,6 +310,7 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
         url: "https://example.com/job-summary-skill",
       },
     });
+    jobListingIds.push(job.id);
 
     const snapshot: CVSnapshotData = {
       version: 1,
@@ -402,6 +421,7 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
         url: "https://example.com/job-already",
       },
     });
+    jobListingIds.push(job.id);
     const cv = await prisma.cV.create({
       data: {
         profileId: testProfileId,
@@ -435,6 +455,7 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
         url: "https://example.com/job-fail",
       },
     });
+    jobListingIds.push(job.id);
 
     // A bullet referencing a sourceBulletId that does not exist on the master Profile at all —
     // reconcileBulletMutation's underlying `update` will throw (no such row), forcing a
@@ -512,6 +533,7 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
         url: "https://example.com/job-unauth",
       },
     });
+    jobListingIds.push(job.id);
     const cv = await createCV(
       {
         version: 1,
@@ -603,8 +625,9 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
         },
       });
 
+      let job: { id: string } | undefined;
       try {
-        const job = await prisma.jobListing.create({
+        job = await prisma.jobListing.create({
           data: {
             portalId: "test-portal",
             externalJobId: `test-job-apply-idor-${Date.now()}`,
@@ -722,9 +745,20 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
         });
         expect(cvBullets).toHaveLength(0);
       } finally {
-        await prisma.user
-          .delete({ where: { id: otherUser.id } })
-          .catch(() => {});
+        // T017 rework: ExperienceBullet.experienceId is SetNull (not Cascade), so it must be
+        // hard-deleted here, while still attached, before the otherUser cascade orphans it.
+        await safeCleanup(
+          "cv-apply rollback-test otherUser bullets",
+          async () => deleteProfileExperienceBullets(otherProfileId),
+        );
+        await safeCleanup("cv-apply rollback-test otherUser", async () =>
+          prisma.user.delete({ where: { id: otherUser.id } }),
+        );
+        if (job) {
+          await safeCleanup("cv-apply rollback-test jobListing", async () =>
+            prisma.jobListing.delete({ where: { id: job!.id } }),
+          );
+        }
       }
     });
   });
@@ -740,6 +774,7 @@ describe("POST /api/cv/[cvId]/apply — end-to-end 3-way reconciliation (AC.9, F
           url: "https://example.com/job-atomic",
         },
       });
+      jobListingIds.push(job.id);
 
       const cv = await createCV(
         {

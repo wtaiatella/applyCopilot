@@ -10,6 +10,10 @@ import { POST as acceptSuggestionHandler } from "@/app/api/profile/ai/accept-sug
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import { generateJSON } from "@/lib/ai/aiClient";
+import {
+  safeCleanup,
+  deleteProfileExperienceBullets,
+} from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -71,8 +75,26 @@ describe("AI Bullet Route Handlers Integration Tests", () => {
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
-    await prisma.user.delete({ where: { id: otherUserId } }).catch(() => {});
+    // T017 rework: ExperienceBullet.experienceId is SetNull (not Cascade), so it must be
+    // hard-deleted here, while still attached, before the user cascade orphans it instead.
+    await safeCleanup(
+      "profile-ai.test.ts testUser bullets cleanup",
+      async () => {
+        await deleteProfileExperienceBullets(testProfileId);
+      },
+    );
+    await safeCleanup(
+      "profile-ai.test.ts otherUser bullets cleanup",
+      async () => {
+        await deleteProfileExperienceBullets(otherProfileId);
+      },
+    );
+    await safeCleanup("profile-ai.test.ts testUser cleanup", async () => {
+      await prisma.user.delete({ where: { id: testUserId } });
+    });
+    await safeCleanup("profile-ai.test.ts otherUser cleanup", async () => {
+      await prisma.user.delete({ where: { id: otherUserId } });
+    });
     await prisma.$disconnect();
     await pool.end();
   });
@@ -332,6 +354,12 @@ describe("AI Bullet Route Handlers Integration Tests", () => {
       expect(data.bullets[0].id).not.toBe(bullets[0].id);
 
       await prisma.cV.delete({ where: { id: cv.id } });
+      await safeCleanup(
+        "profile-ai.test.ts accept-suggestion rewrite jobListing",
+        async () => {
+          await prisma.jobListing.delete({ where: { id: jobListing.id } });
+        },
+      );
     });
 
     it("action=rewrite: updates the bullet in-place when it has never been used in a CV", async () => {
@@ -441,6 +469,12 @@ describe("AI Bullet Route Handlers Integration Tests", () => {
       expect(data.bullets[0].sortOrder).toBe(0);
 
       await prisma.cV.delete({ where: { id: cv.id } });
+      await safeCleanup(
+        "profile-ai.test.ts accept-suggestion merge jobListing",
+        async () => {
+          await prisma.jobListing.delete({ where: { id: jobListing.id } });
+        },
+      );
     });
 
     it("action=merge: combined bullet takes the lowest sortOrder among sources, regardless of bulletIds order", async () => {

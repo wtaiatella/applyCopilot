@@ -11,6 +11,10 @@ import { POST as applyHandler } from "@/app/api/cv/[cvId]/apply/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import type { CVSnapshotData } from "@/types/cv";
+import {
+  safeCleanup,
+  deleteProfileExperienceBullets,
+} from "./helpers/test-fixtures";
 
 // MODIFIED PER USER DECISION: T049 originally specified a Cypress E2E test, but this repo has
 // no Cypress installed/configured. This Jest integration test provides equivalent functional
@@ -73,10 +77,17 @@ describe("CV Composer happy-path end-to-end (SC-1, SC-2, AC.11)", () => {
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
-    await prisma.jobListing
-      .delete({ where: { id: jobListingId } })
-      .catch(() => {});
+    // T017 rework: ExperienceBullet.experienceId is SetNull (not Cascade), so it must be
+    // hard-deleted here, while still attached, before the user cascade orphans it instead.
+    await safeCleanup("cv-composer-happy-path afterAll bullets", async () =>
+      deleteProfileExperienceBullets(testProfileId),
+    );
+    await safeCleanup("cv-composer-happy-path afterAll user", async () =>
+      prisma.user.delete({ where: { id: testUserId } }),
+    );
+    await safeCleanup("cv-composer-happy-path afterAll jobListing", async () =>
+      prisma.jobListing.delete({ where: { id: jobListingId } }),
+    );
     await prisma.$disconnect();
     await pool.end();
   });

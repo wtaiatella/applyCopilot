@@ -8,6 +8,7 @@ import {
 } from "@/app/api/admin/skill-threshold/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -62,9 +63,12 @@ describe("Skill Threshold Integration Tests (GET + POST /api/admin/skill-thresho
       const original = await prisma.systemConfig.findUnique({
         where: { key: THRESHOLD_KEY },
       });
-      await prisma.systemConfig
-        .delete({ where: { key: THRESHOLD_KEY } })
-        .catch(() => {});
+      await safeCleanup(
+        "skill-threshold.test.ts default-60 delete",
+        async () => {
+          await prisma.systemConfig.delete({ where: { key: THRESHOLD_KEY } });
+        },
+      );
 
       const res = await getThresholdHandler();
       expect(res.status).toBe(200);
@@ -192,9 +196,12 @@ describe("Skill Threshold Integration Tests (GET + POST /api/admin/skill-thresho
           update: { value: originalThreshold.value },
         });
       } else {
-        await prisma.systemConfig
-          .delete({ where: { key: THRESHOLD_KEY } })
-          .catch(() => {});
+        await safeCleanup(
+          "skill-threshold.test.ts restore delete",
+          async () => {
+            await prisma.systemConfig.delete({ where: { key: THRESHOLD_KEY } });
+          },
+        );
       }
     });
   });

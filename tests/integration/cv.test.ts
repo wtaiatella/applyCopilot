@@ -5,6 +5,10 @@ import "dotenv/config";
 import { POST as createCVHandler } from "@/app/api/cv/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import {
+  safeCleanup,
+  deleteProfileExperienceBullets,
+} from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -62,10 +66,17 @@ describe("POST /api/cv — idempotent create-or-get", () => {
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
-    await prisma.jobListing
-      .delete({ where: { id: jobListingId } })
-      .catch(() => {});
+    // T017 rework: ExperienceBullet.experienceId is SetNull (not Cascade), so it must be
+    // hard-deleted here, while still attached, before the user cascade orphans it instead.
+    await safeCleanup("cv.test afterAll bullets", async () =>
+      deleteProfileExperienceBullets(testProfileId),
+    );
+    await safeCleanup("cv.test afterAll user", async () =>
+      prisma.user.delete({ where: { id: testUserId } }),
+    );
+    await safeCleanup("cv.test afterAll jobListing", async () =>
+      prisma.jobListing.delete({ where: { id: jobListingId } }),
+    );
     await prisma.$disconnect();
     await pool.end();
   });

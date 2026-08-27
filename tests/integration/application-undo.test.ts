@@ -6,6 +6,7 @@ import { POST as stageHandler } from "@/app/api/applications/[applicationId]/sta
 import { POST as undoHandler } from "@/app/api/applications/[applicationId]/undo/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -16,6 +17,7 @@ describe("POST /api/applications/[applicationId]/undo — revert most recent tra
   const testEmail = `application-undo-test-${Date.now()}@example.com`;
   let testUserId: string;
   let testProfileId: string;
+  const jobListingIds: string[] = [];
 
   beforeAll(async () => {
     const user = await prisma.user.create({
@@ -31,7 +33,14 @@ describe("POST /api/applications/[applicationId]/undo — revert most recent tra
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup("application-undo: delete testUser", async () => {
+      await prisma.user.delete({ where: { id: testUserId } });
+    });
+    await safeCleanup("application-undo: delete jobListings", async () => {
+      await prisma.jobListing.deleteMany({
+        where: { id: { in: jobListingIds } },
+      });
+    });
     await prisma.$disconnect();
     await pool.end();
   });
@@ -56,6 +65,7 @@ describe("POST /api/applications/[applicationId]/undo — revert most recent tra
         url: "https://example.com/job",
       },
     });
+    jobListingIds.push(jobListing.id);
     const cv = await prisma.cV.create({
       data: {
         profileId: testProfileId,

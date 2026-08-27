@@ -6,6 +6,7 @@ import { PUT as putFavoriteHandler } from "@/app/api/jobs/[id]/favorite/route";
 import { GET as getJobsHandler } from "@/app/api/jobs/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -53,14 +54,21 @@ describe("PUT /api/jobs/[id]/favorite — idempotent per-profile set (009 US7, A
   });
 
   afterAll(async () => {
-    await prisma.jobFavorite
-      .deleteMany({ where: { jobListingId } })
-      .catch(() => {});
-    await prisma.jobListing
-      .delete({ where: { id: jobListingId } })
-      .catch(() => {});
-    await prisma.user.delete({ where: { id: userAId } }).catch(() => {});
-    await prisma.user.delete({ where: { id: userBId } }).catch(() => {});
+    await safeCleanup(
+      "jobs-favorite.test.ts afterAll jobFavorite",
+      async () => {
+        await prisma.jobFavorite.deleteMany({ where: { jobListingId } });
+      },
+    );
+    await safeCleanup("jobs-favorite.test.ts afterAll jobListing", async () => {
+      await prisma.jobListing.delete({ where: { id: jobListingId } });
+    });
+    await safeCleanup("jobs-favorite.test.ts afterAll userA", async () => {
+      await prisma.user.delete({ where: { id: userAId } });
+    });
+    await safeCleanup("jobs-favorite.test.ts afterAll userB", async () => {
+      await prisma.user.delete({ where: { id: userBId } });
+    });
     await prisma.$disconnect();
     await pool.end();
   });

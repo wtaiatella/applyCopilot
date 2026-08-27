@@ -6,6 +6,7 @@ import { POST as applyHandler } from "@/app/api/cv/[cvId]/apply/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import type { CVSnapshotData } from "@/types/cv";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -35,6 +36,7 @@ describe("POST /api/cv/[cvId]/apply — Application auto-creation (009 US1, AC.1
   const testEmail = `application-apply-test-${Date.now()}@example.com`;
   let testUserId: string;
   let testProfileId: string;
+  const jobListingIds: string[] = [];
 
   beforeAll(async () => {
     const user = await prisma.user.create({
@@ -50,7 +52,14 @@ describe("POST /api/cv/[cvId]/apply — Application auto-creation (009 US1, AC.1
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup("application-apply: delete testUser", async () => {
+      await prisma.user.delete({ where: { id: testUserId } });
+    });
+    await safeCleanup("application-apply: delete jobListings", async () => {
+      await prisma.jobListing.deleteMany({
+        where: { id: { in: jobListingIds } },
+      });
+    });
     await prisma.$disconnect();
     await pool.end();
   });
@@ -74,6 +83,7 @@ describe("POST /api/cv/[cvId]/apply — Application auto-creation (009 US1, AC.1
         url: "https://example.com/job",
       },
     });
+    jobListingIds.push(jobListing.id);
     return prisma.cV.create({
       data: {
         profileId: testProfileId,

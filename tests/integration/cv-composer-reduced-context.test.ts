@@ -7,6 +7,7 @@ import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import { generateJSON } from "@/lib/ai/aiClient";
 import type { CVSnapshotData } from "@/types/cv";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 // MODIFIED PER USER DECISION: T050 originally specified a Cypress E2E test, but this repo has
 // no Cypress installed/configured. This Jest integration test provides equivalent functional
@@ -114,10 +115,13 @@ describe("CV Composer job-aware AI — reduced-context mode (AC.6, FR-10)", () =
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
-    await prisma.jobListing
-      .delete({ where: { id: jobListingId } })
-      .catch(() => {});
+    await safeCleanup("cv-composer-reduced-context afterAll user", async () =>
+      prisma.user.delete({ where: { id: testUserId } }),
+    );
+    await safeCleanup(
+      "cv-composer-reduced-context afterAll jobListing",
+      async () => prisma.jobListing.delete({ where: { id: jobListingId } }),
+    );
     await prisma.$disconnect();
     await pool.end();
   });

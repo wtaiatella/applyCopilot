@@ -25,6 +25,10 @@ import { PUT as updateBasicDataHandler } from "@/app/api/profile/basic/route";
 import { POST as parseHandler } from "@/app/api/profile/parse/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import {
+  safeCleanup,
+  deleteProfileExperienceBullets,
+} from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -68,11 +72,16 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
   afterAll(async () => {
     // Clean up database records
     if (testUserId) {
-      await prisma.user
-        .delete({
+      // T017 rework: ExperienceBullet.experienceId is SetNull (not Cascade), so it must be
+      // hard-deleted here, while still attached, before the user cascade orphans it instead.
+      await safeCleanup("profile.test.ts afterAll bullets", async () => {
+        await deleteProfileExperienceBullets(testProfileId);
+      });
+      await safeCleanup("profile.test.ts afterAll", async () => {
+        await prisma.user.delete({
           where: { id: testUserId },
-        })
-        .catch(() => {});
+        });
+      });
     }
 
     await prisma.$disconnect();
@@ -285,6 +294,12 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       await prisma.cV.delete({
         where: { id: cv.id },
       });
+      await safeCleanup(
+        "profile.test.ts soft-delete-bullets jobListing",
+        async () => {
+          await prisma.jobListing.delete({ where: { id: jobListing.id } });
+        },
+      );
     });
 
     it("should delete experience and cascade delete bullets", async () => {
@@ -399,13 +414,21 @@ describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => 
       );
       expect(foreignBulletInDb!.experienceId).toBe(expB.id);
 
-      // Clean up
-      await prisma.experience
-        .delete({ where: { id: expA.id } })
-        .catch(() => {});
-      await prisma.experience
-        .delete({ where: { id: expB.id } })
-        .catch(() => {});
+      // Clean up. Bullets are hard-deleted first — this is a raw Prisma delete (not the app's
+      // DELETE-experience handler), so the schema's `onDelete: SetNull` would otherwise just
+      // orphan them instead of removing them (T017 rework).
+      await safeCleanup("profile.test.ts experience A cleanup", async () => {
+        await prisma.experienceBullet.deleteMany({
+          where: { experienceId: expA.id },
+        });
+        await prisma.experience.delete({ where: { id: expA.id } });
+      });
+      await safeCleanup("profile.test.ts experience B cleanup", async () => {
+        await prisma.experienceBullet.deleteMany({
+          where: { experienceId: expB.id },
+        });
+        await prisma.experience.delete({ where: { id: expB.id } });
+      });
     });
   });
 

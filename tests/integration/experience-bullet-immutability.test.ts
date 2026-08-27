@@ -6,6 +6,7 @@ import { POST as createExperienceHandler } from "@/app/api/profile/experiences/r
 import { PUT as putExperienceHandler } from "@/app/api/profile/experiences/[id]/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -31,7 +32,12 @@ describe("PUT /api/profile/experiences/[id] — tagged-bullet delete archives in
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup(
+      "experience-bullet-immutability.test.ts afterAll",
+      async () => {
+        await prisma.user.delete({ where: { id: testUserId } });
+      },
+    );
     await prisma.$disconnect();
     await pool.end();
   });
@@ -129,9 +135,24 @@ describe("PUT /api/profile/experiences/[id] — tagged-bullet delete archives in
     expect(cvBulletInDb!.renderedText).toBe(renderedText);
 
     await prisma.cV.delete({ where: { id: cv.id } });
-    await prisma.experience
-      .delete({ where: { id: experienceId } })
-      .catch(() => {});
+    await safeCleanup(
+      "experience-bullet-immutability.test.ts (a) jobListing",
+      async () => {
+        await prisma.jobListing.delete({ where: { id: jobListing.id } });
+      },
+    );
+    await safeCleanup(
+      "experience-bullet-immutability.test.ts (a)",
+      async () => {
+        // Raw Prisma delete (not the app's DELETE-experience handler), so
+        // ExperienceBullet.experienceId's `onDelete: SetNull` would otherwise just orphan
+        // `bulletId` instead of removing it (T017 rework) — hard-delete it first.
+        await prisma.experienceBullet.deleteMany({
+          where: { experienceId },
+        });
+        await prisma.experience.delete({ where: { id: experienceId } });
+      },
+    );
   });
 
   it("(b) regression: hard-deletes an untagged bullet omitted from the PUT bullets array (AC.7)", async () => {
@@ -153,9 +174,12 @@ describe("PUT /api/profile/experiences/[id] — tagged-bullet delete archives in
     });
     expect(bulletInDb).toBeNull();
 
-    await prisma.experience
-      .delete({ where: { id: experienceId } })
-      .catch(() => {});
+    await safeCleanup(
+      "experience-bullet-immutability.test.ts (b)",
+      async () => {
+        await prisma.experience.delete({ where: { id: experienceId } });
+      },
+    );
   });
 
   it("(c) US-1 backstop: server-side guard reverts a text change on a CV-referenced bullet even if submitted", async () => {
@@ -215,8 +239,23 @@ describe("PUT /api/profile/experiences/[id] — tagged-bullet delete archives in
 
     // Deleting the CV cascades and removes its CVBullet rows.
     await prisma.cV.delete({ where: { id: cv.id } });
-    await prisma.experience
-      .delete({ where: { id: experienceId } })
-      .catch(() => {});
+    await safeCleanup(
+      "experience-bullet-immutability.test.ts (c) jobListing",
+      async () => {
+        await prisma.jobListing.delete({ where: { id: jobListing.id } });
+      },
+    );
+    await safeCleanup(
+      "experience-bullet-immutability.test.ts (c)",
+      async () => {
+        // Raw Prisma delete (not the app's DELETE-experience handler), so
+        // ExperienceBullet.experienceId's `onDelete: SetNull` would otherwise just orphan
+        // `bulletId` instead of removing it (T017 rework) — hard-delete it first.
+        await prisma.experienceBullet.deleteMany({
+          where: { experienceId },
+        });
+        await prisma.experience.delete({ where: { id: experienceId } });
+      },
+    );
   });
 });

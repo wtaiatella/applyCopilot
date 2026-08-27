@@ -10,6 +10,7 @@ import { POST as eventsHandler } from "@/app/api/applications/[applicationId]/ev
 import { GET as getForCVHandler } from "@/app/api/cv/[cvId]/application/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 // MODIFIED PER TICKET INSTRUCTION (T050): the task originally specified a Cypress E2E spec
 // (applyCopilot/cypress/e2e/application-tracker-happy-path.cy.ts), but this repo has no Cypress
@@ -56,10 +57,18 @@ describe("Application Tracker happy path — apply, board, drag through stages, 
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
-    await prisma.jobListing
-      .delete({ where: { id: jobListingId } })
-      .catch(() => {});
+    await safeCleanup(
+      "application-tracker-happy-path: delete testUser",
+      async () => {
+        await prisma.user.delete({ where: { id: testUserId } });
+      },
+    );
+    await safeCleanup(
+      "application-tracker-happy-path: delete jobListing",
+      async () => {
+        await prisma.jobListing.delete({ where: { id: jobListingId } });
+      },
+    );
     await prisma.$disconnect();
     await pool.end();
   });

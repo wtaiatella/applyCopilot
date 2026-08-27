@@ -8,6 +8,10 @@ import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import { generateJSON } from "@/lib/ai/aiClient";
 import { logger } from "@/lib/logging/logger";
+import {
+  safeCleanup,
+  deleteProfileExperienceBullets,
+} from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -96,9 +100,16 @@ describe("AI Summary Generation Integration Tests (POST /api/profile/summaries/g
   afterAll(async () => {
     // Clean up database records
     if (testUserId) {
-      await prisma.user.delete({
-        where: { id: testUserId },
-      }).catch(() => {});
+      // T017 rework: ExperienceBullet.experienceId is SetNull (not Cascade), so it must be
+      // hard-deleted here, while still attached, before the user cascade orphans it instead.
+      await safeCleanup("ai.test.ts afterAll bullets", async () => {
+        await deleteProfileExperienceBullets(testProfileId);
+      });
+      await safeCleanup("ai.test.ts afterAll testUser", async () => {
+        await prisma.user.delete({
+          where: { id: testUserId },
+        });
+      });
     }
 
     await prisma.$disconnect();
@@ -132,10 +143,16 @@ describe("AI Summary Generation Integration Tests (POST /api/profile/summaries/g
   it("should return 401 if unauthenticated", async () => {
     mockAuth.mockResolvedValue(null);
 
-    const req = new Request("http://localhost:3000/api/profile/summaries/generate", {
-      method: "POST",
-      body: JSON.stringify({ tone: "professional", instructions: "Make it short" }),
-    });
+    const req = new Request(
+      "http://localhost:3000/api/profile/summaries/generate",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          tone: "professional",
+          instructions: "Make it short",
+        }),
+      },
+    );
 
     const res = await generateSummaryHandler(req);
     expect(res.status).toBe(401);
@@ -144,10 +161,13 @@ describe("AI Summary Generation Integration Tests (POST /api/profile/summaries/g
   });
 
   it("should return 400 if request body is invalid JSON", async () => {
-    const req = new Request("http://localhost:3000/api/profile/summaries/generate", {
-      method: "POST",
-      body: "not-json",
-    });
+    const req = new Request(
+      "http://localhost:3000/api/profile/summaries/generate",
+      {
+        method: "POST",
+        body: "not-json",
+      },
+    );
 
     const res = await generateSummaryHandler(req);
     expect(res.status).toBe(400);
@@ -156,10 +176,13 @@ describe("AI Summary Generation Integration Tests (POST /api/profile/summaries/g
   });
 
   it("should return 400 if tone is missing", async () => {
-    const req = new Request("http://localhost:3000/api/profile/summaries/generate", {
-      method: "POST",
-      body: JSON.stringify({ instructions: "Make it short" }),
-    });
+    const req = new Request(
+      "http://localhost:3000/api/profile/summaries/generate",
+      {
+        method: "POST",
+        body: JSON.stringify({ instructions: "Make it short" }),
+      },
+    );
 
     const res = await generateSummaryHandler(req);
     expect(res.status).toBe(400);
@@ -183,33 +206,45 @@ describe("AI Summary Generation Integration Tests (POST /api/profile/summaries/g
     });
 
     try {
-      const req = new Request("http://localhost:3000/api/profile/summaries/generate", {
-        method: "POST",
-        body: JSON.stringify({ tone: "professional" }),
-      });
+      const req = new Request(
+        "http://localhost:3000/api/profile/summaries/generate",
+        {
+          method: "POST",
+          body: JSON.stringify({ tone: "professional" }),
+        },
+      );
 
       const res = await generateSummaryHandler(req);
       expect(res.status).toBe(404);
       const data = await res.json();
       expect(data.error).toBe("Profile not found");
     } finally {
-      await prisma.user.delete({
-        where: { id: userNoProfile.id },
-      }).catch(() => {});
+      await safeCleanup("ai.test.ts 404 userNoProfile", async () => {
+        await prisma.user.delete({
+          where: { id: userNoProfile.id },
+        });
+      });
     }
   });
 
   it("should generate AI summary successfully and record usage", async () => {
     const mockOutput = {
       title: "Senior Full Stack Dev Mocked",
-      content: "Jane is an expert developer with experience in React and Next.js.",
+      content:
+        "Jane is an expert developer with experience in React and Next.js.",
     };
     mockGenerateJSON.mockResolvedValue(mockOutput);
 
-    const req = new Request("http://localhost:3000/api/profile/summaries/generate", {
-      method: "POST",
-      body: JSON.stringify({ tone: "professional", instructions: "Include state management" }),
-    });
+    const req = new Request(
+      "http://localhost:3000/api/profile/summaries/generate",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          tone: "professional",
+          instructions: "Include state management",
+        }),
+      },
+    );
 
     const res = await generateSummaryHandler(req);
     expect(res.status).toBe(200);
@@ -278,28 +313,35 @@ describe("AI Summary Generation Integration Tests (POST /api/profile/summaries/g
 
     try {
       // 4. Try making the 11th request (which should be blocked by rate limit)
-      const req = new Request("http://localhost:3000/api/profile/summaries/generate", {
-        method: "POST",
-        body: JSON.stringify({ tone: "professional" }),
-      });
+      const req = new Request(
+        "http://localhost:3000/api/profile/summaries/generate",
+        {
+          method: "POST",
+          body: JSON.stringify({ tone: "professional" }),
+        },
+      );
 
       const res = await generateSummaryHandler(req);
       expect(res.status).toBe(429);
       const data = await res.json();
-      expect(data.error).toBe("Rate limit reached. You can only generate 10 summaries per hour.");
+      expect(data.error).toBe(
+        "Rate limit reached. You can only generate 10 summaries per hour.",
+      );
 
       // Verify Winston logger warned
       expect(warnSpy).toHaveBeenCalledWith(
         `User ${testUserId} hit summary AI generation rate limit`,
-        { summaryCount: 10 }
+        { summaryCount: 10 },
       );
 
       // Verify no additional call to LLM happened
       expect(mockGenerateJSON).not.toHaveBeenCalled();
     } finally {
-      await prisma.user.delete({
-        where: { id: otherUser.id },
-      }).catch(() => {});
+      await safeCleanup("ai.test.ts rate-limit otherUser", async () => {
+        await prisma.user.delete({
+          where: { id: otherUser.id },
+        });
+      });
     }
   });
 });

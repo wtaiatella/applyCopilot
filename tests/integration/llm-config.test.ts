@@ -8,6 +8,7 @@ import {
 } from "@/app/api/admin/llm-config/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -191,66 +192,76 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
         }),
       });
 
-      const res = await postConfigHandler(req);
-      expect(res.status).toBe(200);
-      const data = await res.json();
-      expect(data.success).toBe(true);
-      expect(data.updated.parsingProvider).toBe("gemini");
+      try {
+        const res = await postConfigHandler(req);
+        expect(res.status).toBe(200);
+        const data = await res.json();
+        expect(data.success).toBe(true);
+        expect(data.updated.parsingProvider).toBe("gemini");
 
-      // Verify db updated
-      const parsingInDb = await prisma.systemConfig.findUnique({
-        where: { key: "AI_PROVIDER_PARSING" },
-      });
-      expect(parsingInDb?.value).toBe("gemini");
-
-      // Restore DB original config
-      if (originalDefault) {
-        await prisma.systemConfig.upsert({
-          where: { key: "AI_PROVIDER_DEFAULT" },
-          create: { key: "AI_PROVIDER_DEFAULT", value: originalDefault.value },
-          update: { value: originalDefault.value },
-        });
-      }
-      if (originalParsing) {
-        await prisma.systemConfig.upsert({
+        // Verify db updated
+        const parsingInDb = await prisma.systemConfig.findUnique({
           where: { key: "AI_PROVIDER_PARSING" },
-          create: { key: "AI_PROVIDER_PARSING", value: originalParsing.value },
-          update: { value: originalParsing.value },
         });
-      }
-      if (originalSummaries) {
-        await prisma.systemConfig.upsert({
-          where: { key: "AI_PROVIDER_SUMMARIES" },
-          create: {
-            key: "AI_PROVIDER_SUMMARIES",
-            value: originalSummaries.value,
-          },
-          update: { value: originalSummaries.value },
-        });
-      }
-      if (originalProfile) {
-        await prisma.systemConfig.upsert({
-          where: { key: "AI_PROVIDER_PROFILE" },
-          create: {
-            key: "AI_PROVIDER_PROFILE",
-            value: originalProfile.value,
-          },
-          update: { value: originalProfile.value },
-        });
-      }
-      if (originalEmbedding) {
-        await prisma.systemConfig.upsert({
-          where: { key: "AI_PROVIDER_EMBEDDING" },
-          create: {
-            key: "AI_PROVIDER_EMBEDDING",
-            value: originalEmbedding.value,
-          },
-          update: { value: originalEmbedding.value },
-        });
-      } else {
-        await prisma.systemConfig
-          .delete({ where: { key: "AI_PROVIDER_EMBEDDING" } })
-          .catch(() => {});
+        expect(parsingInDb?.value).toBe("gemini");
+      } finally {
+        // Restore DB original config
+        if (originalDefault) {
+          await prisma.systemConfig.upsert({
+            where: { key: "AI_PROVIDER_DEFAULT" },
+            create: {
+              key: "AI_PROVIDER_DEFAULT",
+              value: originalDefault.value,
+            },
+            update: { value: originalDefault.value },
+          });
+        }
+        if (originalParsing) {
+          await prisma.systemConfig.upsert({
+            where: { key: "AI_PROVIDER_PARSING" },
+            create: {
+              key: "AI_PROVIDER_PARSING",
+              value: originalParsing.value,
+            },
+            update: { value: originalParsing.value },
+          });
+        }
+        if (originalSummaries) {
+          await prisma.systemConfig.upsert({
+            where: { key: "AI_PROVIDER_SUMMARIES" },
+            create: {
+              key: "AI_PROVIDER_SUMMARIES",
+              value: originalSummaries.value,
+            },
+            update: { value: originalSummaries.value },
+          });
+        }
+        if (originalProfile) {
+          await prisma.systemConfig.upsert({
+            where: { key: "AI_PROVIDER_PROFILE" },
+            create: {
+              key: "AI_PROVIDER_PROFILE",
+              value: originalProfile.value,
+            },
+            update: { value: originalProfile.value },
+          });
+        }
+        if (originalEmbedding) {
+          await prisma.systemConfig.upsert({
+            where: { key: "AI_PROVIDER_EMBEDDING" },
+            create: {
+              key: "AI_PROVIDER_EMBEDDING",
+              value: originalEmbedding.value,
+            },
+            update: { value: originalEmbedding.value },
+          });
+        } else {
+          await safeCleanup("llm-config:AI_PROVIDER_EMBEDDING delete", () =>
+            prisma.systemConfig.delete({
+              where: { key: "AI_PROVIDER_EMBEDDING" },
+            }),
+          );
+        }
       }
     });
   });
@@ -309,10 +320,12 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
     });
 
     afterEach(async () => {
-      await prisma.jobListing
-        .delete({ where: { id: testJobId } })
-        .catch(() => {});
-      await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+      await safeCleanup("llm-config:embedding jobListing delete", () =>
+        prisma.jobListing.delete({ where: { id: testJobId } }),
+      );
+      await safeCleanup("llm-config:embedding user delete", () =>
+        prisma.user.delete({ where: { id: testUserId } }),
+      );
 
       if (originalEmbeddingConfig) {
         await prisma.systemConfig.upsert({
@@ -324,9 +337,13 @@ describe("LLM Configuration Integration Tests (GET + POST /api/admin/llm-config)
           update: { value: originalEmbeddingConfig.value },
         });
       } else {
-        await prisma.systemConfig
-          .delete({ where: { key: "AI_PROVIDER_EMBEDDING" } })
-          .catch(() => {});
+        await safeCleanup(
+          "llm-config:embedding AI_PROVIDER_EMBEDDING delete",
+          () =>
+            prisma.systemConfig.delete({
+              where: { key: "AI_PROVIDER_EMBEDDING" },
+            }),
+        );
       }
     });
 

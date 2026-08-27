@@ -5,6 +5,7 @@ import "dotenv/config";
 import { GET as getJobCVStatusHandler } from "@/app/api/jobs/[id]/cv/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -74,12 +75,14 @@ describe("GET /api/jobs/[id]/cv — hub status read-path (FR-19, AC.12)", () => 
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
-    await prisma.jobListing
-      .deleteMany({
+    await safeCleanup("cv-hub-status afterAll user", async () =>
+      prisma.user.delete({ where: { id: testUserId } }),
+    );
+    await safeCleanup("cv-hub-status afterAll jobListings", async () =>
+      prisma.jobListing.deleteMany({
         where: { id: { in: [jobNotStartedId, jobDraftId, jobAppliedId] } },
-      })
-      .catch(() => {});
+      }),
+    );
     await prisma.$disconnect();
     await pool.end();
   });

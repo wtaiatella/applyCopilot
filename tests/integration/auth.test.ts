@@ -12,6 +12,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 describe("Authentication & Password Reset Integration Tests", () => {
   const testEmail = `auth-integration-${Date.now()}@example.com`;
@@ -21,11 +22,11 @@ describe("Authentication & Password Reset Integration Tests", () => {
   afterAll(async () => {
     // Clean up test user
     if (createdUserId) {
-      await prisma.user
-        .delete({
+      await safeCleanup("auth.test.ts afterAll createdUser", async () => {
+        await prisma.user.delete({
           where: { id: createdUserId },
-        })
-        .catch(() => {});
+        });
+      });
     }
 
     // Clean up temporary debug email files

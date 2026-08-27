@@ -7,6 +7,7 @@ import { POST as eventsHandler } from "@/app/api/applications/[applicationId]/ev
 import { GET as cvApplicationHandler } from "@/app/api/cv/[cvId]/application/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 import {
   transitionStage,
   undoTransition,
@@ -23,6 +24,7 @@ describe("POST /api/applications/[applicationId]/events — manual timeline entr
   const testEmail = `application-events-test-${Date.now()}@example.com`;
   let testUserId: string;
   let testProfileId: string;
+  const jobListingIds: string[] = [];
 
   beforeAll(async () => {
     const user = await prisma.user.create({
@@ -41,7 +43,14 @@ describe("POST /api/applications/[applicationId]/events — manual timeline entr
     // Pool/connection teardown happens once, in the LAST describe block in this file (see
     // AC.11 block below) — Jest runs describe blocks within a file sequentially, so closing
     // the shared `pool`/`prisma` connection here would break the later blocks.
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup("application-events: delete testUser", async () => {
+      await prisma.user.delete({ where: { id: testUserId } });
+    });
+    await safeCleanup("application-events: delete jobListings", async () => {
+      await prisma.jobListing.deleteMany({
+        where: { id: { in: jobListingIds } },
+      });
+    });
   });
 
   beforeEach(() => {
@@ -62,6 +71,7 @@ describe("POST /api/applications/[applicationId]/events — manual timeline entr
         url: "https://example.com/job",
       },
     });
+    jobListingIds.push(jobListing.id);
     const cv = await prisma.cV.create({
       data: {
         profileId: testProfileId,
@@ -173,6 +183,7 @@ describe("GET /api/cv/[cvId]/application — Tab 5 read (009 US4, FR-12)", () =>
   const testEmail = `application-cv-get-test-${Date.now()}@example.com`;
   let testUserId: string;
   let testProfileId: string;
+  const jobListingIds: string[] = [];
 
   beforeAll(async () => {
     const user = await prisma.user.create({
@@ -189,7 +200,20 @@ describe("GET /api/cv/[cvId]/application — Tab 5 read (009 US4, FR-12)", () =>
 
   afterAll(async () => {
     // See the events block's afterAll note — teardown happens once, in this file's last block.
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup(
+      "application-events: delete testUser (cv-get)",
+      async () => {
+        await prisma.user.delete({ where: { id: testUserId } });
+      },
+    );
+    await safeCleanup(
+      "application-events: delete jobListings (cv-get)",
+      async () => {
+        await prisma.jobListing.deleteMany({
+          where: { id: { in: jobListingIds } },
+        });
+      },
+    );
   });
 
   beforeEach(() => {
@@ -210,6 +234,7 @@ describe("GET /api/cv/[cvId]/application — Tab 5 read (009 US4, FR-12)", () =>
         url: "https://example.com/job",
       },
     });
+    jobListingIds.push(jobListing.id);
     const cv = await prisma.cV.create({
       data: {
         profileId: testProfileId,
@@ -237,6 +262,7 @@ describe("AC.11 — Undo + further timeline changes never touch CV.snapshotData/
   const testEmail = `application-ac11-test-${Date.now()}@example.com`;
   let testUserId: string;
   let testProfileId: string;
+  const jobListingIds: string[] = [];
 
   beforeAll(async () => {
     const user = await prisma.user.create({
@@ -255,7 +281,20 @@ describe("AC.11 — Undo + further timeline changes never touch CV.snapshotData/
     // Pool/connection teardown happens once, in the LAST describe block in this file (see the
     // ownership-violation block below) — Jest runs describe blocks within a file sequentially,
     // so closing the shared `pool`/`prisma` connection here would break that later block.
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup(
+      "application-events: delete testUser (ac11)",
+      async () => {
+        await prisma.user.delete({ where: { id: testUserId } });
+      },
+    );
+    await safeCleanup(
+      "application-events: delete jobListings (ac11)",
+      async () => {
+        await prisma.jobListing.deleteMany({
+          where: { id: { in: jobListingIds } },
+        });
+      },
+    );
   });
 
   beforeEach(() => {
@@ -276,6 +315,7 @@ describe("AC.11 — Undo + further timeline changes never touch CV.snapshotData/
         url: "https://example.com/job",
       },
     });
+    jobListingIds.push(jobListing.id);
     const originalSnapshot = { version: 1, basicData: { firstName: "Ac11" } };
     const cv = await prisma.cV.create({
       data: {
@@ -362,6 +402,7 @@ describe("applicationService — direct-call ownership violation (REM-8, AC.8)",
   let ownerUserId: string;
   let ownerProfileId: string;
   let attackerUserId: string;
+  const jobListingIds: string[] = [];
 
   beforeAll(async () => {
     const owner = await prisma.user.create({
@@ -386,8 +427,20 @@ describe("applicationService — direct-call ownership violation (REM-8, AC.8)",
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: ownerUserId } }).catch(() => {});
-    await prisma.user.delete({ where: { id: attackerUserId } }).catch(() => {});
+    await safeCleanup("application-events: delete ownerUser", async () => {
+      await prisma.user.delete({ where: { id: ownerUserId } });
+    });
+    await safeCleanup("application-events: delete attackerUser", async () => {
+      await prisma.user.delete({ where: { id: attackerUserId } });
+    });
+    await safeCleanup(
+      "application-events: delete jobListings (ownership)",
+      async () => {
+        await prisma.jobListing.deleteMany({
+          where: { id: { in: jobListingIds } },
+        });
+      },
+    );
     await prisma.$disconnect();
     await pool.end();
   });
@@ -402,6 +455,7 @@ describe("applicationService — direct-call ownership violation (REM-8, AC.8)",
         url: "https://example.com/job",
       },
     });
+    jobListingIds.push(jobListing.id);
     const cv = await prisma.cV.create({
       data: {
         profileId: ownerProfileId,

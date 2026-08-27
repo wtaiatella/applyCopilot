@@ -7,6 +7,7 @@ import { PUT as snapshotPutHandler } from "@/app/api/cv/[cvId]/snapshot/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import type { CVSnapshotData } from "@/types/cv";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
@@ -71,9 +72,11 @@ describe("POST /api/cv/[cvId]/match-score — on-demand only (AC.8)", () => {
   let jobListingId: string;
 
   beforeAll(async () => {
-    await prisma
-      .$executeRawUnsafe("CREATE EXTENSION IF NOT EXISTS vector;")
-      .catch(() => {});
+    await safeCleanup(
+      "cv-match-score beforeAll ensure-vector-extension",
+      async () =>
+        prisma.$executeRawUnsafe("CREATE EXTENSION IF NOT EXISTS vector;"),
+    );
 
     const user = await prisma.user.create({
       data: {
@@ -118,7 +121,12 @@ describe("POST /api/cv/[cvId]/match-score — on-demand only (AC.8)", () => {
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+    await safeCleanup("cv-match-score afterAll user", async () =>
+      prisma.user.delete({ where: { id: testUserId } }),
+    );
+    await safeCleanup("cv-match-score afterAll jobListing", async () =>
+      prisma.jobListing.delete({ where: { id: jobListingId } }),
+    );
     await prisma.$disconnect();
     await pool.end();
   });

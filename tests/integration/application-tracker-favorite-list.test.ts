@@ -6,6 +6,7 @@ import { PUT as putFavoriteHandler } from "@/app/api/jobs/[id]/favorite/route";
 import { GET as getListHandler } from "@/app/api/application-tracker/list/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { safeCleanup } from "./helpers/test-fixtures";
 
 // MODIFIED PER TICKET INSTRUCTION (T051): the task originally specified a Cypress E2E spec
 // (applyCopilot/cypress/e2e/application-tracker-favorite-list.cy.ts), but this repo has no
@@ -64,10 +65,18 @@ describe("Favorite a job → reload → List view reflects it (009 US6/US7, SC-3
   });
 
   afterAll(async () => {
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
-    await prisma.jobListing
-      .delete({ where: { id: jobListingId } })
-      .catch(() => {});
+    await safeCleanup(
+      "application-tracker-favorite-list: delete testUser",
+      async () => {
+        await prisma.user.delete({ where: { id: testUserId } });
+      },
+    );
+    await safeCleanup(
+      "application-tracker-favorite-list: delete jobListing",
+      async () => {
+        await prisma.jobListing.delete({ where: { id: jobListingId } });
+      },
+    );
     await prisma.$disconnect();
     await pool.end();
   });

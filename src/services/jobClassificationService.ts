@@ -58,7 +58,7 @@ export async function classifyJobListing(
 
   const jobFacts = await generateJSON<JobFacts>(
     userPrompt,
-    "parsing",
+    "jobs.classification",
     systemPrompt,
   );
 

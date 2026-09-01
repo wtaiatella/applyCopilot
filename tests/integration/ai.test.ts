@@ -256,7 +256,7 @@ describe("AI Summary Generation Integration Tests (POST /api/profile/summaries/g
     // Verify LLM generateJSON was called with the context prompt
     expect(mockGenerateJSON).toHaveBeenCalledTimes(1);
     const [promptArg, capabilityArg] = mockGenerateJSON.mock.calls[0];
-    expect(capabilityArg).toBe("summaries");
+    expect(capabilityArg).toBe("profile.summaryGenerate");
     expect(promptArg).toContain("Jane");
     expect(promptArg).toContain("Tech Corp");
     expect(promptArg).toContain("Personal Portfolio");

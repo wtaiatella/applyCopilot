@@ -73,7 +73,7 @@ Verdict Definitions:
 
   const result = await generateJSON<DeepAnalysisResult>(
     userPrompt,
-    "summaries",
+    "jobs.deepAnalysis",
     systemPrompt
   );
 

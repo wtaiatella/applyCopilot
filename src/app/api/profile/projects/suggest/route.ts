@@ -92,7 +92,10 @@ Requirements:
 
     logger.info(`Suggesting project for user ${userId} based on ${profile.experiences.length} experiences`);
 
-    const suggestion = await generateJSON<SuggestedProject>(prompt, "default");
+    const suggestion = await generateJSON<SuggestedProject>(
+      prompt,
+      "profile.projectSuggest",
+    );
 
     // Log usage
     await prisma.aIUsageLog.create({

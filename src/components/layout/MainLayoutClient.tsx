@@ -126,6 +126,10 @@ export default function MainLayoutClient({
           label: <Link href="/settings">General</Link>,
         },
         {
+          key: "/settings/llm-models",
+          label: <Link href="/settings/llm-models">LLM Models</Link>,
+        },
+        {
           key: "/settings/portals",
           label: <Link href="/settings/portals">Job Scraper</Link>,
         },

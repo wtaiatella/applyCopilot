@@ -56,20 +56,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Fail fast if the "default" capability's currently-configured provider is already
-    // circuit-broken (e.g. a recent 429 from Gemini) — avoids spending the DB reads below just
-    // to hit the same rate limit again, and gives the user a clear, actionable message instead
-    // of a generic 500 crash.
-    const { provider: defaultProvider } = await resolveAIConfig("default");
-    if (await isProviderBlocked(DEFAULT_PROVIDER_KEY, defaultProvider)) {
-      return NextResponse.json(
-        {
-          error: `The AI provider (${defaultProvider}) is temporarily rate-limited. Please try again in a few minutes, or ask an admin to switch/reset the provider in Settings.`,
-        },
-        { status: 429 },
-      );
-    }
-
     // Load user's profile with all experiences (and their bullets) and projects
     const profile = await prisma.userProfile.findUnique({
       where: { userId },
@@ -152,10 +138,9 @@ Requirements:
       `Extracting skills for user ${userId} based on ${profile.experiences.length} experiences and ${profile.projects.length} projects`,
     );
 
-    const result = await withCircuitBreaker(
-      DEFAULT_PROVIDER_KEY,
-      defaultProvider,
-      () => generateJSON<SuggestedSkillsResponse>(prompt, "default"),
+    const result = await generateJSON<SuggestedSkillsResponse>(
+      prompt,
+      "profile.skillsSuggest",
     );
 
     const suggestedSkills = result.skills || [];

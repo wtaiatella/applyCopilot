@@ -565,3 +565,91 @@ model SkillAlias {
   createdAt DateTime        @default(now())
 }
 
+// --- AI Provider Manager & Rotation Pool (018) ---
+
+enum AISdkType {
+  GOOGLE_GENAI
+  OPENAI_COMPATIBLE
+  OLLAMA
+}
+
+enum AITier {
+  FREE
+  LOCAL
+}
+
+model AIProvider {
+  id           String      @id @default(cuid())
+  name         String      @unique // e.g. "Google AI", "OpenRouter", "Groq", "Ollama"
+  sdkType      AISdkType
+  apiKeyEnvVar String?     // e.g. "GEMINI_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY"
+  baseUrl      String?     // e.g. "https://openrouter.ai/api/v1", "https://api.groq.com/openai/v1"
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  models       AIModel[]
+}
+
+model AIModel {
+  id             String         @id @default(cuid())
+  providerId     String
+  displayName    String         // e.g. "Gemini 3.1 Flash Lite", "Gemma 4 26B"
+  modelId        String         // API string: "gemini-3.1-flash-lite", "gemma-4-26b-a4b-it"
+  tier           AITier         @default(FREE)
+  
+  // Declared Quotas
+  rpm            Int            @default(15)
+  rpd            Int            @default(500)
+  tpm            Int            @default(250000)
+  tpd            Int            @default(1000000)
+  
+  // Operational Parameters
+  safetyMargin   Float          @default(0.90) // 90% of declared limits
+  isEnabled      Boolean        @default(true)
+  blockedUntil   DateTime?      // Circuit breaker cooldown timestamp
+  
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  provider       AIProvider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  usageCounter   AIUsageCounter?
+
+  @@unique([providerId, modelId])
+  @@index([tier, isEnabled])
+}
+
+model AIUsageCounter {
+  id               String    @id @default(cuid())
+  modelId          String    @unique
+  
+  // Minute window (aligned to :00)
+  windowStartMin   DateTime  @default(now())
+  countRequestsMin Int       @default(0)
+  countTokensMin   Int       @default(0)
+  
+  // Day window (aligned to 00:00 UTC)
+  windowStartDay   DateTime  @default(now())
+  countRequestsDay Int       @default(0)
+  countTokensDay   Int       @default(0)
+
+  updatedAt        DateTime  @updatedAt
+
+  model            AIModel   @relation(fields: [modelId], references: [id], onDelete: Cascade)
+}
+
+model AIRotationCursor {
+  id             Int       @id @default(1) // Single row singleton
+  lastModelId    String?
+  updatedAt      DateTime  @updatedAt
+}
+
+model AIRoutePreference {
+  routeId        String    @id // e.g. "cv.parse.basicData", "jobs.classification"
+  groupName      String    // "CV Parser", "Jobs", "Profile", "Suggestions"
+  displayName    String    // "Basic Data", "Job Classification", etc.
+  preferredTier  AITier    @default(FREE)
+  isWorker       Boolean   @default(false) // If true, pauses on exhaustion instead of 503
+  updatedAt      DateTime  @updatedAt
+}
+
+

@@ -86,7 +86,13 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const data = await ProfileService.getProfile();
       setProfile(data);
       setError(null);
-    } catch (err) {
+    } catch (err: unknown) {
+      if (err instanceof Error && (err.message.includes("Unauthorized") || err.message.includes("401"))) {
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+        return;
+      }
       console.error(err);
       setError("Failed to load profile.");
     } finally {

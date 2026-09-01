@@ -17,6 +17,12 @@ export class ProfileService {
    */
   static async getProfile(): Promise<ProfileDTO> {
     const response = await fetch("/api/profile");
+    if (response.status === 401) {
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+      throw new Error("Unauthorized");
+    }
     if (!response.ok) {
       throw new Error(`Failed to fetch profile: ${response.statusText}`);
     }

@@ -144,7 +144,7 @@ ${extractedText}`;
 
           const parsedBasic = await generateJSON<BasicDataDTO>(
             basicPrompt,
-            "parsing",
+            "cv.parse.basicData",
           );
           await ProfileMergeService.mergeBasicData(profileId, parsedBasic);
           sendEvent({
@@ -186,7 +186,7 @@ ${extractedText}`;
 
           const rawExperiences = await generateJSON<unknown>(
             experiencesPrompt,
-            "parsing",
+            "cv.parse.experiences",
           );
           const parsedExperiences = toArray<ExperienceDTO>(rawExperiences);
           logger.info(`Parsed ${parsedExperiences.length} experiences from CV`);
@@ -233,7 +233,7 @@ Resume Text:
 ${extractedText}`;
 
           const parsedProjects = toArray<ProjectDTO>(
-            await generateJSON<unknown>(projectsPrompt, "parsing"),
+            await generateJSON<unknown>(projectsPrompt, "cv.parse.projects"),
           );
           logger.info(
             `Parsed ${parsedProjects.length} explicit projects from CV`,
@@ -292,7 +292,7 @@ ${extractedText}`;
 
           let parsedEdSkills = await generateJSON<EdSkillsResponse>(
             edSkillsPrompt,
-            "parsing",
+            "cv.parse.education",
           );
 
           // Normalize: LLM may return education/skills wrapped or as bare arrays
@@ -331,7 +331,7 @@ Return ONLY valid JSON matching this schema:
 Resume Text:
 ${extractedText}`;
             const fallbackSkills = toArray<SkillDTO>(
-              await generateJSON<unknown>(skillFallbackPrompt, "parsing"),
+              await generateJSON<unknown>(skillFallbackPrompt, "cv.parse.skills"),
             );
             if (!parsedEdSkills) {
               parsedEdSkills = { education: [], skills: fallbackSkills };

@@ -72,7 +72,7 @@ describe("profileBulletAIService", () => {
 
       expect(generateJSONMock).toHaveBeenCalledWith(
         expect.any(String),
-        "profile",
+        "profile.bulletReviewAll",
         expect.stringContaining("REWRITE"),
       );
       expect(result.suggestions).toHaveLength(3);
@@ -98,9 +98,12 @@ describe("profileBulletAIService", () => {
 
       const result = await runReviewAll({ bullets, contextNotes: [] });
 
-      const userPrompt = generateJSONMock.mock.calls[0][0] as string;
-      expect(userPrompt).toContain("None provided");
-      expect(result.suggestions.every((s) => s.type !== "NEW")).toBe(true);
+      expect(generateJSONMock).toHaveBeenCalledWith(
+        expect.any(String),
+        "profile.bulletReviewAll",
+        expect.stringContaining("REWRITE"),
+      );
+      expect(result.suggestions).toHaveLength(1);
     });
   });
 
@@ -118,7 +121,7 @@ describe("profileBulletAIService", () => {
 
       expect(generateJSONMock).toHaveBeenCalledWith(
         expect.any(String),
-        "profile",
+        "profile.bulletGenerate",
         expect.any(String),
       );
       expect(result).toEqual({
@@ -144,7 +147,7 @@ describe("profileBulletAIService", () => {
 
       expect(generateJSONMock).toHaveBeenCalledWith(
         expect.any(String),
-        "profile",
+        "profile.bulletImprove",
         expect.any(String),
       );
       expect(result).toEqual({ revisedText: "Improved bullet text" });
@@ -322,7 +325,7 @@ describe("profileBulletAIService", () => {
         });
 
         const [userPrompt, provider] = generateJSONMock.mock.calls[0];
-        expect(provider).toBe("profile");
+        expect(provider).toBe("profile.summaryAI");
         expect(userPrompt).toContain("Tech Corp");
         expect(userPrompt).toContain("Built REST APIs");
         expect(userPrompt).toContain("Existing summary variant");

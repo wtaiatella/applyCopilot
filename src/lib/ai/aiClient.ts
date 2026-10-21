@@ -1,306 +1,262 @@
 import { prisma } from "../db/prisma";
-import { GoogleGenAI } from "@google/genai";
-import { Ollama } from "ollama";
 import { logger } from "../logging/logger";
+import { AIRouteId } from "@/types/ai-manager";
+import { acquireNextAvailableFreeModel, ResolvedFreeModel } from "./rotation-cursor";
+import { GoogleGenAIAdapter } from "./adapters/googleGenAIAdapter";
+import { OpenAICompatAdapter } from "./adapters/openAICompatAdapter";
+import { OllamaAdapter } from "./adapters/ollamaAdapter";
+import { withCircuitBreaker } from "./circuit-breaker";
 
-const googleGenAI = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || "",
-});
-
-const ollamaClient = new Ollama({
-  host: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
-});
-
-/** `gemma-26b`/`gemma-31b` route through the same `googleGenAI` client as `gemini` (shared
- * `GEMINI_API_KEY`) in `generateText`/`generateJSON` — they are Gemini-API-hosted Gemma models,
- * not a separate SDK/endpoint. Unlike `gemini`, their model id is fixed per provider value
- * (`GEMMA_26B_MODEL`/`GEMMA_31B_MODEL`), not the shared `GEMINI_MODEL` key — so selecting one of
- * these providers always uses that specific Gemma model regardless of `GEMINI_MODEL`. No
- * embedding support (Gemma has no `embedContent` endpoint) — not offered for the `embedding`
- * capability. */
-interface AIResolution {
-  provider: "ollama" | "gemini" | "claude" | "gemma-26b" | "gemma-31b";
-  model: string;
-}
-
-/** Capabilities routed through the chat/JSON LLM path (generateText/generateJSON). */
-type ChatCapability =
+export type ChatCapability =
   | "parsing"
   | "summaries"
   | "default"
   | "profile"
   | "skillAlias";
 
+export type AIRouteOrCapability = AIRouteId | ChatCapability;
+
+export class AIServiceUnavailableError extends Error {
+  public status: number = 503;
+  constructor(message = "AI service temporarily unavailable across all providers. Please try again later.") {
+    super(message);
+    this.name = "AIServiceUnavailableError";
+  }
+}
+
+export class AIWorkerBackoffError extends Error {
+  public status: number = 429;
+  public backoffMinutes: number = 5;
+  constructor(message = "All free-tier AI models and local fallbacks are currently exhausted. Worker pausing for 5 minutes.") {
+    super(message);
+    this.name = "AIWorkerBackoffError";
+  }
+}
+
+/**
+ * Maps legacy capability names to canonical route IDs.
+ */
+function normalizeToRouteId(routeOrCapability: AIRouteOrCapability): AIRouteId {
+  switch (routeOrCapability) {
+    case "parsing":
+      return "cv.parse.basicData";
+    case "summaries":
+      return "jobs.deepAnalysis";
+    case "profile":
+      return "profile.syncFacts";
+    case "skillAlias":
+      return "profile.skillAlias";
+    case "default":
+      return "profile.skillsSuggest";
+    default:
+      return routeOrCapability as AIRouteId;
+  }
+}
+
+/**
+ * Resolves the route configuration for a given route ID.
+ */
+export async function resolveAIRoute(routeId: AIRouteId) {
+  try {
+    const route = await prisma.aIRoutePreference.findUnique({
+      where: { routeId },
+    });
+    if (route) return route;
+  } catch (error) {
+    logger.warn("[AIClient] Failed to read route preference, defaulting to FREE", { error, routeId });
+  }
+
+  return {
+    routeId,
+    groupName: "Default",
+    displayName: routeId,
+    preferredTier: "FREE" as const,
+    isWorker: ["jobs.classification", "profile.syncFacts", "profile.skillAlias"].includes(routeId),
+    updatedAt: new Date(),
+  };
+}
+
+/**
+ * Legacy compatibility resolver (used for embedding or legacy tests).
+ */
+export async function resolveAIConfig(
+  capability: "embedding",
+): Promise<{ provider: "ollama" | "gemini" | "claude"; model: string }>;
+export async function resolveAIConfig(
+  capability: ChatCapability,
+): Promise<{ provider: "ollama" | "gemini" | "claude" | "gemma-26b" | "gemma-31b"; model: string }>;
 export async function resolveAIConfig(
   capability: ChatCapability | "embedding",
-): Promise<AIResolution> {
-  let providerStr = "";
-  let modelStr = "";
-
-  try {
-    const configKey =
-      capability === "parsing"
-        ? "AI_PROVIDER_PARSING"
-        : capability === "summaries"
-          ? "AI_PROVIDER_SUMMARIES"
-          : capability === "profile"
-            ? "AI_PROVIDER_PROFILE"
-            : capability === "skillAlias"
-              ? "AI_PROVIDER_SKILLALIAS"
-              : capability === "embedding"
-                ? "AI_PROVIDER_EMBEDDING"
-                : "AI_PROVIDER_DEFAULT";
-
-    // Try fetching from database SystemConfig
-    const dbProvider = await prisma.systemConfig.findUnique({
-      where: { key: configKey },
-    });
-    providerStr = dbProvider?.value || "";
-
-    if (!providerStr) {
-      // Fetch fallback default provider if specific capability provider not found in DB
-      const dbDefault = await prisma.systemConfig.findUnique({
-        where: { key: "AI_PROVIDER_DEFAULT" },
-      });
-      providerStr = dbDefault?.value || "";
-    }
-  } catch (error) {
-    logger.warn(
-      "Database config resolution failed, falling back to env variables",
-      { error },
-    );
-  }
-
-  // Fallback to environment variables
-  if (!providerStr) {
-    providerStr =
-      (capability === "parsing"
-        ? process.env.AI_PROVIDER_PARSING
-        : capability === "summaries"
-          ? process.env.AI_PROVIDER_SUMMARIES
-          : capability === "profile"
-            ? process.env.AI_PROVIDER_PROFILE
-            : capability === "skillAlias"
-              ? process.env.AI_PROVIDER_SKILLALIAS
-              : capability === "embedding"
-                ? process.env.AI_PROVIDER_EMBEDDING
-                : process.env.AI_PROVIDER_DEFAULT) || "ollama";
-  }
-
-  const provider =
-    (providerStr.toLowerCase() as
-      | "ollama"
-      | "gemini"
-      | "claude"
-      | "gemma-26b"
-      | "gemma-31b") || "ollama";
-
-  // Gemma has no embedding endpoint — the `embedding` capability never resolves to it (the
-  // provider-select UI/schema don't offer it there either), but guard defensively in case a
-  // stale SystemConfig row set AI_PROVIDER_EMBEDDING to a gemma value before this UI existed.
-  if (
-    capability === "embedding" &&
-    (provider === "gemma-26b" || provider === "gemma-31b")
-  ) {
+): Promise<{ provider: "ollama" | "gemini" | "claude" | "gemma-26b" | "gemma-31b"; model: string }> {
+  if (capability === "embedding") {
     return {
-      provider: "ollama",
-      model: process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text",
+      provider: "gemini",
+      model: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
     };
   }
 
-  // Resolve model based on resolved provider (capability-aware: embedding models are a
-  // structurally different key set from chat models, see spectech Technical Decisions)
-  try {
-    const modelKey =
-      capability === "embedding"
-        ? provider === "gemini"
-          ? "GEMINI_EMBEDDING_MODEL"
-          : "OLLAMA_EMBEDDING_MODEL"
-        : provider === "gemini"
-          ? "GEMINI_MODEL"
-          : provider === "claude"
-            ? "CLAUDE_MODEL"
-            : provider === "gemma-26b"
-              ? "GEMMA_26B_MODEL"
-              : provider === "gemma-31b"
-                ? "GEMMA_31B_MODEL"
-                : "OLLAMA_MODEL";
-
-    const dbModel = await prisma.systemConfig.findUnique({
-      where: { key: modelKey },
-    });
-    modelStr = dbModel?.value || "";
-  } catch {
-    // Ignore db read error for model key
-  }
-
-  if (!modelStr) {
-    modelStr =
-      (capability === "embedding"
-        ? provider === "gemini"
-          ? process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001"
-          : process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text"
-        : provider === "gemini"
-          ? process.env.GEMINI_MODEL || "gemini-3-pro"
-          : provider === "claude"
-            ? process.env.CLAUDE_MODEL || "claude-haiku-4-5"
-            : provider === "gemma-26b"
-              ? process.env.GEMMA_26B_MODEL || "gemma-4-26b-a4b-it"
-              : provider === "gemma-31b"
-                ? process.env.GEMMA_31B_MODEL || "gemma-4-31b-it"
-                : process.env.OLLAMA_MODEL || "granite4.1:8b") || "";
-  }
-
-  return { provider, model: modelStr };
+  return {
+    provider: "gemini",
+    model: "gemini-3.1-flash-lite",
+  };
 }
 
+async function executeWithModel(
+  resolved: ResolvedFreeModel,
+  type: "text" | "json",
+  prompt: string,
+  systemPrompt?: string,
+): Promise<unknown> {
+  const { model, provider } = resolved;
+
+  return await withCircuitBreaker(
+    model.id,
+    provider.name,
+    async () => {
+      if (provider.sdkType === "GOOGLE_GENAI") {
+        return type === "text"
+          ? await GoogleGenAIAdapter.executeText(prompt, model, provider, systemPrompt)
+          : await GoogleGenAIAdapter.executeJSON(prompt, model, provider, systemPrompt);
+      }
+      if (provider.sdkType === "OPENAI_COMPATIBLE") {
+        return type === "text"
+          ? await OpenAICompatAdapter.executeText(prompt, model, provider, systemPrompt)
+          : await OpenAICompatAdapter.executeJSON(prompt, model, provider, systemPrompt);
+      }
+      // OLLAMA as free model
+      return type === "text"
+        ? await OllamaAdapter.executeText(prompt, systemPrompt)
+        : await OllamaAdapter.executeJSON(prompt, systemPrompt);
+    },
+  );
+}
+
+async function executeWithOllama(
+  type: "text" | "json",
+  prompt: string,
+  systemPrompt?: string,
+): Promise<unknown> {
+  return type === "text"
+    ? await OllamaAdapter.executeText(prompt, systemPrompt)
+    : await OllamaAdapter.executeJSON(prompt, systemPrompt);
+}
+
+/**
+ * Central dispatcher for text generation requests across free-tier rotation pool & local fallback.
+ */
 export async function generateText(
   prompt: string,
-  capability: ChatCapability,
+  routeOrCap: AIRouteOrCapability = "default",
   systemPrompt?: string,
 ): Promise<string> {
-  const { provider, model } = await resolveAIConfig(capability);
-  logger.info(
-    `Routing AI request: ${capability} -> ${provider} using ${model}`,
-  );
+  const routeId = normalizeToRouteId(routeOrCap);
+  const route = await resolveAIRoute(routeId);
 
-  if (
-    provider === "gemini" ||
-    provider === "gemma-26b" ||
-    provider === "gemma-31b"
-  ) {
-    const contentPrompt = systemPrompt
-      ? `${systemPrompt}\n\n${prompt}`
-      : prompt;
-    const response = await googleGenAI.models.generateContent({
-      model,
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: contentPrompt }],
-        },
-      ],
-    });
-    return response.text || "";
-  }
+  logger.info(`[AIClient] Routing request for ${routeId} (preferred: ${route.preferredTier})`);
 
-  if (provider === "claude") {
-    const messages = [{ role: "user" as const, content: prompt }];
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.CLAUDE_API_KEY || "",
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 2048,
-        system: systemPrompt,
-        messages,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Claude API request failed: ${response.statusText} - ${errorText}`,
-      );
+  if (route.preferredTier === "LOCAL") {
+    // 1. Try Local Ollama first
+    try {
+      return (await executeWithOllama("text", prompt, systemPrompt)) as string;
+    } catch (ollamaErr) {
+      logger.warn(`[AIClient] Local Ollama failed for ${routeId}, attempting FREE tier fallback`, { error: ollamaErr });
+      
+      // 2. Fallback to FREE tier pool
+      const freeModel = await acquireNextAvailableFreeModel();
+      if (freeModel) {
+        try {
+          return (await executeWithModel(freeModel, "text", prompt, systemPrompt)) as string;
+        } catch (freeErr) {
+          logger.error(`[AIClient] FREE tier fallback failed for ${routeId}`, { error: freeErr });
+        }
+      }
+    }
+  } else {
+    // 1. Try FREE tier rotation pool first
+    const freeModel = await acquireNextAvailableFreeModel();
+    if (freeModel) {
+      try {
+        return (await executeWithModel(freeModel, "text", prompt, systemPrompt)) as string;
+      } catch (freeErr) {
+        logger.warn(`[AIClient] FREE tier model ${freeModel.model.displayName} failed, attempting Local Ollama fallback`, { error: freeErr });
+      }
+    } else {
+      logger.warn(`[AIClient] FREE tier pool exhausted for ${routeId}, attempting Local Ollama fallback`);
     }
 
-    const data = await response.json();
-    return (data as { content?: { text?: string }[] }).content?.[0]?.text || "";
+    // 2. Fallback to Local Ollama
+    try {
+      return (await executeWithOllama("text", prompt, systemPrompt)) as string;
+    } catch (ollamaErr) {
+      logger.error(`[AIClient] Local Ollama fallback failed for ${routeId}`, { error: ollamaErr });
+    }
   }
 
-  // Fallback/Default: Ollama
-  const messages = [];
-  if (systemPrompt) {
-    messages.push({ role: "system", content: systemPrompt });
+  // 3. Fallback Exhaustion
+  logger.error(`[AIClient] Fallback exhaustion for route ${routeId} (isWorker: ${route.isWorker})`);
+  if (route.isWorker) {
+    throw new AIWorkerBackoffError();
+  } else {
+    throw new AIServiceUnavailableError();
   }
-  messages.push({ role: "user", content: prompt });
-
-  const response = await ollamaClient.chat({
-    model,
-    messages,
-  });
-
-  return response.message.content || "";
 }
 
+/**
+ * Central dispatcher for JSON generation requests across free-tier rotation pool & local fallback.
+ */
 export async function generateJSON<T>(
   prompt: string,
-  capability: ChatCapability,
+  routeOrCap: AIRouteOrCapability = "default",
   systemPrompt?: string,
 ): Promise<T> {
-  const { provider, model } = await resolveAIConfig(capability);
-  logger.info(
-    `Routing AI JSON request: ${capability} -> ${provider} using ${model}`,
-  );
+  const routeId = normalizeToRouteId(routeOrCap);
+  const route = await resolveAIRoute(routeId);
 
-  const jsonSystemPrompt = systemPrompt
-    ? `${systemPrompt}\nReturn ONLY valid JSON. Do not include markdown wraps or extra commentary.`
-    : "Return ONLY valid JSON. Do not include markdown wraps or extra commentary.";
+  logger.info(`[AIClient] Routing JSON request for ${routeId} (preferred: ${route.preferredTier})`);
 
-  let responseText = "";
-
-  if (
-    provider === "gemini" ||
-    provider === "gemma-26b" ||
-    provider === "gemma-31b"
-  ) {
-    const response = await googleGenAI.models.generateContent({
-      model,
-      contents: `${jsonSystemPrompt}\n\nInput:\n${prompt}`,
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
-    responseText = response.text || "";
-  } else if (provider === "claude") {
-    responseText = await generateText(
-      prompt,
-      capability,
-      `${jsonSystemPrompt}\nRespond ONLY in raw JSON format.`,
-    );
-  } else {
-    // Ollama
-    const messages = [];
-    if (jsonSystemPrompt) {
-      messages.push({ role: "system", content: jsonSystemPrompt });
+  if (route.preferredTier === "LOCAL") {
+    // 1. Try Local Ollama first
+    try {
+      return (await executeWithOllama("json", prompt, systemPrompt)) as T;
+    } catch (ollamaErr) {
+      logger.warn(`[AIClient] Local Ollama failed for JSON ${routeId}, attempting FREE tier fallback`, { error: ollamaErr });
+      
+      // 2. Fallback to FREE tier pool
+      const freeModel = await acquireNextAvailableFreeModel();
+      if (freeModel) {
+        try {
+          return (await executeWithModel(freeModel, "json", prompt, systemPrompt)) as T;
+        } catch (freeErr) {
+          logger.error(`[AIClient] FREE tier fallback failed for JSON ${routeId}`, { error: freeErr });
+        }
+      }
     }
-    messages.push({ role: "user", content: prompt });
+  } else {
+    // 1. Try FREE tier rotation pool first
+    const freeModel = await acquireNextAvailableFreeModel();
+    if (freeModel) {
+      try {
+        return (await executeWithModel(freeModel, "json", prompt, systemPrompt)) as T;
+      } catch (freeErr) {
+        logger.warn(`[AIClient] FREE tier model ${freeModel.model.displayName} failed for JSON, attempting Local Ollama fallback`, { error: freeErr });
+      }
+    } else {
+      logger.warn(`[AIClient] FREE tier pool exhausted for JSON ${routeId}, attempting Local Ollama fallback`);
+    }
 
-    const response = await ollamaClient.chat({
-      model,
-      messages,
-      format: "json",
-    });
-    responseText = response.message.content || "";
+    // 2. Fallback to Local Ollama
+    try {
+      return (await executeWithOllama("json", prompt, systemPrompt)) as T;
+    } catch (ollamaErr) {
+      logger.error(`[AIClient] Local Ollama fallback failed for JSON ${routeId}`, { error: ollamaErr });
+    }
   }
 
-  // Clean JSON response from potential markdown wrapping if returned by LLM
-  let cleanedText = responseText.trim();
-  if (cleanedText.startsWith("```json")) {
-    cleanedText = cleanedText.substring(7);
-  }
-  if (cleanedText.startsWith("```")) {
-    cleanedText = cleanedText.substring(3);
-  }
-  if (cleanedText.endsWith("```")) {
-    cleanedText = cleanedText.substring(0, cleanedText.length - 3);
-  }
-  cleanedText = cleanedText.trim();
-
-  try {
-    return JSON.parse(cleanedText) as T;
-  } catch (error) {
-    logger.error("Failed to parse AI JSON response", {
-      error,
-      rawResponse: responseText,
-      cleanedText,
-    });
-    throw new Error(
-      `AI generated invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  // 3. Fallback Exhaustion
+  logger.error(`[AIClient] Fallback exhaustion for JSON route ${routeId} (isWorker: ${route.isWorker})`);
+  if (route.isWorker) {
+    throw new AIWorkerBackoffError();
+  } else {
+    throw new AIServiceUnavailableError();
   }
 }

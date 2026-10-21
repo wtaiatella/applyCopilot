@@ -208,7 +208,7 @@ export async function extractProfileFacts(
     logger.info("Requesting LLM to extract structured ProfileFacts...");
     const profileFacts = await generateJSON<ProfileFacts>(
       consolidatedText,
-      "profile",
+      "profile.syncFacts",
       systemPrompt,
     );
     return profileFacts;

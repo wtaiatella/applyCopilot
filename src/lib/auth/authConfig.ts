@@ -14,6 +14,7 @@ export const PUBLIC_ROUTES = [
 ];
 
 export const authConfig: NextAuthConfig = {
+  trustHost: true,
   providers: [], // Added in auth.ts to avoid middleware Edge compatibility limitations
   pages: {
     signIn: "/login",

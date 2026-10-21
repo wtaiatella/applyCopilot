@@ -1,14 +1,8 @@
 import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db/prisma";
-import {
-  LLMProvider,
-  EmbeddingProvider,
-  CredentialStatus,
-} from "@/types/admin";
-import LLMSettingsPanel from "@/components/settings/LLMSettingsPanel";
 import DatabasePanel from "@/components/settings/DatabasePanel";
 import Link from "next/link";
+import { Cpu, Globe } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -19,98 +13,6 @@ export default async function SettingsPage() {
   if (!session || !session.user || session.user.role !== "ADMIN") {
     redirect("/dashboard");
   }
-
-  // Load config directly from DB
-  const configs = await prisma.systemConfig.findMany({
-    where: {
-      key: {
-        in: [
-          "AI_PROVIDER_DEFAULT",
-          "AI_PROVIDER_PARSING",
-          "AI_PROVIDER_SUMMARIES",
-          "AI_PROVIDER_PROFILE",
-          "AI_PROVIDER_EMBEDDING",
-        ],
-      },
-    },
-  });
-
-  const configMap = new Map(configs.map((c) => [c.key, c.value]));
-
-  const defaultProvider = (configMap.get("AI_PROVIDER_DEFAULT") ||
-    "ollama") as LLMProvider;
-  const parsingProvider = (configMap.get("AI_PROVIDER_PARSING") ||
-    "ollama") as LLMProvider;
-  const summariesProvider = (configMap.get("AI_PROVIDER_SUMMARIES") ||
-    "gemini") as LLMProvider;
-  const profileProvider = (configMap.get("AI_PROVIDER_PROFILE") ||
-    "ollama") as LLMProvider;
-  const embeddingProvider = (configMap.get("AI_PROVIDER_EMBEDDING") ||
-    "ollama") as EmbeddingProvider;
-
-  // Detect credential status
-  const ollamaUrl = process.env.OLLAMA_BASE_URL;
-  const geminiKey = process.env.GEMINI_API_KEY;
-  const claudeKey = process.env.CLAUDE_API_KEY;
-
-  const credentialStatus: CredentialStatus = {
-    ollama: !!(ollamaUrl && ollamaUrl.length > 0),
-    gemini: !!(
-      geminiKey &&
-      geminiKey.length > 0 &&
-      geminiKey !== "your-gemini-api-key-here"
-    ),
-    claude: !!(claudeKey && claudeKey.length > 0),
-  };
-
-  const defaultBlockedUntil = configMap.get(
-    "AI_PROVIDER_DEFAULT_BLOCKED_UNTIL",
-  );
-  const parsingBlockedUntil = configMap.get(
-    "AI_PROVIDER_PARSING_BLOCKED_UNTIL",
-  );
-  const summariesBlockedUntil = configMap.get(
-    "AI_PROVIDER_SUMMARIES_BLOCKED_UNTIL",
-  );
-  const profileBlockedUntil = configMap.get(
-    "AI_PROVIDER_PROFILE_BLOCKED_UNTIL",
-  );
-  const embeddingBlockedUntil = configMap.get(
-    "AI_PROVIDER_EMBEDDING_BLOCKED_UNTIL",
-  );
-
-  const now = new Date();
-  const defaultBlocked = defaultBlockedUntil
-    ? new Date(defaultBlockedUntil) > now
-    : false;
-  const parsingBlocked = parsingBlockedUntil
-    ? new Date(parsingBlockedUntil) > now
-    : false;
-  const summariesBlocked = summariesBlockedUntil
-    ? new Date(summariesBlockedUntil) > now
-    : false;
-  const profileBlocked = profileBlockedUntil
-    ? new Date(profileBlockedUntil) > now
-    : false;
-  const embeddingBlocked = embeddingBlockedUntil
-    ? new Date(embeddingBlockedUntil) > now
-    : false;
-
-  const config = {
-    defaultProvider,
-    parsingProvider,
-    summariesProvider,
-    profileProvider,
-    embeddingProvider,
-  };
-
-  const blockedStatus = {
-    defaultProvider: defaultBlocked ? defaultBlockedUntil || null : null,
-    parsingProvider: parsingBlocked ? parsingBlockedUntil || null : null,
-    summariesProvider: summariesBlocked ? summariesBlockedUntil || null : null,
-    profileProvider: profileBlocked ? profileBlockedUntil || null : null,
-    embeddingProvider: embeddingBlocked ? embeddingBlockedUntil || null : null,
-  };
 
   return (
     <div className="mx-auto max-w-4xl py-6">
@@ -124,32 +26,57 @@ export default async function SettingsPage() {
       </div>
 
       <div className="space-y-4">
+        {/* LLM Models Link Card */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 hover:border-blue-500 transition-colors">
+          <div className="flex items-center justify-between">
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0 mt-0.5">
+                <Cpu className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">
+                  LLM Models & Provider Rotation
+                </h2>
+                <p className="text-zinc-400 text-sm mt-1">
+                  Configure free-tier provider pool, rate limits, sliding window quotas, and per-route fallback preferences.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/settings/llm-models"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-colors text-sm shrink-0"
+            >
+              Configure Models
+            </Link>
+          </div>
+        </div>
+
         {/* Scraper Settings Link Card */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 hover:border-blue-500 transition-colors">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-white">
-                Job Scraper Portal Settings
-              </h2>
-              <p className="text-zinc-400 text-sm mt-1">
-                Configure automated background scraping tasks, portal URLs,
-                rate-limit delays, and test scraping strategies.
-              </p>
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400 shrink-0 mt-0.5">
+                <Globe className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">
+                  Job Scraper Portal Settings
+                </h2>
+                <p className="text-zinc-400 text-sm mt-1">
+                  Configure automated background scraping tasks, portal URLs,
+                  rate-limit delays, and test scraping strategies.
+                </p>
+              </div>
             </div>
             <Link
               href="/settings/portals"
-              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-colors text-sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-colors text-sm shrink-0"
             >
               Configure Portals
             </Link>
           </div>
         </div>
 
-        <LLMSettingsPanel
-          config={config}
-          credentialStatus={credentialStatus}
-          blockedStatus={blockedStatus}
-        />
         <DatabasePanel />
       </div>
     </div>

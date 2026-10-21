@@ -221,7 +221,7 @@ export async function runReviewAll(
   const userPrompt = buildReviewAllPrompt(input);
   const result = await generateJSON<ReviewAllResult>(
     userPrompt,
-    "profile",
+    "profile.bulletReviewAll",
     buildReviewAllSystemPrompt(hasJobContext),
   );
 
@@ -258,7 +258,7 @@ export async function runGenerateBullet(
   const userPrompt = buildGenerateBulletPrompt(input);
   const result = await generateJSON<SingleBulletResult>(
     userPrompt,
-    "profile",
+    "profile.bulletGenerate",
     buildGenerateBulletSystemPrompt(),
   );
 
@@ -283,7 +283,7 @@ export async function runReviewBullet(
   const userPrompt = buildReviewBulletPrompt(input);
   const result = await generateJSON<SingleBulletResult>(
     userPrompt,
-    "profile",
+    "profile.bulletImprove",
     buildReviewBulletSystemPrompt(),
   );
 
@@ -311,7 +311,7 @@ export async function runGenerateSummary(
   const userPrompt = buildGenerateSummaryPrompt(input);
   const result = await generateJSON<GenerateSummaryResult>(
     userPrompt,
-    "profile",
+    "profile.summaryAI",
     GENERATE_SUMMARY_SYSTEM_PROMPT,
   );
 

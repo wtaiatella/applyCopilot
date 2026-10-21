@@ -388,7 +388,7 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
           _prompt: string,
           capability: string,
         ): Promise<Record<string, unknown>> => {
-          if (capability === "skillAlias") {
+          if (capability === "skillAlias" || capability === "profile.skillAlias") {
             return Promise.resolve({ sameTechnology: true });
           }
           return Promise.resolve(makeValidProfileFacts());

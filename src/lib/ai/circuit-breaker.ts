@@ -1,11 +1,11 @@
 import { prisma } from "../db/prisma";
 import { logger } from "../logging/logger";
 
-/** Default cooldown period in milliseconds when a provider gets blocked (1 hour) */
-const DEFAULT_COOLDOWN_MS = 60 * 60 * 1000;
+/** Default cooldown period in milliseconds when a model/provider gets blocked (1 hour) */
+export const DEFAULT_COOLDOWN_MS = 60 * 60 * 1000;
 
 /**
- * HTTP status codes that trigger a circuit breaker block on the LLM provider.
+ * HTTP status codes that trigger a circuit breaker block on the LLM model.
  * - 429: Rate limit exceeded
  * - 401: Unauthorized / invalid API key
  * - 402: Payment required / quota exceeded
@@ -20,17 +20,7 @@ export function isBlockingHttpStatus(statusCode: number): boolean {
 }
 
 /**
- * Generates the SystemConfig key that stores the block expiry timestamp for a given
- * capability + provider pair.
- *
- * Scoped by BOTH the capability (`providerConfigKey`, e.g. "AI_PROVIDER_PARSING") AND the
- * currently-resolved provider (e.g. "gemini", "gemma-26b") — a 429/401/402 from one provider
- * must not block a *different* provider an admin just switched that capability to. Before this,
- * the key was capability-only, so switching e.g. parsing from "gemini" to "gemma-26b" while
- * "gemini" was mid-cooldown left the capability blocked for the new, never-rate-limited provider
- * too, since the block key carried no provider identity at all.
- *
- * Example: ("AI_PROVIDER_PARSING", "gemini") → "AI_PROVIDER_PARSING_GEMINI_BLOCKED_UNTIL"
+ * Legacy key generation helper for SystemConfig compatibility.
  */
 export function getBlockedUntilKey(
   providerConfigKey: string,
@@ -40,145 +30,138 @@ export function getBlockedUntilKey(
 }
 
 /**
- * Checks whether the given capability + provider pair is currently blocked.
- *
- * A provider is considered BLOCKED if `SystemConfig` contains a `<key>_<PROVIDER>_BLOCKED_UNTIL`
- * entry whose value is a future ISO timestamp.
- *
- * @param providerConfigKey The SystemConfig key identifying the provider capability,
- *   e.g. "AI_PROVIDER_PARSING" or "AI_PROVIDER_SUMMARIES".
- * @param provider The currently-resolved provider for that capability, e.g. "gemini",
- *   "gemma-26b", "claude", "ollama" — callers get this from `resolveAIConfig(capability)`.
- * @returns `true` if blocked, `false` if healthy or unset.
- */
-export async function isProviderBlocked(
-  providerConfigKey: string,
-  provider: string,
-): Promise<boolean> {
-  try {
-    const blockedUntilKey = getBlockedUntilKey(providerConfigKey, provider);
-
-    const config = await prisma.systemConfig.findUnique({
-      where: { key: blockedUntilKey },
-    });
-
-    if (!config?.value) {
-      return false;
-    }
-
-    const blockedUntil = new Date(config.value);
-
-    if (isNaN(blockedUntil.getTime())) {
-      // Corrupted or invalid date — treat as unblocked and clean up
-      logger.warn(
-        `Circuit breaker: invalid blockedUntil value for ${providerConfigKey}/${provider}. Resetting.`,
-      );
-      await resetProviderBlock(providerConfigKey, provider);
-      return false;
-    }
-
-    const isBlocked = blockedUntil > new Date();
-
-    if (!isBlocked) {
-      // Block has expired — clean up the entry automatically
-      logger.info(
-        `Circuit breaker: cooldown expired for ${providerConfigKey}/${provider}. Auto-resetting.`,
-      );
-      await resetProviderBlock(providerConfigKey, provider);
-    }
-
-    return isBlocked;
-  } catch (error) {
-    logger.error(
-      `Circuit breaker: error checking provider block for ${providerConfigKey}/${provider}`,
-      { error },
-    );
-    // Fail open: if DB check fails, do not block the provider
-    return false;
-  }
-}
-
-/**
- * Marks an LLM provider as BLOCKED in `SystemConfig` for the configured cooldown period.
- * This is typically called when an HTTP 429, 401, or 402 response is received from the LLM API.
- *
- * @param providerConfigKey The SystemConfig key identifying the provider capability.
- * @param provider The provider that actually received the blocking response.
- * @param cooldownMs Optional cooldown duration in milliseconds. Defaults to 1 hour.
+ * Legacy blockProvider helper.
  */
 export async function blockProvider(
   providerConfigKey: string,
   provider: string,
   cooldownMs: number = DEFAULT_COOLDOWN_MS,
 ): Promise<void> {
-  try {
-    const blockedUntilKey = getBlockedUntilKey(providerConfigKey, provider);
-    const blockedUntil = new Date(Date.now() + cooldownMs).toISOString();
-
-    await prisma.systemConfig.upsert({
-      where: { key: blockedUntilKey },
-      update: { value: blockedUntil },
-      create: { key: blockedUntilKey, value: blockedUntil },
-    });
-
-    logger.warn(
-      `Circuit breaker: ${providerConfigKey}/${provider} is now BLOCKED until ${blockedUntil} (cooldown: ${cooldownMs}ms)`,
-    );
-  } catch (error) {
-    logger.error(
-      `Circuit breaker: failed to block ${providerConfigKey}/${provider}`,
-      { error },
-    );
-  }
+  const key = getBlockedUntilKey(providerConfigKey, provider);
+  const blockedUntil = new Date(Date.now() + cooldownMs).toISOString();
+  await prisma.systemConfig.upsert({
+    where: { key },
+    update: { value: blockedUntil },
+    create: { key, value: blockedUntil },
+  });
 }
 
 /**
- * Manually resets a BLOCKED LLM provider, removing its cooldown entry from `SystemConfig`.
- * This can be triggered by the admin "Reset Provider" button in the Settings panel.
- *
- * @param providerConfigKey The SystemConfig key identifying the provider capability.
- * @param provider The provider whose block should be cleared.
+ * Legacy resetProviderBlock helper.
  */
 export async function resetProviderBlock(
   providerConfigKey: string,
   provider: string,
 ): Promise<void> {
   try {
-    const blockedUntilKey = getBlockedUntilKey(providerConfigKey, provider);
-
+    const key = getBlockedUntilKey(providerConfigKey, provider);
     await prisma.systemConfig.delete({
-      where: { key: blockedUntilKey },
+      where: { key },
+    });
+  } catch {}
+}
+
+/**
+ * Checks whether the given model is currently blocked by the circuit breaker.
+ */
+export async function isModelBlocked(modelId: string): Promise<boolean> {
+  try {
+    const model = await prisma.aIModel.findUnique({
+      where: { id: modelId },
+      select: { blockedUntil: true },
     });
 
-    logger.info(
-      `Circuit breaker: ${providerConfigKey}/${provider} has been manually reset (unblocked).`,
-    );
-  } catch (error: unknown) {
-    // P2025 = Record not found — this is fine, the block didn't exist
-    if ((error as { code?: string })?.code !== "P2025") {
-      logger.error(
-        `Circuit breaker: failed to reset ${providerConfigKey}/${provider}`,
-        { error },
-      );
+    if (!model?.blockedUntil) {
+      return false;
     }
+
+    const now = new Date();
+    const isBlocked = model.blockedUntil > now;
+
+    if (!isBlocked) {
+      // Cooldown expired, clear blockedUntil automatically
+      await prisma.aIModel.update({
+        where: { id: modelId },
+        data: { blockedUntil: null },
+      });
+      logger.info(`Circuit breaker: cooldown expired for model ${modelId}. Unblocked.`);
+    }
+
+    return isBlocked;
+  } catch (error) {
+    logger.error(`Circuit breaker: error checking block for model ${modelId}`, {
+      error,
+    });
+    return false;
   }
 }
 
 /**
- * Wraps an LLM API call with circuit breaker protection.
- * If the call throws an error with a blocking HTTP status, the provider is blocked automatically.
- *
- * @param providerConfigKey The SystemConfig key identifying the provider capability.
- * @param provider The provider actually in use for this call (from `resolveAIConfig`) — the
- *   block, if triggered, is scoped to this specific provider, not the capability as a whole.
- * @param fn The async function wrapping the LLM API call.
- * @param cooldownMs Optional cooldown duration in milliseconds.
- * @returns The result of the wrapped function.
- * @throws Re-throws the original error after marking the provider as blocked.
+ * Marks an LLM model as BLOCKED for the configured cooldown period.
+ */
+export async function blockModel(
+  modelId: string,
+  cooldownMs: number = DEFAULT_COOLDOWN_MS,
+): Promise<void> {
+  try {
+    const blockedUntil = new Date(Date.now() + cooldownMs);
+
+    await prisma.aIModel.update({
+      where: { id: modelId },
+      data: { blockedUntil },
+    });
+
+    logger.warn(
+      `Circuit breaker: model ${modelId} is now BLOCKED until ${blockedUntil.toISOString()} (cooldown: ${cooldownMs}ms)`,
+    );
+  } catch (error) {
+    logger.error(`Circuit breaker: failed to block model ${modelId}`, { error });
+  }
+}
+
+/**
+ * Manually resets a BLOCKED LLM model.
+ */
+export async function resetModelBlock(modelId: string): Promise<void> {
+  try {
+    await prisma.aIModel.update({
+      where: { id: modelId },
+      data: { blockedUntil: null },
+    });
+
+    logger.info(`Circuit breaker: model ${modelId} has been manually unblocked.`);
+  } catch (error) {
+    logger.error(`Circuit breaker: failed to unblock model ${modelId}`, { error });
+    throw error;
+  }
+}
+
+/**
+ * Legacy compatibility helper for checking provider blocks via SystemConfig (e.g. embeddings).
+ */
+export async function isProviderBlocked(
+  providerConfigKey: string,
+  _provider?: string,
+): Promise<boolean> {
+  try {
+    const config = await prisma.systemConfig.findUnique({
+      where: { key: `${providerConfigKey}_BLOCKED_UNTIL` },
+    });
+
+    if (!config?.value) return false;
+    const blockedUntil = new Date(config.value);
+    return blockedUntil > new Date();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Wraps an LLM API call with circuit breaker protection for an AIModel.
  */
 export async function withCircuitBreaker<T>(
-  providerConfigKey: string,
-  provider: string,
+  modelIdOrKey: string,
+  _provider: string,
   fn: () => Promise<T>,
   cooldownMs: number = DEFAULT_COOLDOWN_MS,
 ): Promise<T> {
@@ -188,7 +171,19 @@ export async function withCircuitBreaker<T>(
     const statusCode = extractHttpStatus(error);
 
     if (statusCode !== null && isBlockingHttpStatus(statusCode)) {
-      await blockProvider(providerConfigKey, provider, cooldownMs);
+      // Check if modelIdOrKey is an AIModel ID or legacy SystemConfig key
+      try {
+        await blockModel(modelIdOrKey, cooldownMs);
+      } catch {
+        // If not found in AIModel table, fallback to legacy SystemConfig
+        const blockedUntilKey = `${modelIdOrKey}_BLOCKED_UNTIL`;
+        const blockedUntil = new Date(Date.now() + cooldownMs).toISOString();
+        await prisma.systemConfig.upsert({
+          where: { key: blockedUntilKey },
+          update: { value: blockedUntil },
+          create: { key: blockedUntilKey, value: blockedUntil },
+        });
+      }
     }
 
     throw error;
@@ -196,16 +191,12 @@ export async function withCircuitBreaker<T>(
 }
 
 /**
- * Attempts to extract an HTTP status code from various error shapes thrown by LLM SDKs.
- * Exported so callers can build a clearer user-facing error message/status when a request fails
- * with a blocking status (e.g. 429) — instead of a generic 500 with no indication it was a
- * rate-limit/quota issue the user should just retry later.
+ * Attempts to extract an HTTP status code from error shapes thrown by LLM SDKs / fetch.
  */
 export function extractHttpStatus(error: unknown): number | null {
   if (error && typeof error === "object") {
     const err = error as Record<string, unknown>;
 
-    // Common patterns: { status: 429 }, { statusCode: 429 }, { response: { status: 429 } }
     if (typeof err.status === "number") return err.status;
     if (typeof err.statusCode === "number") return err.statusCode;
     if (
@@ -215,7 +206,6 @@ export function extractHttpStatus(error: unknown): number | null {
       return (err.response as Record<string, unknown>).status as number;
     }
 
-    // Error message pattern: "429" or "status 429"
     if (typeof err.message === "string") {
       const match = err.message.match(/\b(429|401|402)\b/);
       if (match) return parseInt(match[1], 10);

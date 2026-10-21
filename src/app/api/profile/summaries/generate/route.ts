@@ -135,7 +135,7 @@ Return ONLY a valid JSON object matching the following structure (no other text,
     // 6. Call LLM
     const generated = await generateJSON<{ title: string; content: string }>(
       prompt,
-      "summaries",
+      "profile.summaryGenerate",
     );
 
     // 7. Log usage

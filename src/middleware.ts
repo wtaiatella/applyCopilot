@@ -1,7 +1,29 @@
 import NextAuth from "next-auth";
 import { authConfig } from "@/lib/auth/authConfig";
+import { NextRequest, NextFetchEvent } from "next/server";
 
-export default NextAuth(authConfig).auth;
+const { auth: nextAuthMiddleware } = NextAuth(authConfig);
+
+function normalizeRequest(req: NextRequest): NextRequest {
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  if (!host) return req;
+  const proto = req.headers.get("x-forwarded-proto") || (req.url.startsWith("https") ? "https" : "http");
+  const targetOrigin = `${proto}://${host}`;
+  const currentOrigin = req.nextUrl.origin;
+  if (currentOrigin !== targetOrigin) {
+    const newHref = req.nextUrl.href.replace(currentOrigin, targetOrigin);
+    return new NextRequest(newHref, req);
+  }
+  return req;
+}
+
+export default function middleware(req: NextRequest, ev: NextFetchEvent) {
+  return (nextAuthMiddleware as (req: NextRequest, ev: NextFetchEvent) => Promise<Response> | Response)(
+    normalizeRequest(req),
+    ev,
+  );
+}
+
 
 export const config = {
   // Protect routes while letting Next.js static files and public images bypass. REM-10 rework:

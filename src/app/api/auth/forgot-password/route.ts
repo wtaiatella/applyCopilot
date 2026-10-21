@@ -93,7 +93,10 @@ export async function POST(req: Request) {
       },
     });
 
-    const resetLink = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/reset-password?token=${rawToken}`;
+    const host = req.headers.get("host");
+    const proto = req.headers.get("x-forwarded-proto") || "http";
+    const origin = req.headers.get("origin") || (host ? `${proto}://${host}` : (process.env.NEXTAUTH_URL || "http://localhost:3000"));
+    const resetLink = `${origin}/reset-password?token=${rawToken}`;
 
     // Send email using Resend
     let sentEmail = false;

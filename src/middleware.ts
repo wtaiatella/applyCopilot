@@ -18,7 +18,7 @@ function normalizeRequest(req: NextRequest): NextRequest {
 }
 
 export default function middleware(req: NextRequest, ev: NextFetchEvent) {
-  return (nextAuthMiddleware as (req: NextRequest, ev: NextFetchEvent) => Promise<Response> | Response)(
+  return (nextAuthMiddleware as unknown as (req: NextRequest, ev: NextFetchEvent) => Promise<Response> | Response)(
     normalizeRequest(req),
     ev,
   );

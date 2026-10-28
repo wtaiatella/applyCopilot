@@ -415,6 +415,15 @@ export default function PortalSettingsList() {
             >
               <InputNumber min={1} max={10} style={{ width: "100%" }} />
             </Form.Item>
+
+            <Form.Item
+              label="Período de Descarte de Vagas (Dias)"
+              name="jobRetentionDays"
+              rules={[{ required: true, message: "Required" }]}
+              tooltip="Vagas sem interação com mais de X dias são excluídas. Vagas favoritas, analisadas, em candidaturas ou currículos são sempre preservadas."
+            >
+              <InputNumber min={1} max={365} style={{ width: "100%" }} />
+            </Form.Item>
           </div>
 
           <Form.Item style={{ marginTop: 16, marginBottom: 0 }}>

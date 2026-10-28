@@ -144,7 +144,7 @@ export async function runClassificationWorker(): Promise<WorkerRunResult> {
       classificationAttempts: { lt: maxAttempts },
     },
     take: batchSize,
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
     select: {
       id: true,
       title: true,

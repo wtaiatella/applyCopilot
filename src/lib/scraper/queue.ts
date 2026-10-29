@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { runTask } from "./engine";
 import { logger } from "@/lib/logging/logger";
+import { purgeExpiredOrphanJobs } from "@/services/jobCleanupService";
 
 // Import strategy files to trigger auto-registration in Registry
 import "./portals/example";
@@ -129,6 +130,19 @@ export async function bootstrapWorker() {
   // Fire scheduling immediately on startup
   await scheduleListTasks();
   await enqueueDeepTasks();
+
+  // Periodic orphan job cleanup sweep (every 24 hours, plus immediate initial run)
+  const runCleanupSafe = async () => {
+    try {
+      await purgeExpiredOrphanJobs();
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error(`[Scraper Worker] Error in orphan job cleanup routine: ${errMsg}`, { error: err });
+    }
+  };
+
+  setInterval(runCleanupSafe, 24 * 60 * 60 * 1000);
+  runCleanupSafe();
 
   // Polling loop 2: Process pending tasks sequentially respecting concurrency and delay rates
   async function runQueueLoop() {

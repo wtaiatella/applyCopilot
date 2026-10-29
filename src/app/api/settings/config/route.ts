@@ -20,6 +20,7 @@ export async function GET() {
             "SCRAPER_RATE_LIMIT_DELAY",
             "SCRAPER_MAX_RETRIES",
             "SCRAPER_USER_AGENT",
+            "SCRAPER_JOB_RETENTION_DAYS",
           ],
         },
       },
@@ -33,6 +34,7 @@ export async function GET() {
       rateLimitDelay: parseInt(configMap.get("SCRAPER_RATE_LIMIT_DELAY") || "1000"),
       maxExtractionRetries: parseInt(configMap.get("SCRAPER_MAX_RETRIES") || "3"),
       userAgent: configMap.get("SCRAPER_USER_AGENT") || "ApplyCopilot/1.0",
+      jobRetentionDays: parseInt(configMap.get("SCRAPER_JOB_RETENTION_DAYS") || "15"),
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { globalScrapeInterval, maxConcurrency, rateLimitDelay, maxExtractionRetries, userAgent } = body;
+    const { globalScrapeInterval, maxConcurrency, rateLimitDelay, maxExtractionRetries, userAgent, jobRetentionDays } = body;
 
     const updates = [
       { key: "SCRAPER_GLOBAL_INTERVAL", value: String(globalScrapeInterval) },
@@ -55,6 +57,7 @@ export async function POST(req: NextRequest) {
       { key: "SCRAPER_RATE_LIMIT_DELAY", value: String(rateLimitDelay) },
       { key: "SCRAPER_MAX_RETRIES", value: String(maxExtractionRetries) },
       { key: "SCRAPER_USER_AGENT", value: userAgent },
+      { key: "SCRAPER_JOB_RETENTION_DAYS", value: jobRetentionDays !== undefined ? String(jobRetentionDays) : undefined },
     ];
 
     for (const update of updates) {

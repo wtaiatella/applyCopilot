@@ -112,3 +112,32 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF: ${{ github.ref }}
         run: node --experimental-strip-types src/lib/ci/release-pr.ts summary
+
+  release-pr:
+    name: Rolling Release PR (development -> main)
+    runs-on: ubuntu-latest
+    needs: [verify]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/development' && needs.verify.result == 'success'
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-pr-development-to-main
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Sync rolling Release Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
+        run: node --experimental-strip-types src/lib/ci/release-pr.ts release
+

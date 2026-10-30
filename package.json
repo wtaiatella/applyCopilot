@@ -9,6 +9,7 @@
     "start": "next start -p 3200",
     "start-dev": "next start -p 3200",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "jest --runInBand --detectOpenHandles",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

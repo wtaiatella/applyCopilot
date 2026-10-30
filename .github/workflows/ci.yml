@@ -7,24 +7,23 @@ name: CI
 # tests/integration/pgvector-embedding-migration.test.ts) on every PR, per spectech.md's
 # Dependencies & Versions and Risks & Mitigations (CI flakiness row).
 #
-# NOTE: continue-on-error is set on the job level to keep this workflow "informational only"
-# for now. Three pre-existing, unrelated issues would cause every PR check to fail if enforced:
-# - JobAnalysis migration history gap (broken Prisma migrate history)
-# - 304 pre-existing lint errors (existing codebase does not pass linting)
-# - Test coverage at ~42% vs configured 80% threshold
-# This workflow still runs on every PR and shows real pass/fail status per step (for visibility),
-# but failures will not block merging. This setting should be removed once the technical debt
-# above is paid down and all checks consistently pass.
+# NOTE (APC-26): Advisory quality checks (`migrate`, `lint`, `typecheck`, `test`) use
+# step-level `continue-on-error: true` so pre-existing debt (tracked under APC-25) is
+# reported in `$GITHUB_STEP_SUMMARY` without skipping subsequent steps, while `build`
+# (`NODE_ENV=production npm run build`) runs with `continue-on-error: false` as a strict
+# blocking gate.
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, development]
+
+permissions:
+  contents: read
 
 jobs:
-  test:
-    name: Lint, migrate, and test (coverage-gated)
+  verify:
+    name: Verify (advisory quality checks & strict production build)
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     services:
       postgres:

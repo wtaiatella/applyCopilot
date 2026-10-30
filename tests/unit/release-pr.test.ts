@@ -7,6 +7,7 @@ import {
   RELEASE_BASE_BRANCH,
   RELEASE_HEAD_BRANCH,
   RELEASE_PR_TITLE,
+  buildAutoMergeWarning,
   buildReleasePrBody,
   formatReleasePrSummary,
   formatVerificationSummary,
@@ -773,5 +774,426 @@ describe("release-pr — Phase 2 (US2: Automated Creation & Rolling Update of Re
         "node --experimental-strip-types src/lib/ci/release-pr.ts release",
       );
     });
+  });
+});
+
+type MergeHandler = (args: readonly string[]) => CommandResult;
+
+interface ReleaseScenarioOptions {
+  existingPr?: { number: number; url: string };
+  onMerge?: MergeHandler;
+  overrides?: (
+    command: string,
+    args: readonly string[],
+  ) => CommandResult | undefined;
+}
+
+function createReleaseScenarioRunner(options: ReleaseScenarioOptions = {}): {
+  runner: CommandRunner;
+  calls: RecordedCall[];
+} {
+  return createStubRunner((command, args) => {
+    const override = options.overrides?.(command, args);
+    if (override) {
+      return override;
+    }
+    if (command === "git" && args[0] === "fetch") {
+      return { exitCode: 0, stdout: "", stderr: "" };
+    }
+    if (command === "git" && args[0] === "rev-list") {
+      return { exitCode: 0, stdout: "2\n", stderr: "" };
+    }
+    if (command === "git" && args[0] === "log") {
+      return {
+        exitCode: 0,
+        stdout: "abc1234\tfeat: first\tAlice\ndef5678\tfix: second\tBob\n",
+        stderr: "",
+      };
+    }
+    if (command === "gh" && args[0] === "pr" && args[1] === "list") {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify(options.existingPr ? [options.existingPr] : []),
+        stderr: "",
+      };
+    }
+    if (command === "gh" && args[0] === "pr" && args[1] === "create") {
+      return {
+        exitCode: 0,
+        stdout: "https://github.com/wtaiatella/applyCopilot/pull/19\n",
+        stderr: "",
+      };
+    }
+    if (command === "gh" && args[0] === "pr" && args[1] === "edit") {
+      return {
+        exitCode: 0,
+        stdout: `${options.existingPr?.url ?? ""}\n`,
+        stderr: "",
+      };
+    }
+    if (command === "gh" && args[0] === "pr" && args[1] === "merge") {
+      return options.onMerge
+        ? options.onMerge(args)
+        : { exitCode: 0, stdout: "", stderr: "" };
+    }
+    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+  });
+}
+
+function findMergeCalls(calls: readonly RecordedCall[]): RecordedCall[] {
+  return calls.filter(
+    (c) => c.command === "gh" && c.args[0] === "pr" && c.args[1] === "merge",
+  );
+}
+
+describe("release-pr — Phase 3 (US3: Human Approval Gate & Automated Release Merge)", () => {
+  const existingPr = {
+    number: 42,
+    url: "https://github.com/wtaiatella/applyCopilot/pull/42",
+  };
+
+  let logSpy: jest.SpyInstance;
+  let errorSpy: jest.SpyInstance;
+  let writeSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    writeSpy = jest
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
+    writeSpy.mockRestore();
+  });
+
+  const loggedWarnings = (): string[] =>
+    logSpy.mock.calls
+      .map((call: unknown[]) => String(call[0]))
+      .filter((line: string) => line.startsWith("::warning::"));
+
+  describe("auto-merge enablement (FR-8, AC.5, T008)", () => {
+    it("invokes 'gh pr merge <n> --auto --merge' (no --delete-branch) after creating the Release PR and reports autoMergeEnabled: true", () => {
+      const { runner, calls } = createReleaseScenarioRunner();
+
+      const result = syncRollingReleasePr({ runner, writeSummary: false });
+
+      expect(result.action).toBe("created");
+      expect(result.prNumber).toBe(19);
+      expect(result.autoMergeEnabled).toBe(true);
+      expect(result.warning).toBeUndefined();
+
+      const mergeCalls = findMergeCalls(calls);
+      expect(mergeCalls).toHaveLength(1);
+      expect(mergeCalls[0].args).toEqual([
+        "pr",
+        "merge",
+        "19",
+        "--auto",
+        "--merge",
+      ]);
+      expect(mergeCalls[0].args).not.toContain("--delete-branch");
+      expect(mergeCalls[0].args).not.toContain("--squash");
+      expect(mergeCalls[0].args).not.toContain("--rebase");
+
+      // Merge is requested only after the PR was created
+      const createIndex = calls.findIndex(
+        (c) => c.command === "gh" && c.args[1] === "create",
+      );
+      expect(calls.indexOf(mergeCalls[0])).toBeGreaterThan(createIndex);
+      expect(loggedWarnings()).toHaveLength(0);
+    });
+
+    it("invokes 'gh pr merge <n> --auto --merge' after updating the existing Release PR in-place and reports autoMergeEnabled: true", () => {
+      const { runner, calls } = createReleaseScenarioRunner({ existingPr });
+
+      const result = syncRollingReleasePr({ runner, writeSummary: false });
+
+      expect(result.action).toBe("updated");
+      expect(result.prNumber).toBe(42);
+      expect(result.autoMergeEnabled).toBe(true);
+      expect(result.warning).toBeUndefined();
+
+      const mergeCalls = findMergeCalls(calls);
+      expect(mergeCalls).toHaveLength(1);
+      expect(mergeCalls[0].args).toEqual([
+        "pr",
+        "merge",
+        "42",
+        "--auto",
+        "--merge",
+      ]);
+      expect(mergeCalls[0].args).not.toContain("--delete-branch");
+
+      const editIndex = calls.findIndex(
+        (c) => c.command === "gh" && c.args[1] === "edit",
+      );
+      expect(calls.indexOf(mergeCalls[0])).toBeGreaterThan(editIndex);
+      expect(loggedWarnings()).toHaveLength(0);
+    });
+
+    it("does not request auto-merge when the Release PR is skipped (0 commits ahead)", () => {
+      const { runner, calls } = createReleaseScenarioRunner({
+        overrides: (command, args) =>
+          command === "git" && args[0] === "rev-list"
+            ? { exitCode: 0, stdout: "0\n", stderr: "" }
+            : undefined,
+      });
+
+      const result = syncRollingReleasePr({ runner, writeSummary: false });
+
+      expect(result.action).toBe("skipped");
+      expect(result.autoMergeEnabled).toBeUndefined();
+      expect(findMergeCalls(calls)).toHaveLength(0);
+    });
+  });
+
+  describe("graceful FR-9 fallback when auto-merge cannot be enabled", () => {
+    it("keeps the created Release PR, returns autoMergeEnabled: false with a remediation warning, and emits ::warning:: when gh pr merge exits non-zero", () => {
+      const { runner, calls } = createReleaseScenarioRunner({
+        onMerge: () => ({
+          exitCode: 1,
+          stdout: "",
+          stderr: "auto-merge is not allowed for this repository",
+        }),
+      });
+
+      let result: ReturnType<typeof syncRollingReleasePr> | undefined;
+      expect(() => {
+        result = syncRollingReleasePr({ runner, writeSummary: false });
+      }).not.toThrow();
+
+      expect(result?.action).toBe("created");
+      expect(result?.prNumber).toBe(19);
+      expect(result?.autoMergeEnabled).toBe(false);
+      expect(result?.warning).toEqual(expect.any(String));
+      expect(result?.warning).toContain("#19");
+      expect(result?.warning).toContain(
+        "auto-merge is not allowed for this repository",
+      );
+      expect(result?.warning).toContain("merged manually");
+      expect(result?.warning).toContain("Allow auto-merge");
+      expect(result?.warning).toContain("Settings → Branches");
+      expect(findMergeCalls(calls)).toHaveLength(1);
+
+      const warnings = loggedWarnings();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toBe(`::warning::${result?.warning ?? ""}`);
+    });
+
+    it("keeps the updated Release PR and degrades gracefully when the merge runner throws", () => {
+      const { runner } = createReleaseScenarioRunner({
+        existingPr,
+        onMerge: () => {
+          throw new Error("spawn gh ENOENT");
+        },
+      });
+
+      const result = syncRollingReleasePr({ runner, writeSummary: false });
+
+      expect(result.action).toBe("updated");
+      expect(result.prNumber).toBe(42);
+      expect(result.autoMergeEnabled).toBe(false);
+      expect(result.warning).toContain("#42");
+      expect(result.warning).toContain("spawn gh ENOENT");
+      expect(result.warning).toContain("Allow auto-merge");
+      expect(loggedWarnings()).toHaveLength(1);
+    });
+
+    it("writes the auto-merge warning into $GITHUB_STEP_SUMMARY and still exits 0 via runCli(['release'])", () => {
+      const tempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "release-pr-phase3-"),
+      );
+      const summaryFile = path.join(tempDir, "step-summary.md");
+      const { runner } = createReleaseScenarioRunner({
+        onMerge: () => ({
+          exitCode: 1,
+          stdout: "",
+          stderr: "auto-merge is not allowed",
+        }),
+      });
+
+      try {
+        const exitCode = runCli(
+          ["release"],
+          { NODE_ENV: "test", GITHUB_STEP_SUMMARY: summaryFile },
+          runner,
+        );
+
+        expect(exitCode).toBe(0);
+        const summary = fs.readFileSync(summaryFile, "utf8");
+        expect(summary).toContain("| Action taken | `created` |");
+        expect(summary).toContain(
+          "| Auto-merge | ⚠️ Not enabled (manual merge required) |",
+        );
+        expect(summary).toContain("> ⚠️ **Warning:** Auto-merge could not");
+        expect(summary).toContain("auto-merge is not allowed");
+        expect(summary).toContain("Allow auto-merge");
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("buildAutoMergeWarning() and formatReleasePrSummary() auto-merge rendering", () => {
+    it("builds remediation guidance with and without failure details", () => {
+      const withDetails = buildAutoMergeWarning("#7", "  not allowed  ");
+      expect(withDetails).toContain(
+        "Auto-merge could not be enabled for PR #7 (not allowed).",
+      );
+      expect(withDetails).toContain("must be merged manually");
+      expect(withDetails).toContain('"Allow auto-merge" in Settings → General');
+      expect(withDetails).toContain(
+        `branch protection (required status checks) for \`${RELEASE_BASE_BRANCH}\` in Settings → Branches`,
+      );
+
+      const withoutDetails = buildAutoMergeWarning("#7");
+      expect(withoutDetails).toContain(
+        "Auto-merge could not be enabled for PR #7.",
+      );
+      expect(withoutDetails).not.toContain("()");
+      expect(buildAutoMergeWarning("#7", "   ")).toBe(withoutDetails);
+    });
+
+    it("renders an enabled auto-merge row without a warning block", () => {
+      const summary = formatReleasePrSummary({
+        action: "updated",
+        commitsAhead: 3,
+        prNumber: 42,
+        prUrl: existingPr.url,
+        autoMergeEnabled: true,
+      });
+
+      expect(summary).toContain(
+        "| Auto-merge | ✅ Enabled (`--auto --merge`) |",
+      );
+      expect(summary).not.toContain("**Warning:**");
+    });
+
+    it("renders a not-enabled auto-merge row and the warning block", () => {
+      const warning = buildAutoMergeWarning("#42", "not allowed");
+      const summary = formatReleasePrSummary({
+        action: "updated",
+        commitsAhead: 3,
+        prNumber: 42,
+        prUrl: existingPr.url,
+        autoMergeEnabled: false,
+        warning,
+      });
+
+      expect(summary).toContain(
+        "| Auto-merge | ⚠️ Not enabled (manual merge required) |",
+      );
+      expect(summary).toContain(`> ⚠️ **Warning:** ${warning}`);
+    });
+
+    it("omits the auto-merge row when autoMergeEnabled is undefined (skipped action)", () => {
+      const summary = formatReleasePrSummary({
+        action: "skipped",
+        commitsAhead: 0,
+      });
+
+      expect(summary).not.toContain("| Auto-merge |");
+      expect(summary).not.toContain("**Warning:**");
+    });
+  });
+
+  describe("fatal CLI error reporting (error handling strategy)", () => {
+    let tempDir: string;
+    let summaryFile: string;
+
+    beforeEach(() => {
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "release-pr-fatal-"));
+      summaryFile = path.join(tempDir, "step-summary.md");
+    });
+
+    afterEach(() => {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    const fatalCases: Array<{
+      name: string;
+      existingPr?: { number: number; url: string };
+      matches: (command: string, args: readonly string[]) => boolean;
+      expectedMessage: string;
+    }> = [
+      {
+        name: "git fetch",
+        matches: (command, args) => command === "git" && args[0] === "fetch",
+        expectedMessage: "git fetch origin main development failed",
+      },
+      {
+        name: "git rev-list",
+        matches: (command, args) => command === "git" && args[0] === "rev-list",
+        expectedMessage:
+          "git rev-list --count origin/main..origin/development failed",
+      },
+      {
+        name: "gh pr list",
+        matches: (command, args) => command === "gh" && args[1] === "list",
+        expectedMessage: "gh pr list failed",
+      },
+      {
+        name: "gh pr create",
+        matches: (command, args) => command === "gh" && args[1] === "create",
+        expectedMessage: "gh pr create failed",
+      },
+      {
+        name: "gh pr edit",
+        existingPr,
+        matches: (command, args) => command === "gh" && args[1] === "edit",
+        expectedMessage: "gh pr edit 42 failed",
+      },
+    ];
+
+    it.each(fatalCases)(
+      "throws from syncRollingReleasePr() and does not request auto-merge when $name fails",
+      ({ existingPr: pr, matches, expectedMessage }) => {
+        const { runner, calls } = createReleaseScenarioRunner({
+          existingPr: pr,
+          overrides: (command, args) =>
+            matches(command, args)
+              ? { exitCode: 1, stdout: "", stderr: "fatal: boom" }
+              : undefined,
+        });
+
+        expect(() =>
+          syncRollingReleasePr({ runner, writeSummary: false }),
+        ).toThrow(expectedMessage);
+        expect(findMergeCalls(calls)).toHaveLength(0);
+      },
+    );
+
+    it.each(fatalCases)(
+      "returns exit code 1 from runCli(['release']) and writes a diagnostic section to $GITHUB_STEP_SUMMARY when $name fails",
+      ({ existingPr: pr, matches, expectedMessage }) => {
+        const { runner } = createReleaseScenarioRunner({
+          existingPr: pr,
+          overrides: (command, args) =>
+            matches(command, args)
+              ? { exitCode: 1, stdout: "", stderr: "fatal: boom" }
+              : undefined,
+        });
+
+        const exitCode = runCli(
+          ["release"],
+          { NODE_ENV: "test", GITHUB_STEP_SUMMARY: summaryFile },
+          runner,
+        );
+
+        expect(exitCode).toBe(1);
+        const summary = fs.readFileSync(summaryFile, "utf8");
+        expect(summary).toContain("## Rolling Release Pull Request");
+        expect(summary).toContain("❌ **Error:**");
+        expect(summary).toContain(expectedMessage);
+        expect(summary).toContain("fatal: boom");
+        expect(errorSpy).toHaveBeenCalledWith(
+          expect.stringContaining("[release-pr] Release PR sync failed:"),
+        );
+      },
+    );
   });
 });

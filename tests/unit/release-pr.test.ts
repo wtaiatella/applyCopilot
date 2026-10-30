@@ -493,6 +493,9 @@ describe("release-pr — Phase 2 (US2: Automated Creation & Rolling Update of Re
             stderr: "",
           };
         }
+        if (command === "gh" && args[0] === "pr" && args[1] === "merge") {
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }
         throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
       });
 
@@ -574,6 +577,9 @@ describe("release-pr — Phase 2 (US2: Automated Creation & Rolling Update of Re
             stderr: "",
           };
         }
+        if (command === "gh" && args[0] === "pr" && args[1] === "merge") {
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }
         throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
       });
 
@@ -643,6 +649,9 @@ describe("release-pr — Phase 2 (US2: Automated Creation & Rolling Update of Re
             stdout: "https://github.com/wtaiatella/applyCopilot/pull/99\n",
             stderr: "",
           };
+        }
+        if (command === "gh" && args[0] === "pr" && args[1] === "merge") {
+          return { exitCode: 0, stdout: "", stderr: "" };
         }
         throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
       });

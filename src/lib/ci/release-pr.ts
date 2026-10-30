@@ -69,6 +69,10 @@ export interface ReleasePrResult {
   prNumber?: number;
   prUrl?: string;
   body?: string;
+  /** `true` when `gh pr merge --auto --merge` succeeded (FR-8); `false` on graceful fallback (FR-9). */
+  autoMergeEnabled?: boolean;
+  /** Non-fatal remediation warning emitted when auto-merge could not be enabled (FR-9). */
+  warning?: string;
 }
 
 export interface SyncRollingReleasePrOptions {
@@ -358,10 +362,84 @@ export function formatReleasePrSummary(result: ReleasePrResult): string {
     `| Action taken | \`${actionLabel}\` |`,
     `| Pull Request | ${prDisplay} |`,
     `| Commits ahead of \`main\` | ${result.commitsAhead} |`,
-    "",
   ];
 
+  if (result.autoMergeEnabled !== undefined) {
+    lines.push(
+      `| Auto-merge | ${
+        result.autoMergeEnabled
+          ? "✅ Enabled (`--auto --merge`)"
+          : "⚠️ Not enabled (manual merge required)"
+      } |`,
+    );
+  }
+
+  lines.push("");
+
+  if (result.warning) {
+    lines.push(`> ⚠️ **Warning:** ${result.warning}`, "");
+  }
+
   return lines.join("\n");
+}
+
+/**
+ * Builds the FR-9 remediation warning shown when auto-merge cannot be enabled.
+ */
+export function buildAutoMergeWarning(prRef: string, details?: string): string {
+  const trimmedDetails = details?.trim() ?? "";
+  const reason = trimmedDetails.length > 0 ? ` (${trimmedDetails})` : "";
+  return (
+    `Auto-merge could not be enabled for PR ${prRef}${reason}. ` +
+    `The Release PR was created/updated and must be merged manually. ` +
+    `To enable automatic merging, turn on "Allow auto-merge" in Settings → General ` +
+    `and configure branch protection (required status checks) for \`${RELEASE_BASE_BRANCH}\` in Settings → Branches.`
+  );
+}
+
+/**
+ * Enables GitHub auto-merge (merge-commit strategy, branch preserved) on the Release PR.
+ * Never throws: failures degrade to a `::warning::` annotation and a returned remediation warning (FR-8, FR-9).
+ */
+function enableAutoMerge(
+  runner: CommandRunner,
+  prNumber: number | undefined,
+  prUrl: string | undefined,
+  env: NodeJS.ProcessEnv,
+): { autoMergeEnabled: boolean; warning?: string } {
+  const prTarget =
+    prNumber !== undefined ? String(prNumber) : (prUrl ?? undefined);
+  const prRef =
+    prNumber !== undefined ? `#${prNumber}` : (prUrl ?? "(unknown)");
+
+  if (!prTarget) {
+    const warning = buildAutoMergeWarning(
+      prRef,
+      "PR number could not be resolved",
+    );
+    console.log(`::warning::${warning}`);
+    return { autoMergeEnabled: false, warning };
+  }
+
+  const mergeResult = invokeCommand(
+    runner,
+    "gh",
+    ["pr", "merge", prTarget, "--auto", "--merge"],
+    env,
+  );
+
+  if (mergeResult.exitCode === 0) {
+    console.log(`[release-pr] Auto-merge enabled for Release PR ${prRef}.`);
+    return { autoMergeEnabled: true };
+  }
+
+  const details =
+    mergeResult.stderr.trim() ||
+    mergeResult.stdout.trim() ||
+    "gh pr merge --auto failed";
+  const warning = buildAutoMergeWarning(prRef, details);
+  console.log(`::warning::${warning}`);
+  return { autoMergeEnabled: false, warning };
 }
 
 function invokeCommand(
@@ -618,12 +696,15 @@ export function syncRollingReleasePr(
         `[release-pr] Created Release PR ${prNumber ? `#${prNumber}` : (prUrl ?? "")}`.trim(),
       );
 
+      const autoMerge = enableAutoMerge(runner, prNumber, prUrl, env);
+
       return finalizeResult({
         action: "created",
         commitsAhead,
         prNumber,
         prUrl,
         body,
+        ...autoMerge,
       });
     }
 
@@ -659,12 +740,20 @@ export function syncRollingReleasePr(
       `[release-pr] Updated existing Release PR #${existingPr.number} in-place.`,
     );
 
+    const autoMerge = enableAutoMerge(
+      runner,
+      existingPr.number,
+      existingPr.url,
+      env,
+    );
+
     return finalizeResult({
       action: "updated",
       commitsAhead,
       prNumber: existingPr.number,
       prUrl: existingPr.url,
       body,
+      ...autoMerge,
     });
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

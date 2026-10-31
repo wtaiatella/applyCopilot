@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeProficiency } from "@/lib/normalization/proficiencyNormalizer";
 
 export const BulletInputSchema = z.object({
   id: z.string().optional(),
@@ -54,8 +55,14 @@ const freeFormContextSchema = z
 export const ExperienceInputSchema = z.object({
   company: z.string().min(1, "Company name is required"),
   position: z.string().min(1, "Position is required"),
-  startDate: z.string().datetime({ message: "Start date must be a valid ISO datetime string" }),
-  endDate: z.string().datetime({ message: "End date must be a valid ISO datetime string" }).nullable().optional(),
+  startDate: z
+    .string()
+    .datetime({ message: "Start date must be a valid ISO datetime string" }),
+  endDate: z
+    .string()
+    .datetime({ message: "End date must be a valid ISO datetime string" })
+    .nullable()
+    .optional(),
   current: z.boolean().default(false),
   bullets: z.array(BulletInputSchema).default([]),
   freeFormContext: freeFormContextSchema,
@@ -66,8 +73,14 @@ export const EducationInputSchema = z.object({
   institution: z.string().min(1, "Institution name is required"),
   degree: z.string().min(1, "Degree is required"),
   fieldOfStudy: z.string().nullable().optional(),
-  startDate: z.string().datetime({ message: "Start date must be a valid ISO datetime string" }),
-  endDate: z.string().datetime({ message: "End date must be a valid ISO datetime string" }).nullable().optional(),
+  startDate: z
+    .string()
+    .datetime({ message: "Start date must be a valid ISO datetime string" }),
+  endDate: z
+    .string()
+    .datetime({ message: "End date must be a valid ISO datetime string" })
+    .nullable()
+    .optional(),
   current: z.boolean().default(false),
   hideEndDate: z.boolean().default(false),
   bullets: z.array(BulletInputSchema).default([]),
@@ -77,8 +90,16 @@ export const EducationInputSchema = z.object({
 
 export const ProjectInputSchema = z.object({
   name: z.string().min(1, "Project name is required"),
-  startDate: z.string().datetime({ message: "Start date must be a valid ISO datetime string" }).nullable().optional(),
-  endDate: z.string().datetime({ message: "End date must be a valid ISO datetime string" }).nullable().optional(),
+  startDate: z
+    .string()
+    .datetime({ message: "Start date must be a valid ISO datetime string" })
+    .nullable()
+    .optional(),
+  endDate: z
+    .string()
+    .datetime({ message: "End date must be a valid ISO datetime string" })
+    .nullable()
+    .optional(),
   current: z.boolean().default(false),
   technologies: z.array(z.string()).default([]),
   bullets: z.array(BulletInputSchema).default([]),
@@ -92,11 +113,25 @@ export const SkillInputSchema = z.object({
   yearsExperience: z.number().int().nonnegative().nullable().optional(),
 });
 
+export const PermissiveSkillInputSchema = z.object({
+  name: z.string().min(1, "Skill name is required"),
+  proficiency: z.preprocess(
+    (val) => normalizeProficiency(val as string | null | undefined),
+    z.enum(["BEGINNER", "INTERMEDIATE", "ADVANCED", "EXPERT"]),
+  ),
+  yearsExperience: z.number().int().nonnegative().nullable().optional(),
+});
+
 export const ReferenceInputSchema = z.object({
   name: z.string().min(1, "Reference name is required"),
   company: z.string().nullable().optional(),
   relationship: z.string().nullable().optional(),
-  email: z.string().email("Invalid email address").or(z.literal("")).nullable().optional(),
+  email: z
+    .string()
+    .email("Invalid email address")
+    .or(z.literal(""))
+    .nullable()
+    .optional(),
   phone: z.string().nullable().optional(),
   canContact: z.boolean().default(false),
 });

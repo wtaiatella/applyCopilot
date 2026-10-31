@@ -1,5 +1,23 @@
 import { ProficiencyLevel } from "@/types/profile";
-import { logger } from "@/lib/logging/logger";
+
+interface LoggerLike {
+  warn(message: string, meta?: Record<string, unknown>): void;
+}
+
+function logWarning(message: string, payload: Record<string, unknown>) {
+  if (typeof window !== "undefined" && process.env.NODE_ENV !== "test") {
+    return;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { logger } = require("@/lib/logging/logger");
+    if (logger && typeof logger.warn === "function") {
+      logger.warn(message, payload);
+    }
+  } catch {
+    // Fallback or ignore in environment where logger isn't available
+  }
+}
 
 export const DEFAULT_FALLBACK_PROFICIENCY: ProficiencyLevel = "INTERMEDIATE";
 
@@ -69,7 +87,7 @@ export function normalizeProficiency(
 ): ProficiencyLevel {
   // 1. Input Inspection
   if (raw === null || raw === undefined || typeof raw !== "string") {
-    logger.warn("Missing or empty proficiency level, falling back to default", {
+    logWarning("Missing or empty proficiency level, falling back to default", {
       action: "normalize_proficiency",
       skillName,
       rawProficiency: truncateForLog(raw),
@@ -82,7 +100,7 @@ export function normalizeProficiency(
   // 2. Sanitization
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
-    logger.warn("Missing or empty proficiency level, falling back to default", {
+    logWarning("Missing or empty proficiency level, falling back to default", {
       action: "normalize_proficiency",
       skillName,
       rawProficiency: truncateForLog(raw),
@@ -108,7 +126,7 @@ export function normalizeProficiency(
     : undefined;
 
   if (mappedLevel) {
-    logger.warn("Normalized non-standard proficiency level to canonical enum", {
+    logWarning("Normalized non-standard proficiency level to canonical enum", {
       action: "normalize_proficiency",
       skillName,
       rawProficiency: truncateForLog(raw),
@@ -119,7 +137,7 @@ export function normalizeProficiency(
   }
 
   // 5. Unrecognized Term Fallback
-  logger.warn("Unrecognized proficiency level, falling back to default", {
+  logWarning("Unrecognized proficiency level, falling back to default", {
     action: "normalize_proficiency",
     skillName,
     rawProficiency: truncateForLog(raw),

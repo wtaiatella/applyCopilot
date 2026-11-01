@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
@@ -24,7 +25,10 @@ export async function POST() {
     }
 
     if (session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Forbidden — ADMIN role required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Forbidden — ADMIN role required" },
+        { status: 403 },
+      );
     }
 
     const userId = session.user.id;
@@ -38,17 +42,58 @@ export async function POST() {
     if (!userProfile) {
       return NextResponse.json(
         { error: "No profile found for this user — nothing to wipe." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     const profileId = userProfile.id;
 
-    logger.warn(`[ADMIN] Starting profile data wipe for userId=${userId} profileId=${profileId}`);
+    logger.warn(
+      `[ADMIN] Starting profile data wipe for userId=${userId} profileId=${profileId}`,
+    );
 
     const summary: Record<string, number> = {};
 
-    // ── Step 1: CVBullets (references bullets via FK — must go first) ─────────
+    // ── Step 1: Applications & Events (references CV via FK) ─────────────────
+    const appIds = (
+      await prisma.application.findMany({
+        where: { profileId },
+        select: { id: true },
+      })
+    ).map((a) => a.id);
+
+    if (appIds.length > 0) {
+      const appEventDel = await prisma.applicationEvent.deleteMany({
+        where: { applicationId: { in: appIds } },
+      });
+      summary["ApplicationEvents"] = appEventDel.count;
+    } else {
+      summary["ApplicationEvents"] = 0;
+    }
+
+    const appDel = await prisma.application.deleteMany({
+      where: { profileId },
+    });
+    summary["Applications"] = appDel.count;
+
+    // ── Step 2: Job Interactions (Favorites & Deep Analyses) ─────────────────
+    const favDel = await prisma.jobFavorite.deleteMany({
+      where: { profileId },
+    });
+    summary["JobFavorites"] = favDel.count;
+
+    const analysisDel = await prisma.jobAnalysis.deleteMany({
+      where: { profileId },
+    });
+    summary["JobAnalyses"] = analysisDel.count;
+
+    // ── Step 3: UserPreferences ──────────────────────────────────────────────
+    const prefDel = await prisma.userPreferences.deleteMany({
+      where: { profileId },
+    });
+    summary["UserPreferences"] = prefDel.count;
+
+    // ── Step 4: CVBullets (references bullets via FK — must go before CV) ────
     const cvIds = (
       await prisma.cV.findMany({ where: { profileId }, select: { id: true } })
     ).map((cv) => cv.id);
@@ -62,17 +107,20 @@ export async function POST() {
       summary["CVBullets"] = 0;
     }
 
-    // ── Step 2: CV records ────────────────────────────────────────────────────
+    // ── Step 5: CV records ────────────────────────────────────────────────────
     const cvDel = await prisma.cV.deleteMany({ where: { profileId } });
     summary["CVs"] = cvDel.count;
 
-    // ── Step 3: AIUsageLogs ───────────────────────────────────────────────────
+    // ── Step 6: AIUsageLogs ───────────────────────────────────────────────────
     const aiLogDel = await prisma.aIUsageLog.deleteMany({ where: { userId } });
     summary["AIUsageLogs"] = aiLogDel.count;
 
-    // ── Step 4: Experience bullets ────────────────────────────────────────────
+    // ── Step 7: Experience bullets ────────────────────────────────────────────
     const expIds = (
-      await prisma.experience.findMany({ where: { profileId }, select: { id: true } })
+      await prisma.experience.findMany({
+        where: { profileId },
+        select: { id: true },
+      })
     ).map((e) => e.id);
 
     if (expIds.length > 0) {
@@ -86,7 +134,10 @@ export async function POST() {
 
     // ── Step 5: Project bullets ───────────────────────────────────────────────
     const projIds = (
-      await prisma.project.findMany({ where: { profileId }, select: { id: true } })
+      await prisma.project.findMany({
+        where: { profileId },
+        select: { id: true },
+      })
     ).map((p) => p.id);
 
     if (projIds.length > 0) {
@@ -100,7 +151,10 @@ export async function POST() {
 
     // ── Step 6: Education bullets ─────────────────────────────────────────────
     const eduIds = (
-      await prisma.education.findMany({ where: { profileId }, select: { id: true } })
+      await prisma.education.findMany({
+        where: { profileId },
+        select: { id: true },
+      })
     ).map((e) => e.id);
 
     if (eduIds.length > 0) {
@@ -128,10 +182,12 @@ export async function POST() {
     const refDel = await prisma.reference.deleteMany({ where: { profileId } });
     summary["References"] = refDel.count;
 
-    const sumDel = await prisma.profileSummary.deleteMany({ where: { profileId } });
+    const sumDel = await prisma.profileSummary.deleteMany({
+      where: { profileId },
+    });
     summary["ProfileSummaries"] = sumDel.count;
 
-    // ── Step 8: Reset UserProfile flat fields (keep the record itself) ────────
+    // ── Step 11: Reset UserProfile flat fields & AI vectors ─────────────────
     await prisma.userProfile.update({
       where: { id: profileId },
       data: {
@@ -144,14 +200,16 @@ export async function POST() {
         website: null,
         github: null,
         linkedin: null,
+        aiCleanedText: null,
+        profileFacts: Prisma.DbNull,
+        embeddingSyncedAt: null,
       },
     });
     summary["UserProfileFieldsReset"] = 1;
 
-    logger.warn(
-      `[ADMIN] Profile data wipe completed for userId=${userId}`,
-      { summary }
-    );
+    logger.warn(`[ADMIN] Profile data wipe completed for userId=${userId}`, {
+      summary,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -161,6 +219,9 @@ export async function POST() {
   } catch (error) {
     const err = error as Error;
     logger.error("[ADMIN] Failed to wipe profile data", { error: err.message });
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

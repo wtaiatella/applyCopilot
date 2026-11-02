@@ -750,9 +750,9 @@ describe("release-pr — Phase 2 (US2: Automated Creation & Rolling Update of Re
         /release-pr:\s*\n[\s\S]*?needs:\s*\[verify\]/,
       );
 
-      // Condition guarding push to refs/heads/development and verify success
+      // Condition guarding workflow_dispatch to refs/heads/development and verify success
       expect(workflowYaml).toContain(
-        "if: github.event_name == 'push' && github.ref == 'refs/heads/development' && needs.verify.result == 'success'",
+        "if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/development' && needs.verify.result == 'success'",
       );
 
       // Least-privilege write permissions scoped to release-pr job

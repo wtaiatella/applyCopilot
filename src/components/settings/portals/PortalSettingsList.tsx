@@ -457,6 +457,7 @@ export default function PortalSettingsList() {
             >
               <Select>
                 <Select.Option value="workable">workable</Select.Option>
+                <Select.Option value="jobspresso">jobspresso</Select.Option>
               </Select>
             </Form.Item>
 

@@ -47,7 +47,7 @@ export class IngestionDebugSession {
       this.runDir = path.join(
         repoRoot,
         "debug",
-        "ingestion",
+        "import_CV",
         `${timestamp}-${safeFilename}`,
       );
     }

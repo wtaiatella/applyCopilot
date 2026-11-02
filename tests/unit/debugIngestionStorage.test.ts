@@ -165,7 +165,7 @@ describe("IngestionDebugStorage & IngestionDebugSession (APC-37 / US2 & US3)", (
 
       expect(session.isDebug).toBe(true);
       expect(session.runDir).toBeDefined();
-      expect(session.runDir).toContain(path.join("debug", "ingestion"));
+      expect(session.runDir).toContain(path.join("debug", "import_CV"));
       expect(session.runDir).toContain("resume.pdf");
     });
 
@@ -300,7 +300,7 @@ describe("IngestionDebugStorage & IngestionDebugSession (APC-37 / US2 & US3)", (
 
     it("should safely swallow fs.mkdir failure (e.g. EACCES), log a warning, and not throw", async () => {
       (fs.mkdir as jest.Mock).mockRejectedValue(
-        new Error("EACCES: permission denied, mkdir '/debug/ingestion'"),
+        new Error("EACCES: permission denied, mkdir '/debug/import_CV'"),
       );
 
       const session = new IngestionDebugSession("resume.pdf");

@@ -783,7 +783,7 @@ Skills: TypeScript (EXPERT), Python (ADVANCED), Docker (INTERMEDIATE)
       });
 
       // 4. Verify debug filesystem directory and all 7 artifacts
-      const ingestionBaseDir = path.join(process.cwd(), "debug", "ingestion");
+      const ingestionBaseDir = path.join(process.cwd(), "debug", "import_CV");
       const entries = await fs.readdir(ingestionBaseDir);
       const matchingDirs = entries
         .filter((d) => d.endsWith(`-${referenceFilename}`))

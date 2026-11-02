@@ -1,6 +1,7 @@
 import { prisma } from "../db/prisma";
 import { logger } from "../logging/logger";
 import { reconcileSkillMutation } from "../db/cvBulletMutations";
+import { normalizeProficiency } from "../normalization/proficiencyNormalizer";
 import {
   BasicDataDTO,
   ExperienceDTO,
@@ -489,14 +490,16 @@ export class ProfileMergeService {
       );
 
       const yearsExperience = incSkill.yearsExperience ?? null;
-      const proficiency = incSkill.proficiency ?? "INTERMEDIATE";
+      const normalizedProficiency = normalizeProficiency(
+        incSkill.proficiency as string | null | undefined,
+        incSkill.name,
+      );
 
       if (match) {
         // Keep the higher proficiency
         const existingVal =
           proficiencyMap[match.proficiency as ProficiencyLevel] || 2;
-        const incomingVal =
-          proficiencyMap[proficiency as ProficiencyLevel] || 2;
+        const incomingVal = proficiencyMap[normalizedProficiency] || 2;
         const finalProficiency =
           reverseProficiencyMap[Math.max(existingVal, incomingVal)];
 
@@ -522,7 +525,7 @@ export class ProfileMergeService {
           data: {
             profileId,
             name: incSkill.name,
-            proficiency,
+            proficiency: normalizedProficiency,
             yearsExperience,
           },
         });

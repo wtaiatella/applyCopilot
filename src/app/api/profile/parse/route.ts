@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { DocumentExtractor } from "@/lib/parsing/documentExtract";
 import { ProfileMergeService } from "@/lib/merge/profileMergeService";
 import { generateJSON } from "@/lib/ai/aiClient";
+import { normalizeProficiency } from "@/lib/normalization/proficiencyNormalizer";
 import { logger } from "@/lib/logging/logger";
 import {
   BasicDataDTO,
@@ -331,13 +332,25 @@ Return ONLY valid JSON matching this schema:
 Resume Text:
 ${extractedText}`;
             const fallbackSkills = toArray<SkillDTO>(
-              await generateJSON<unknown>(skillFallbackPrompt, "cv.parse.skills"),
+              await generateJSON<unknown>(
+                skillFallbackPrompt,
+                "cv.parse.skills",
+              ),
             );
             if (!parsedEdSkills) {
               parsedEdSkills = { education: [], skills: fallbackSkills };
             } else {
               parsedEdSkills.skills = fallbackSkills;
             }
+          }
+
+          // Pre-merge sanitization: normalize raw skill proficiencies defensively before
+          // persisting and emitting to SSE client
+          if (parsedEdSkills && Array.isArray(parsedEdSkills.skills)) {
+            parsedEdSkills.skills = parsedEdSkills.skills.map((s) => ({
+              ...s,
+              proficiency: normalizeProficiency(s.proficiency, s.name),
+            }));
           }
 
           await ProfileMergeService.mergeEducation(

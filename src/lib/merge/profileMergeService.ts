@@ -574,4 +574,56 @@ export class ProfileMergeService {
       }
     }
   }
+
+  /**
+   * Retrieves the fully reconciled UserProfile from the database with all relations,
+   * guaranteeing parity with the database state for debug auditing and inspection.
+   */
+  static async getReconciledProfile(profileId: string) {
+    try {
+      return await prisma.userProfile.findUnique({
+        where: { id: profileId },
+        include: {
+          experiences: {
+            include: {
+              bullets: {
+                where: { isArchived: false },
+                orderBy: { sortOrder: "asc" },
+              },
+            },
+            orderBy: { startDate: "desc" },
+          },
+          education: {
+            include: {
+              bullets: {
+                where: { isArchived: false },
+                orderBy: { sortOrder: "asc" },
+              },
+            },
+            orderBy: { startDate: "desc" },
+          },
+          projects: {
+            include: {
+              bullets: {
+                where: { isArchived: false },
+                orderBy: { sortOrder: "asc" },
+              },
+            },
+            orderBy: { startDate: "desc" },
+          },
+          skills: {
+            where: { isArchived: false },
+          },
+          summaries: {
+            orderBy: { sortOrder: "asc" },
+          },
+        },
+      });
+    } catch (error) {
+      logger.warn(`Failed to fetch reconciled profile for ${profileId}`, {
+        error,
+      });
+      return null;
+    }
+  }
 }

@@ -89,29 +89,26 @@ export default function SortableBulletItem({
         <MenuOutlined style={{ fontSize: 11 }} />
       </div>
 
-      {/* Bullet type toggle — clickable button (replaces <Select>) */}
-      <Tooltip
-        title={`Switch to ${isBullet ? "Paragraph (¶)" : "Bullet (•)"} — click to toggle`}
-      >
-        <button
-          type="button"
-          onClick={handleTypeToggle}
-          className="mt-2.5 text-zinc-400 shrink-0 select-none font-bold cursor-pointer hover:text-white transition-colors bg-transparent border-none p-0 leading-none"
-          aria-label={`Toggle type: currently ${isBullet ? "bullet" : "paragraph"}`}
-        >
-          {isBullet ? "•" : "¶"}
-        </button>
-      </Tooltip>
-
-      {/* Auto-expanding text area */}
+      {/* Auto-expanding text area with inline indicator */}
       <div className="flex-1 min-w-0 space-y-1">
         <div className="items-start gap-1" style={{ display: "flex" }}>
+          {isBullet && (
+            <span
+              data-testid="inline-bullet-marker"
+              className="mt-1.5 text-zinc-400 select-none font-bold shrink-0 text-sm pl-1 leading-none"
+              aria-hidden="true"
+            >
+              •
+            </span>
+          )}
           <TextArea
             value={bullet.text}
             onChange={(e) => onUpdate(bullet.id, { text: e.target.value })}
             readOnly={isUsed}
             autoSize={{ minRows: 1 }}
-            className="bg-transparent border-none text-white focus:bg-zinc-900 focus:border-zinc-800 text-sm px-1.5 w-full resize-none"
+            className={`bg-transparent border-none text-white focus:bg-zinc-900 focus:border-zinc-800 text-sm w-full resize-none ${
+              isBullet ? "px-1" : "px-1.5"
+            }`}
             placeholder="Describe an achievement or responsibility..."
           />
           {isUsed && (
@@ -144,57 +141,84 @@ export default function SortableBulletItem({
         )}
       </div>
 
-      {/* AI Review hover button (AC-10) — visible on hover, always keyboard-focusable */}
-      {showAIReview && onAIReview && (
-        <Tooltip title="AI Review this bullet">
-          <Button
-            type="text"
-            size="small"
-            icon={<StarOutlined />}
-            loading={aiReviewLoading}
-            onClick={() => onAIReview(bullet)}
-            className={`shrink-0 text-violet-400 hover:text-violet-300 hover:bg-violet-900/20 transition-opacity ${
-              isHovered || aiReviewLoading
-                ? "opacity-100"
-                : "opacity-0 focus:opacity-100"
-            }`}
-            aria-label="AI Review this bullet"
-          />
-        </Tooltip>
-      )}
+      {/* Right-hand action column hierarchy */}
+      <div className="flex flex-col items-end gap-1.5 shrink-0 pt-1">
+        {/* Row 1: Primary actions (AI Review, Active Switch, Delete Button) */}
+        <div className="flex items-center gap-1.5">
+          {showAIReview && onAIReview && (
+            <Tooltip title="AI Review this bullet">
+              <Button
+                type="text"
+                size="small"
+                icon={<StarOutlined />}
+                loading={aiReviewLoading}
+                onClick={() => onAIReview(bullet)}
+                className={`shrink-0 text-violet-400 hover:text-violet-300 hover:bg-violet-900/20 transition-opacity ${
+                  isHovered || aiReviewLoading
+                    ? "opacity-100"
+                    : "opacity-0 focus:opacity-100"
+                }`}
+                aria-label="AI Review this bullet"
+              />
+            </Tooltip>
+          )}
 
-      {/* Active toggle */}
-      <Tooltip
-        title={
-          bullet.isActive ? "Active — shows on CV" : "Inactive — hidden from CV"
-        }
-      >
-        <Switch
-          checked={bullet.isActive}
-          onChange={(checked) => onUpdate(bullet.id, { isActive: checked })}
-          size="small"
-          className="shrink-0 mt-1.5"
-        />
-      </Tooltip>
+          {/* Active toggle */}
+          <Tooltip
+            title={
+              bullet.isActive
+                ? "Active — shows on CV"
+                : "Inactive — hidden from CV"
+            }
+          >
+            <Switch
+              checked={bullet.isActive}
+              onChange={(checked) => onUpdate(bullet.id, { isActive: checked })}
+              size="small"
+              className="shrink-0"
+            />
+          </Tooltip>
 
-      {/* Delete */}
-      <Tooltip
-        title={
-          isUsed
-            ? "Remove from active list — used in a CV, so this archives it instead of deleting"
-            : "Delete bullet"
-        }
-      >
-        <Button
-          type="text"
-          danger
-          icon={<DeleteOutlined />}
-          onClick={() => onDelete(bullet.id)}
-          size="small"
-          className="hover:bg-zinc-900 shrink-0"
-          aria-label={isUsed ? "Remove from active list" : "Delete bullet"}
-        />
-      </Tooltip>
+          {/* Delete */}
+          <Tooltip
+            title={
+              isUsed
+                ? "Remove from active list — used in a CV, so this archives it instead of deleting"
+                : "Delete bullet"
+            }
+          >
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => onDelete(bullet.id)}
+              size="small"
+              className="hover:bg-zinc-900 shrink-0"
+              aria-label={isUsed ? "Remove from active list" : "Delete bullet"}
+            />
+          </Tooltip>
+        </div>
+
+        {/* Row 2: Secondary actions (Bullet / Paragraph type toggle) */}
+        <div className="flex items-center justify-end w-full">
+          <Tooltip
+            title={`Switch to ${isBullet ? "Paragraph (¶)" : "Bullet (•)"} — click to toggle`}
+          >
+            <button
+              type="button"
+              onClick={handleTypeToggle}
+              className="text-xs px-1.5 py-0.5 rounded text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer select-none font-medium flex items-center gap-1 border border-zinc-800/80 bg-zinc-900/60 leading-none"
+              aria-label={`Toggle type: currently ${isBullet ? "bullet" : "paragraph"}`}
+              data-testid="bullet-type-toggle"
+            >
+              <span className="font-bold">{isBullet ? "•" : "¶"}</span>
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
+                {isBullet ? "Bullet" : "Para"}
+              </span>
+            </button>
+          </Tooltip>
+        </div>
+      </div>
     </div>
   );
 }

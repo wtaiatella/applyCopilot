@@ -209,14 +209,11 @@ export default function SortableBulletItem({
             <button
               type="button"
               onClick={handleTypeToggle}
-              className="text-xs px-1.5 py-0.5 rounded text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer select-none font-medium flex items-center gap-1 border border-zinc-800/80 bg-zinc-900/60 leading-none"
+              className="h-6 w-6 rounded text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer select-none font-bold flex items-center justify-center border border-zinc-800/80 bg-zinc-900/60 leading-none text-sm"
               aria-label={`Toggle type: currently ${isBullet ? "bullet" : "paragraph"}`}
               data-testid="bullet-type-toggle"
             >
-              <span className="font-bold">{isBullet ? "•" : "¶"}</span>
-              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
-                {isBullet ? "Bullet" : "Para"}
-              </span>
+              <span>{isBullet ? "•" : "¶"}</span>
             </button>
           </Tooltip>
         </div>

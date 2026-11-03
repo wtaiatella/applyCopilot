@@ -6,6 +6,7 @@ import { ProfileMergeService } from "@/lib/merge/profileMergeService";
 import { generateJSON } from "@/lib/ai/aiClient";
 import { normalizeProficiency } from "@/lib/normalization/proficiencyNormalizer";
 import { logger } from "@/lib/logging/logger";
+import { IngestionDebugSession } from "@/lib/parsing/debugIngestionStorage";
 import {
   BasicDataDTO,
   ExperienceDTO,
@@ -16,6 +17,56 @@ import {
 } from "@/types/profile";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Normalizes bullet items defensively:
+ * - ensures valid type ("PARAGRAPH" or "BULLET")
+ * - defaults to PARAGRAPH if type is explicitly PARAGRAPH or if text has narrative phrasing without bullet marker
+ * - defaults to BULLET otherwise
+ * - assigns 0-indexed sortOrder matching document sequence if not set
+ */
+export function normalizeParsedBullets(
+  bullets: unknown,
+): { text: string; type: "BULLET" | "PARAGRAPH"; sortOrder: number }[] {
+  if (!Array.isArray(bullets)) return [];
+  return bullets.map((item, idx) => {
+    if (!item) {
+      return { text: "", type: "BULLET", sortOrder: idx };
+    }
+    if (typeof item === "string") {
+      const trimmed = item.trim();
+      const hasBulletMarker = /^[•\-*·]\s*/.test(trimmed);
+      return {
+        text: trimmed,
+        type: hasBulletMarker ? "BULLET" : "PARAGRAPH",
+        sortOrder: idx,
+      };
+    }
+    const b = item as Record<string, unknown>;
+    const rawText = typeof b.text === "string" ? b.text : "";
+    const rawType =
+      typeof b.type === "string" ? b.type.trim().toUpperCase() : "";
+    let finalType: "BULLET" | "PARAGRAPH";
+    if (rawType === "PARAGRAPH") {
+      finalType = "PARAGRAPH";
+    } else if (rawType === "BULLET") {
+      finalType = "BULLET";
+    } else {
+      // Defensive fallback: check if text has bullet marker or narrative character
+      const trimmed = rawText.trim();
+      const hasBulletMarker = /^[•\-*·]\s*/.test(trimmed);
+      finalType = hasBulletMarker ? "BULLET" : "PARAGRAPH";
+    }
+    const sortOrder = Number.isInteger(b.sortOrder)
+      ? (b.sortOrder as number)
+      : idx;
+    return {
+      text: rawText,
+      type: finalType,
+      sortOrder,
+    };
+  });
+}
 
 /**
  * Defensive helper: ensures an LLM response is always an array.
@@ -75,6 +126,10 @@ export async function POST(req: Request) {
     const filename = file.name;
     const buffer = Buffer.from(await file.arrayBuffer());
 
+    // Initialize debug session and save original uploaded binary (only active when LOG_LEVEL=debug)
+    const debugSession = new IngestionDebugSession(filename);
+    await debugSession.saveOriginal(filename, buffer);
+
     // Get or create UserProfile
     let userProfile = await prisma.userProfile.findUnique({
       where: { userId },
@@ -115,6 +170,7 @@ export async function POST(req: Request) {
             buffer,
             filename,
           );
+          await debugSession.saveTranscription(extractedText);
 
           if (!extractedText.trim()) {
             throw new Error("Could not extract any text from the document.");
@@ -148,6 +204,7 @@ ${extractedText}`;
             "cv.parse.basicData",
           );
           await ProfileMergeService.mergeBasicData(profileId, parsedBasic);
+          await debugSession.saveStagePayload("01_basic", parsedBasic);
           sendEvent({
             phase: "basic",
             progress: 40,
@@ -162,9 +219,17 @@ ${extractedText}`;
             status: "Extracting work history...",
           });
           // NOTE: freeFormContext is intentionally omitted — it is a user-authored field
-          // that should never be auto-populated from the CV. Bullets from the CV are imported
-          // as PARAGRAPH type since they represent narrative text from the source document.
+          // that should never be auto-populated from the CV.
+          // Narrative introductory descriptions (company overview, role context) must be extracted as "PARAGRAPH".
+          // Accomplishments, achievements, or responsibility list items (prefixed with bullet glyphs •, -, *, etc.)
+          // must be extracted as "BULLET".
           const experiencesPrompt = `You are an expert resume parser. Read the resume text below and extract all professional work experiences.
+Extract work experiences preserving the original reading sequence. For each role, examine all descriptions and accomplishments:
+- If an item is an introductory overview, company/role narrative description, or context summary (without bullet markers like •, -, *), classify its type as "PARAGRAPH".
+- If an item is an itemized accomplishment, achievement, responsibility, or metric (prefixed with bullet glyphs •, -, *, or indented list format), classify its type as "BULLET".
+- Preserve all introductory paragraphs and do not omit company summaries.
+- Maintain the exact top-to-bottom document reading sequence in the bullets array.
+
 Return ONLY valid JSON as an array of objects matching this schema:
 [
   {
@@ -175,8 +240,8 @@ Return ONLY valid JSON as an array of objects matching this schema:
     "current": "boolean",
     "bullets": [
       {
-        "text": "bullet description string",
-        "type": "PARAGRAPH"
+        "text": "description string",
+        "type": "BULLET or PARAGRAPH"
       }
     ]
   }
@@ -189,10 +254,19 @@ ${extractedText}`;
             experiencesPrompt,
             "cv.parse.experiences",
           );
-          const parsedExperiences = toArray<ExperienceDTO>(rawExperiences);
+          const parsedExperiences = toArray<ExperienceDTO>(rawExperiences).map(
+            (exp) => ({
+              ...exp,
+              bullets: normalizeParsedBullets(exp.bullets) as any,
+            }),
+          );
           logger.info(`Parsed ${parsedExperiences.length} experiences from CV`);
           await ProfileMergeService.mergeExperiences(
             profileId,
+            parsedExperiences,
+          );
+          await debugSession.saveStagePayload(
+            "02_experiences",
             parsedExperiences,
           );
           sendEvent({
@@ -212,6 +286,11 @@ ${extractedText}`;
           });
           const projectsPrompt = `You are an expert resume parser. Read the resume text below and extract side projects or major initiatives explicitly listed in a dedicated projects section.
 Do NOT infer or derive projects from the work experience section.
+For each project, examine all descriptions and highlights:
+- If an item is a narrative summary, project overview, or problem description without bullet markers, classify its type as "PARAGRAPH".
+- If an item is an itemized feature, achievement, responsibility, or metric with bullet glyphs (•, -, *, etc.), classify its type as "BULLET".
+- Maintain the exact top-to-bottom document reading sequence in the bullets array.
+
 Return ONLY valid JSON as an array of objects matching this schema:
 [
   {
@@ -222,8 +301,8 @@ Return ONLY valid JSON as an array of objects matching this schema:
     "technologies": ["array", "of", "skill", "tags"],
     "bullets": [
       {
-        "text": "bullet description string",
-        "type": "PARAGRAPH"
+        "text": "description string",
+        "type": "BULLET or PARAGRAPH"
       }
     ]
   }
@@ -235,11 +314,15 @@ ${extractedText}`;
 
           const parsedProjects = toArray<ProjectDTO>(
             await generateJSON<unknown>(projectsPrompt, "cv.parse.projects"),
-          );
+          ).map((proj) => ({
+            ...proj,
+            bullets: normalizeParsedBullets(proj.bullets) as any,
+          }));
           logger.info(
             `Parsed ${parsedProjects.length} explicit projects from CV`,
           );
           await ProfileMergeService.mergeProjects(profileId, parsedProjects);
+          await debugSession.saveStagePayload("03_projects", parsedProjects);
           sendEvent({
             phase: "projects",
             progress: 80,
@@ -255,6 +338,11 @@ ${extractedText}`;
           });
           // NOTE: freeFormContext intentionally omitted from education bullets — user-authored field only.
           const edSkillsPrompt = `You are an expert resume parser. Read the resume text below and extract education credentials and key skills.
+For education entries, examine all descriptions and highlights:
+- If an item is a narrative summary or program overview without bullet markers, classify its type as "PARAGRAPH".
+- If an item is an itemized accomplishment, award, course, or thesis highlight with bullet glyphs (•, -, *, etc.), classify its type as "BULLET".
+- Maintain the exact top-to-bottom document reading sequence in the bullets array.
+
 Return ONLY valid JSON matching this schema:
 {
   "education": [
@@ -268,8 +356,8 @@ Return ONLY valid JSON matching this schema:
       "hideEndDate": "boolean",
       "bullets": [
         {
-          "text": "string",
-          "type": "PARAGRAPH"
+          "text": "description string",
+          "type": "BULLET or PARAGRAPH"
         }
       ]
     }
@@ -346,11 +434,19 @@ ${extractedText}`;
 
           // Pre-merge sanitization: normalize raw skill proficiencies defensively before
           // persisting and emitting to SSE client
-          if (parsedEdSkills && Array.isArray(parsedEdSkills.skills)) {
-            parsedEdSkills.skills = parsedEdSkills.skills.map((s) => ({
-              ...s,
-              proficiency: normalizeProficiency(s.proficiency, s.name),
-            }));
+          if (parsedEdSkills) {
+            if (Array.isArray(parsedEdSkills.education)) {
+              parsedEdSkills.education = parsedEdSkills.education.map((ed) => ({
+                ...ed,
+                bullets: normalizeParsedBullets(ed.bullets) as any,
+              }));
+            }
+            if (Array.isArray(parsedEdSkills.skills)) {
+              parsedEdSkills.skills = parsedEdSkills.skills.map((s) => ({
+                ...s,
+                proficiency: normalizeProficiency(s.proficiency, s.name),
+              }));
+            }
           }
 
           await ProfileMergeService.mergeEducation(
@@ -360,6 +456,24 @@ ${extractedText}`;
           await ProfileMergeService.mergeSkills(
             profileId,
             parsedEdSkills.skills,
+          );
+
+          await debugSession.saveStagePayload(
+            "04_education_skills",
+            parsedEdSkills,
+          );
+
+          const reconciledProfile =
+            await ProfileMergeService.getReconciledProfile(profileId);
+          await debugSession.saveStagePayload(
+            "05_merged",
+            reconciledProfile ?? {
+              basic: parsedBasic,
+              experiences: parsedExperiences,
+              projects: parsedProjects,
+              education: parsedEdSkills.education,
+              skills: parsedEdSkills.skills,
+            },
           );
 
           sendEvent({

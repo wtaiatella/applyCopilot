@@ -312,3 +312,138 @@ describe("SortableBulletItem — APC-34: Bullet/Paragraph Type Toggle & Inline S
     expect(onUpdate).toHaveBeenCalledWith(baseBullet.id, { type: "BULLET" });
   });
 });
+
+describe("SortableBulletItem — APC-35: Persistent AI Review Action & Iconography", () => {
+  it("AC.1: renders AI Review button with persistent opacity-100 without hover gating", () => {
+    render(
+      <SortableBulletItem
+        bullet={baseBullet}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        showAIReview={true}
+        onAIReview={jest.fn()}
+      />,
+    );
+
+    const aiButton = screen.getByTestId("ai-review-bullet-button");
+    expect(aiButton).toBeInTheDocument();
+    expect(aiButton).toHaveClass("opacity-100");
+    expect(aiButton).not.toHaveClass("opacity-0");
+  });
+
+  it("AC.2: renders Lucide Sparkles icon and does not render StarOutlined icon", () => {
+    const { container } = render(
+      <SortableBulletItem
+        bullet={baseBullet}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        showAIReview={true}
+        onAIReview={jest.fn()}
+      />,
+    );
+
+    const aiButton = screen.getByTestId("ai-review-bullet-button");
+    const sparklesIcon = aiButton.querySelector("svg.lucide-sparkles");
+    expect(sparklesIcon).toBeInTheDocument();
+
+    // Verify StarOutlined / anticon-star is not rendered anywhere or in button
+    expect(aiButton.querySelector(".anticon-star")).toBeNull();
+    expect(container.querySelector(".anticon-star")).toBeNull();
+  });
+
+  it("AC.3: organizes right-hand action column into two rows (Row 1: Switch + Delete, Row 2: Type Toggle + AI Review)", () => {
+    render(
+      <SortableBulletItem
+        bullet={baseBullet}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        showAIReview={true}
+        onAIReview={jest.fn()}
+      />,
+    );
+
+    const switchControl = screen.getByRole("switch");
+    const deleteButton = screen.getByRole("button", { name: /delete bullet/i });
+    const toggleButton = screen.getByTestId("bullet-type-toggle");
+    const aiButton = screen.getByTestId("ai-review-bullet-button");
+
+    // Row 1 container verification
+    const row1Container = deleteButton.parentElement;
+    expect(row1Container).toContainElement(switchControl);
+    expect(row1Container).not.toContainElement(toggleButton);
+    expect(row1Container).not.toContainElement(aiButton);
+
+    // Row 2 container verification
+    const row2Container = toggleButton.parentElement;
+    expect(row2Container).toContainElement(aiButton);
+    expect(row2Container).not.toContainElement(switchControl);
+    expect(row2Container).not.toContainElement(deleteButton);
+
+    // Both rows reside within the common action column
+    const actionColumn = row1Container?.parentElement;
+    expect(actionColumn).toContainElement(row2Container);
+  });
+
+  it("AC.4: dispatches onAIReview callback with bullet object on click and displays loading state when active", () => {
+    const onAIReview = jest.fn();
+    const { rerender } = render(
+      <SortableBulletItem
+        bullet={baseBullet}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        showAIReview={true}
+        onAIReview={onAIReview}
+        aiReviewLoading={false}
+      />,
+    );
+
+    const aiButton = screen.getByTestId("ai-review-bullet-button");
+    aiButton.click();
+    expect(onAIReview).toHaveBeenCalledTimes(1);
+    expect(onAIReview).toHaveBeenCalledWith(baseBullet);
+
+    // Rerender with loading state
+    rerender(
+      <SortableBulletItem
+        bullet={baseBullet}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        showAIReview={true}
+        onAIReview={onAIReview}
+        aiReviewLoading={true}
+      />,
+    );
+
+    const loadingButton = screen.getByTestId("ai-review-bullet-button");
+    expect(loadingButton).toHaveClass("ant-btn-loading");
+    expect(loadingButton).toHaveClass("opacity-100");
+  });
+
+  it("AC.5: does not render AI Review button when showAIReview is false or onAIReview is omitted", () => {
+    const { rerender } = render(
+      <SortableBulletItem
+        bullet={baseBullet}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        showAIReview={false}
+        onAIReview={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("ai-review-bullet-button")).not.toBeInTheDocument();
+    expect(screen.getByTestId("bullet-type-toggle")).toBeInTheDocument();
+
+    // Rerender with showAIReview=true but onAIReview undefined
+    rerender(
+      <SortableBulletItem
+        bullet={baseBullet}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        showAIReview={true}
+      />,
+    );
+
+    expect(screen.queryByTestId("ai-review-bullet-button")).not.toBeInTheDocument();
+    expect(screen.getByTestId("bullet-type-toggle")).toBeInTheDocument();
+  });
+});

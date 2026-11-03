@@ -189,7 +189,7 @@ describe("SortableBulletItem — APC-34: Bullet/Paragraph Type Toggle & Inline S
     expect(leftHandle.querySelector("button")).toBeNull();
   });
 
-  it("AC-2: renders an inline bullet marker ('•') inside text container when type is BULLET", () => {
+  it("AC-2: renders an inline bullet marker ('•') inside text container with text indentation when type is BULLET", () => {
     render(
       <SortableBulletItem
         bullet={{ ...baseBullet, type: "BULLET" }}
@@ -202,9 +202,17 @@ describe("SortableBulletItem — APC-34: Bullet/Paragraph Type Toggle & Inline S
     expect(marker).toBeInTheDocument();
     expect(marker).toHaveTextContent("•");
     expect(marker).toHaveAttribute("aria-hidden", "true");
+
+    const textarea = screen.getByPlaceholderText(
+      "Describe an achievement or responsibility...",
+    );
+    // Verify marker is inside the same text container wrapper as the textarea
+    expect(textarea.parentElement).toContainElement(marker);
+    // Verify text is indented inside the text box
+    expect(textarea.style.paddingLeft).toBe("24px");
   });
 
-  it("AC-3: does not render the inline bullet marker when type is PARAGRAPH", () => {
+  it("AC-3: does not render the inline bullet marker and uses standard alignment when type is PARAGRAPH", () => {
     render(
       <SortableBulletItem
         bullet={{ ...baseBullet, type: "PARAGRAPH" }}
@@ -216,6 +224,37 @@ describe("SortableBulletItem — APC-34: Bullet/Paragraph Type Toggle & Inline S
     expect(
       screen.queryByTestId("inline-bullet-marker"),
     ).not.toBeInTheDocument();
+
+    const textarea = screen.getByPlaceholderText(
+      "Describe an achievement or responsibility...",
+    );
+    expect(textarea.style.paddingLeft).toBe("");
+  });
+
+  it("AC-6: maintains identical outer text container wrapper width classes across both item types", () => {
+    const { container: bulletContainer } = render(
+      <SortableBulletItem
+        bullet={{ ...baseBullet, type: "BULLET" }}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />,
+    );
+
+    const { container: paragraphContainer } = render(
+      <SortableBulletItem
+        bullet={{ ...baseBullet, type: "PARAGRAPH" }}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />,
+    );
+
+    const bulletWrapper = bulletContainer.querySelector(".relative.w-full");
+    const paragraphWrapper =
+      paragraphContainer.querySelector(".relative.w-full");
+
+    expect(bulletWrapper).toBeInTheDocument();
+    expect(paragraphWrapper).toBeInTheDocument();
+    expect(bulletWrapper?.className).toBe(paragraphWrapper?.className);
   });
 
   it("AC-4: places the type toggle button in a second row within the right action column", () => {

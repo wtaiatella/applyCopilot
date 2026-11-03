@@ -89,13 +89,13 @@ export default function SortableBulletItem({
         <MenuOutlined style={{ fontSize: 11 }} />
       </div>
 
-      {/* Auto-expanding text area with inline indicator */}
+      {/* Auto-expanding text area with inline indicator inside text box */}
       <div className="flex-1 min-w-0 space-y-1">
-        <div className="items-start gap-1" style={{ display: "flex" }}>
+        <div className="relative w-full">
           {isBullet && (
             <span
               data-testid="inline-bullet-marker"
-              className="mt-1.5 text-zinc-400 select-none font-bold shrink-0 text-sm pl-1 leading-none"
+              className="absolute left-2.5 top-[6px] text-zinc-400 select-none font-bold text-sm leading-none pointer-events-none z-10"
               aria-hidden="true"
             >
               •
@@ -106,15 +106,17 @@ export default function SortableBulletItem({
             onChange={(e) => onUpdate(bullet.id, { text: e.target.value })}
             readOnly={isUsed}
             autoSize={{ minRows: 1 }}
-            className={`bg-transparent border-none text-white focus:bg-zinc-900 focus:border-zinc-800 text-sm w-full resize-none ${
-              isBullet ? "px-1" : "px-1.5"
-            }`}
+            style={{
+              paddingLeft: isBullet ? "24px" : undefined,
+              paddingRight: isUsed ? "28px" : undefined,
+            }}
+            className="bg-transparent border-zinc-800 text-white focus:bg-zinc-900 focus:border-zinc-700 text-sm w-full resize-none"
             placeholder="Describe an achievement or responsibility..."
           />
           {isUsed && (
             <Tooltip title="Text is locked because this bullet is used in a generated CV — edits here would not change what was already sent">
               <LockOutlined
-                className="mt-2.5 text-zinc-500 shrink-0"
+                className="absolute right-2.5 top-2.5 text-zinc-500"
                 style={{ fontSize: 12 }}
                 aria-label="Text locked — used in a CV"
               />

@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { Button, Switch, Tooltip, Input } from "antd";
 import {
   DeleteOutlined,
   LockOutlined,
   MenuOutlined,
-  StarOutlined,
 } from "@ant-design/icons";
+import { Sparkles } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { BulletDTO } from "../../../types/profile";
@@ -19,11 +19,11 @@ export interface SortableBulletItemProps {
   bullet: BulletDTO;
   onUpdate: (bulletId: string, data: Partial<BulletDTO>) => void;
   onDelete: (bulletId: string) => void;
-  /** When true, a ✦ AI Review button appears on hover */
+  /** When true, the AI Review button is rendered */
   showAIReview?: boolean;
   /** Called when the user clicks the AI Review button */
   onAIReview?: (bullet: BulletDTO) => void;
-  /** When true, shows a spinner on the AI Review button and keeps it visible */
+  /** When true, displays loading spinner on the AI Review button */
   aiReviewLoading?: boolean;
 }
 
@@ -32,8 +32,7 @@ export interface SortableBulletItemProps {
  *
  * Key changes vs the original per-form component:
  * - Type toggle: the • / ¶ indicator is now a clickable <button> instead of a <Select>
- * - Hover AI Review: a ✦ button appears on hover when showAIReview + onAIReview are set
- *   The button is also keyboard-focusable via Tab for accessibility (AC-10)
+ * - Persistent AI Review: a Sparkles button rendered in Row 2 when showAIReview + onAIReview are set
  */
 export default function SortableBulletItem({
   bullet,
@@ -51,8 +50,6 @@ export default function SortableBulletItem({
     transition,
     isDragging,
   } = useSortable({ id: bullet.id });
-
-  const [isHovered, setIsHovered] = useState(false);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -72,8 +69,6 @@ export default function SortableBulletItem({
     <div
       ref={setNodeRef}
       style={style}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       className={`flex items-start gap-2 p-2 rounded-md transition-colors border ${
         !bullet.isActive
           ? "opacity-60 border-dashed border-zinc-700 bg-zinc-950/20"
@@ -145,26 +140,8 @@ export default function SortableBulletItem({
 
       {/* Right-hand action column hierarchy */}
       <div className="flex flex-col items-end gap-1.5 shrink-0 pt-1">
-        {/* Row 1: Primary actions (AI Review, Active Switch, Delete Button) */}
+        {/* Row 1: Lifecycle & Status (Active Switch + Delete Button) */}
         <div className="flex items-center gap-1.5">
-          {showAIReview && onAIReview && (
-            <Tooltip title="AI Review this bullet">
-              <Button
-                type="text"
-                size="small"
-                icon={<StarOutlined />}
-                loading={aiReviewLoading}
-                onClick={() => onAIReview(bullet)}
-                className={`shrink-0 text-violet-400 hover:text-violet-300 hover:bg-violet-900/20 transition-opacity ${
-                  isHovered || aiReviewLoading
-                    ? "opacity-100"
-                    : "opacity-0 focus:opacity-100"
-                }`}
-                aria-label="AI Review this bullet"
-              />
-            </Tooltip>
-          )}
-
           {/* Active toggle */}
           <Tooltip
             title={
@@ -201,8 +178,8 @@ export default function SortableBulletItem({
           </Tooltip>
         </div>
 
-        {/* Row 2: Secondary actions (Bullet / Paragraph type toggle) */}
-        <div className="flex items-center justify-end w-full">
+        {/* Row 2: Content formatting & enhancement (Type Toggle + AI Review) */}
+        <div className="flex items-center justify-end gap-1.5 w-full">
           <Tooltip
             title={`Switch to ${isBullet ? "Paragraph (¶)" : "Bullet (•)"} — click to toggle`}
           >
@@ -216,6 +193,21 @@ export default function SortableBulletItem({
               <span>{isBullet ? "•" : "¶"}</span>
             </button>
           </Tooltip>
+
+          {showAIReview && onAIReview && (
+            <Tooltip title="AI Review this bullet">
+              <Button
+                type="text"
+                size="small"
+                icon={<Sparkles size={14} className="shrink-0" />}
+                loading={aiReviewLoading}
+                onClick={() => onAIReview(bullet)}
+                className="shrink-0 text-violet-400 hover:text-violet-300 hover:bg-violet-900/20 opacity-100"
+                aria-label="AI Review this bullet"
+                data-testid="ai-review-bullet-button"
+              />
+            </Tooltip>
+          )}
         </div>
       </div>
     </div>

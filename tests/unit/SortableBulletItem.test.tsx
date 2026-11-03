@@ -170,3 +170,145 @@ describe("SortableBulletItem — delete button always enabled (US-2, AC.2, AC.7)
     expect(onDelete).toHaveBeenCalledWith(baseBullet.id);
   });
 });
+
+describe("SortableBulletItem — APC-34: Bullet/Paragraph Type Toggle & Inline Styling (AC-1 to AC-5)", () => {
+  it("AC-1: unclutters the left column displaying only the drag handle and removing the toggle button from left", () => {
+    const { container } = render(
+      <SortableBulletItem
+        bullet={baseBullet}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />,
+    );
+
+    const card = container.firstChild as HTMLElement;
+    expect(card).toBeInTheDocument();
+
+    const leftHandle = card.children[0];
+    expect(leftHandle).toHaveClass("cursor-grab");
+    expect(leftHandle.querySelector("button")).toBeNull();
+  });
+
+  it("AC-2: renders an inline bullet marker ('•') inside text container with text indentation when type is BULLET", () => {
+    render(
+      <SortableBulletItem
+        bullet={{ ...baseBullet, type: "BULLET" }}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />,
+    );
+
+    const marker = screen.getByTestId("inline-bullet-marker");
+    expect(marker).toBeInTheDocument();
+    expect(marker).toHaveTextContent("•");
+    expect(marker).toHaveAttribute("aria-hidden", "true");
+
+    const textarea = screen.getByPlaceholderText(
+      "Describe an achievement or responsibility...",
+    );
+    // Verify marker is inside the same text container wrapper as the textarea
+    expect(textarea.parentElement).toContainElement(marker);
+    // Verify text is indented inside the text box
+    expect(textarea.style.paddingLeft).toBe("24px");
+  });
+
+  it("AC-3: does not render the inline bullet marker and uses standard alignment when type is PARAGRAPH", () => {
+    render(
+      <SortableBulletItem
+        bullet={{ ...baseBullet, type: "PARAGRAPH" }}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByTestId("inline-bullet-marker"),
+    ).not.toBeInTheDocument();
+
+    const textarea = screen.getByPlaceholderText(
+      "Describe an achievement or responsibility...",
+    );
+    expect(textarea.style.paddingLeft).toBe("");
+  });
+
+  it("AC-6: maintains identical outer text container wrapper width classes across both item types", () => {
+    const { container: bulletContainer } = render(
+      <SortableBulletItem
+        bullet={{ ...baseBullet, type: "BULLET" }}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />,
+    );
+
+    const { container: paragraphContainer } = render(
+      <SortableBulletItem
+        bullet={{ ...baseBullet, type: "PARAGRAPH" }}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />,
+    );
+
+    const bulletWrapper = bulletContainer.querySelector(".relative.w-full");
+    const paragraphWrapper =
+      paragraphContainer.querySelector(".relative.w-full");
+
+    expect(bulletWrapper).toBeInTheDocument();
+    expect(paragraphWrapper).toBeInTheDocument();
+    expect(bulletWrapper?.className).toBe(paragraphWrapper?.className);
+  });
+
+  it("AC-4: places the type toggle button in a second row within the right action column", () => {
+    render(
+      <SortableBulletItem
+        bullet={baseBullet}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />,
+    );
+
+    const toggleButton = screen.getByTestId("bullet-type-toggle");
+    expect(toggleButton).toBeInTheDocument();
+
+    const deleteButton = screen.getByRole("button", { name: /delete bullet/i });
+    const switchControl = screen.getByRole("switch");
+
+    const row1Container = deleteButton.parentElement;
+    expect(row1Container).toContainElement(switchControl);
+    expect(row1Container).not.toContainElement(toggleButton);
+
+    const actionColumn = row1Container?.parentElement;
+    expect(actionColumn).toContainElement(toggleButton);
+  });
+
+  it("AC-5: clicking the type toggle toggles type from BULLET to PARAGRAPH and calls onUpdate", () => {
+    const onUpdate = jest.fn();
+    render(
+      <SortableBulletItem
+        bullet={{ ...baseBullet, type: "BULLET" }}
+        onUpdate={onUpdate}
+        onDelete={jest.fn()}
+      />,
+    );
+
+    const toggleButton = screen.getByTestId("bullet-type-toggle");
+    toggleButton.click();
+
+    expect(onUpdate).toHaveBeenCalledWith(baseBullet.id, { type: "PARAGRAPH" });
+  });
+
+  it("AC-5: clicking the type toggle toggles type from PARAGRAPH to BULLET and calls onUpdate", () => {
+    const onUpdate = jest.fn();
+    render(
+      <SortableBulletItem
+        bullet={{ ...baseBullet, type: "PARAGRAPH" }}
+        onUpdate={onUpdate}
+        onDelete={jest.fn()}
+      />,
+    );
+
+    const toggleButton = screen.getByTestId("bullet-type-toggle");
+    toggleButton.click();
+
+    expect(onUpdate).toHaveBeenCalledWith(baseBullet.id, { type: "BULLET" });
+  });
+});

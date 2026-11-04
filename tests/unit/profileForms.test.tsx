@@ -6,7 +6,9 @@ import "@testing-library/jest-dom";
 import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ExperienceForm from "@/components/profile/ExperienceForm";
-import { ExperienceDTO } from "@/types/profile";
+import BasicDataForm from "@/components/profile/BasicDataForm";
+import { ExperienceDTO, BasicDataDTO, SummaryDTO } from "@/types/profile";
+import { Form } from "antd";
 
 // Polyfill MessageChannel for jsdom
 if (typeof global.MessageChannel === "undefined") {
@@ -222,6 +224,204 @@ describe("ExperienceForm UI Behavior", () => {
             expect.objectContaining({ id: "b-2", sortOrder: 0 }),
             expect.objectContaining({ id: "b-1", sortOrder: 1 }),
           ],
+        }),
+      );
+    });
+  });
+});
+
+describe("BasicDataForm UI Behavior & Social Links Integration", () => {
+  function TestBasicDataForm({
+    initialValues = {},
+    summaries = [],
+    updateBasicDataState = jest.fn(),
+  }: {
+    initialValues?: Partial<BasicDataDTO>;
+    summaries?: SummaryDTO[];
+    updateBasicDataState?: (
+      data: Partial<BasicDataDTO> & { summaries?: SummaryDTO[] },
+    ) => void;
+  }) {
+    const [form] = Form.useForm();
+
+    React.useEffect(() => {
+      if (initialValues) {
+        form.setFieldsValue(initialValues);
+      }
+    }, [form, initialValues]);
+
+    return (
+      <BasicDataForm
+        basicData={initialValues as BasicDataDTO}
+        summaries={summaries}
+        updateBasicDataState={updateBasicDataState}
+        form={form}
+      />
+    );
+  }
+
+  const mockUpdateBasicDataState = jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("renders EditableSocialLink open inputs with custom placeholders when social fields are empty", () => {
+    render(
+      <TestBasicDataForm
+        initialValues={{
+          firstName: "John",
+          lastName: "Doe",
+          linkedin: null,
+          github: null,
+          website: null,
+        }}
+        updateBasicDataState={mockUpdateBasicDataState}
+      />,
+    );
+
+    expect(
+      screen.getByPlaceholderText("https://linkedin.com/in/username"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("https://github.com/username"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("https://yourwebsite.com"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders external hyperlinks with action buttons when social fields are populated", () => {
+    render(
+      <TestBasicDataForm
+        initialValues={{
+          firstName: "Jane",
+          lastName: "Doe",
+          linkedin: "https://linkedin.com/in/janedoe",
+          github: "https://github.com/janedoe",
+          website: "https://janedoe.com",
+        }}
+        updateBasicDataState={mockUpdateBasicDataState}
+      />,
+    );
+
+    const linkedinLink = screen.getByRole("link", {
+      name: "LinkedIn URL: https://linkedin.com/in/janedoe",
+    });
+    expect(linkedinLink).toBeInTheDocument();
+    expect(linkedinLink).toHaveAttribute(
+      "href",
+      "https://linkedin.com/in/janedoe",
+    );
+    expect(linkedinLink).toHaveAttribute("target", "_blank");
+    expect(linkedinLink).toHaveAttribute("rel", "noopener noreferrer");
+
+    const githubLink = screen.getByRole("link", {
+      name: "GitHub URL: https://github.com/janedoe",
+    });
+    expect(githubLink).toBeInTheDocument();
+    expect(githubLink).toHaveAttribute("href", "https://github.com/janedoe");
+
+    const websiteLink = screen.getByRole("link", {
+      name: "Website URL: https://janedoe.com",
+    });
+    expect(websiteLink).toBeInTheDocument();
+    expect(websiteLink).toHaveAttribute("href", "https://janedoe.com");
+
+    // Verify Edit and Delete buttons exist for each social link
+    const editButtons = screen.getAllByLabelText("Edit link");
+    expect(editButtons).toHaveLength(3);
+
+    const deleteButtons = screen.getAllByLabelText("Delete link");
+    expect(deleteButtons).toHaveLength(3);
+  });
+
+  it("triggers updateBasicDataState with normalized URL when entering social link in empty state", async () => {
+    render(
+      <TestBasicDataForm
+        initialValues={{
+          firstName: "John",
+          lastName: "Doe",
+          linkedin: null,
+          github: null,
+          website: null,
+        }}
+        updateBasicDataState={mockUpdateBasicDataState}
+      />,
+    );
+
+    const linkedinInput = screen.getByPlaceholderText(
+      "https://linkedin.com/in/username",
+    );
+    fireEvent.change(linkedinInput, {
+      target: { value: "linkedin.com/in/newuser" },
+    });
+    fireEvent.blur(linkedinInput);
+
+    await waitFor(() => {
+      expect(mockUpdateBasicDataState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          linkedin: "https://linkedin.com/in/newuser",
+        }),
+      );
+    });
+  });
+
+  it("triggers updateBasicDataState with null when clicking delete on a populated social link", async () => {
+    render(
+      <TestBasicDataForm
+        initialValues={{
+          firstName: "Jane",
+          lastName: "Doe",
+          linkedin: "https://linkedin.com/in/janedoe",
+          github: null,
+          website: null,
+        }}
+        updateBasicDataState={mockUpdateBasicDataState}
+      />,
+    );
+
+    const deleteBtn = screen.getByLabelText("Delete link");
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(mockUpdateBasicDataState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          linkedin: null,
+        }),
+      );
+    });
+  });
+
+  it("triggers updateBasicDataState with updated URL when modifying link via edit mode", async () => {
+    render(
+      <TestBasicDataForm
+        initialValues={{
+          firstName: "Jane",
+          lastName: "Doe",
+          linkedin: null,
+          github: "https://github.com/oldhandle",
+          website: null,
+        }}
+        updateBasicDataState={mockUpdateBasicDataState}
+      />,
+    );
+
+    const editBtn = screen.getByLabelText("Edit link");
+    fireEvent.click(editBtn);
+
+    const githubInput = screen.getByDisplayValue(
+      "https://github.com/oldhandle",
+    );
+    fireEvent.change(githubInput, {
+      target: { value: "github.com/newhandle" },
+    });
+    fireEvent.keyDown(githubInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(mockUpdateBasicDataState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          github: "https://github.com/newhandle",
         }),
       );
     });

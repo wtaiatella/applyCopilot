@@ -50,15 +50,15 @@ export default function EditableSocialLink({
   const hasValue = Boolean(value && value.trim() !== "");
   const [isEditing, setIsEditing] = useState(false);
   const [inputValue, setInputValue] = useState(value || "");
+  const [prevValue, setPrevValue] = useState(value);
   const inputRef = useRef<InputRef>(null);
   const isCancelingRef = useRef(false);
   const isCommittedRef = useRef(false);
 
-  useEffect(() => {
-    if (!isEditing) {
-      setInputValue(value || "");
-    }
-  }, [value, isEditing]);
+  if (!isEditing && value !== prevValue) {
+    setPrevValue(value);
+    setInputValue(value || "");
+  }
 
   useEffect(() => {
     if (isEditing) {
@@ -77,12 +77,12 @@ export default function EditableSocialLink({
     }
 
     const trimmed = inputValue.trim();
-    if (!trimmed) {
+    const normalized = trimmed ? ensureUrlProtocol(trimmed) : "";
+    if (!normalized) {
       setInputValue("");
       setIsEditing(false);
       onChange?.(null);
     } else {
-      const normalized = ensureUrlProtocol(trimmed);
       setInputValue(normalized);
       setIsEditing(false);
       onChange?.(normalized);
@@ -138,6 +138,11 @@ export default function EditableSocialLink({
           href={normalizedHref || "#"}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={(e) => {
+            if (disabled || !normalizedHref || normalizedHref === "#") {
+              e.preventDefault();
+            }
+          }}
           className={`flex items-center gap-1.5 min-w-0 text-sm text-blue-400 hover:text-blue-300 hover:underline transition-colors ${
             disabled ? "pointer-events-none opacity-60" : ""
           }`}

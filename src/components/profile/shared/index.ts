@@ -8,3 +8,6 @@ export type { ContextNotesProps } from "./ContextNotesList";
 
 export { default as EditableTabLabel } from "./EditableTabLabel";
 export type { EditableTabLabelProps } from "./EditableTabLabel";
+
+export { default as EditableSocialLink } from "./EditableSocialLink";
+export type { EditableSocialLinkProps } from "./EditableSocialLink";

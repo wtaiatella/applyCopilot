@@ -118,10 +118,11 @@ export default function EditableSocialLink({
     if (e.key === "Enter") {
       e.stopPropagation();
       e.preventDefault();
-      isCommittedRef.current = true;
       handleCommit();
+      isCommittedRef.current = true;
     } else if (e.key === "Escape") {
       e.stopPropagation();
+      e.preventDefault();
       handleCancel();
     }
   };

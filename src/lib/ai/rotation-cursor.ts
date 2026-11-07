@@ -8,12 +8,30 @@ export interface ResolvedFreeModel {
   provider: AIProvider;
 }
 
+export type PoolExhaustionReason =
+  | "MINUTE_QUOTA"
+  | "DAILY_QUOTA"
+  | "ALL_MODELS_BLOCKED"
+  | "NO_MODELS";
+
+export interface AcquireModelOptions {
+  isWorker?: boolean;
+  activeUserRequests?: number;
+}
+
+export interface FreeModelAcquisitionResult {
+  resolved: ResolvedFreeModel | null;
+  exhaustionReason: PoolExhaustionReason | null;
+  retryAfterSeconds: number | null;
+}
+
 /**
- * Atomically acquires the next available FREE tier model from the round-robin pool.
- * Evaluates rate limits and circuit breaker status, performing lazy resets on counters.
- * Returns null if the free tier pool is currently exhausted or all models are blocked.
+ * Atomically acquires the next available FREE tier model from the round-robin pool
+ * along with granular pool exhaustion diagnostics when no model is available.
  */
-export async function acquireNextAvailableFreeModel(): Promise<ResolvedFreeModel | null> {
+export async function acquireFreeModelWithDiagnostics(
+  options?: AcquireModelOptions,
+): Promise<FreeModelAcquisitionResult> {
   try {
     return await prisma.$transaction(async (tx) => {
       const models = await tx.aIModel.findMany({
@@ -30,7 +48,11 @@ export async function acquireNextAvailableFreeModel(): Promise<ResolvedFreeModel
 
       if (models.length === 0) {
         logger.warn("[RotationCursor] No enabled FREE tier models in registry");
-        return null;
+        return {
+          resolved: null,
+          exhaustionReason: "NO_MODELS",
+          retryAfterSeconds: null,
+        };
       }
 
       const cursor = await tx.aIRotationCursor.upsert({
@@ -43,6 +65,10 @@ export async function acquireNextAvailableFreeModel(): Promise<ResolvedFreeModel
       const lastIndex = models.findIndex((m) => m.id === cursor.lastModelId);
       const startIndex = lastIndex >= 0 ? (lastIndex + 1) % models.length : 0;
 
+      let unblockedCount = 0;
+      let unblockedWithDayQuotaCount = 0;
+      let minResetsMinInSeconds = Number.POSITIVE_INFINITY;
+
       for (let i = 0; i < models.length; i++) {
         const idx = (startIndex + i) % models.length;
         const candidate = models[idx];
@@ -51,7 +77,19 @@ export async function acquireNextAvailableFreeModel(): Promise<ResolvedFreeModel
           candidate,
           candidate.usageCounter,
           now,
+          options,
         );
+
+        if (!evalResult.isBlocked) {
+          unblockedCount++;
+          if (evalResult.hasDayQuota) {
+            unblockedWithDayQuotaCount++;
+            minResetsMinInSeconds = Math.min(
+              minResetsMinInSeconds,
+              evalResult.resetsMinInSeconds,
+            );
+          }
+        }
 
         if (evalResult.isAvailable) {
           // Increment counters in place
@@ -90,17 +128,19 @@ export async function acquireNextAvailableFreeModel(): Promise<ResolvedFreeModel
           );
 
           return {
-            model: candidate,
-            provider: candidate.provider,
+            resolved: {
+              model: candidate,
+              provider: candidate.provider,
+            },
+            exhaustionReason: null,
+            retryAfterSeconds: null,
           };
         } else {
           logger.debug(
             `[RotationCursor] Skipped model ${candidate.displayName} (blocked or quota full)`,
             {
               modelId: candidate.id,
-              isBlocked: Boolean(
-                candidate.blockedUntil && candidate.blockedUntil > now,
-              ),
+              isBlocked: evalResult.isBlocked,
               minuteUsage: `${evalResult.countRequestsMin}/${evalResult.effectiveRpm}`,
               dayUsage: `${evalResult.countRequestsDay}/${evalResult.effectiveRpd}`,
             },
@@ -108,15 +148,57 @@ export async function acquireNextAvailableFreeModel(): Promise<ResolvedFreeModel
         }
       }
 
+      let exhaustionReason: PoolExhaustionReason;
+      let retryAfterSeconds: number | null = null;
+
+      if (unblockedCount === 0) {
+        exhaustionReason = "ALL_MODELS_BLOCKED";
+      } else if (unblockedWithDayQuotaCount > 0) {
+        exhaustionReason = "MINUTE_QUOTA";
+        const rawWait = Number.isFinite(minResetsMinInSeconds)
+          ? minResetsMinInSeconds
+          : 60;
+        retryAfterSeconds = Math.max(1, Math.min(60, rawWait));
+      } else {
+        exhaustionReason = "DAILY_QUOTA";
+      }
+
       logger.warn(
-        `[RotationCursor] All ${models.length} FREE models are exhausted or blocked`,
+        `[RotationCursor] All FREE models unavailable`,
+        {
+          exhaustionReason,
+          retryAfterSeconds,
+          isWorker: Boolean(options?.isWorker),
+          modelCount: models.length,
+        },
       );
-      return null;
+
+      return {
+        resolved: null,
+        exhaustionReason,
+        retryAfterSeconds,
+      };
     });
   } catch (error) {
     logger.error("[RotationCursor] Transaction failed during model selection", {
       error,
     });
-    return null;
+    return {
+      resolved: null,
+      exhaustionReason: "ALL_MODELS_BLOCKED",
+      retryAfterSeconds: null,
+    };
   }
+}
+
+/**
+ * Atomically acquires the next available FREE tier model from the round-robin pool.
+ * Evaluates rate limits and circuit breaker status, performing lazy resets on counters.
+ * Returns null if the free tier pool is currently exhausted or all models are blocked.
+ */
+export async function acquireNextAvailableFreeModel(
+  options?: AcquireModelOptions,
+): Promise<ResolvedFreeModel | null> {
+  const result = await acquireFreeModelWithDiagnostics(options);
+  return result.resolved;
 }

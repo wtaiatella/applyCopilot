@@ -1,9 +1,19 @@
 import { AIModel, AIUsageCounter } from "@prisma/client";
 
+export interface EvaluateQuotaOptions {
+  isWorker?: boolean;
+  activeUserRequests?: number;
+}
+
 export interface LazyResetResult {
   isAvailable: boolean;
+  isBlocked: boolean;
+  hasMinuteQuota: boolean;
+  hasDayQuota: boolean;
   effectiveRpm: number;
   effectiveRpd: number;
+  workerEffectiveRpm: number;
+  workerEffectiveRpd: number;
   countRequestsMin: number;
   countRequestsDay: number;
   windowStartMin: Date;
@@ -53,12 +63,21 @@ export function evaluateAndLazyReset(
     | "countTokensDay"
   > | null,
   now: Date = new Date(),
+  options?: EvaluateQuotaOptions,
 ): LazyResetResult {
   const currentMinStart = floorToMinute(now);
   const currentDayStart = floorToUtcDay(now);
 
   const effectiveRpm = Math.max(1, Math.floor(model.rpm * model.safetyMargin));
   const effectiveRpd = Math.max(1, Math.floor(model.rpd * model.safetyMargin));
+
+  // Reserve interactive safety headroom for background workers
+  const reservedRpm = effectiveRpm >= 2 ? 1 : 0;
+  const workerEffectiveRpm = effectiveRpm - reservedRpm;
+
+  const reservedRpd =
+    effectiveRpd >= 2 ? Math.max(1, Math.floor(effectiveRpd * 0.05)) : 0;
+  const workerEffectiveRpd = effectiveRpd - reservedRpd;
 
   let windowStartMin = counter?.windowStartMin
     ? new Date(counter.windowStartMin)
@@ -83,8 +102,18 @@ export function evaluateAndLazyReset(
   }
 
   const isBlocked = Boolean(model.blockedUntil && model.blockedUntil > now);
-  const hasMinuteQuota = countRequestsMin < effectiveRpm;
-  const hasDayQuota = countRequestsDay < effectiveRpd;
+  const isWorker = Boolean(options?.isWorker);
+  const activeUserRequests = options?.activeUserRequests ?? 0;
+
+  const applicableRpm = isWorker ? workerEffectiveRpm : effectiveRpm;
+  const applicableRpd = isWorker ? workerEffectiveRpd : effectiveRpd;
+
+  const yieldedSingleSlotToActiveUser =
+    isWorker && effectiveRpm === 1 && activeUserRequests > 0;
+
+  const hasMinuteQuota =
+    !yieldedSingleSlotToActiveUser && countRequestsMin < applicableRpm;
+  const hasDayQuota = countRequestsDay < applicableRpd;
 
   const isAvailable = !isBlocked && hasMinuteQuota && hasDayQuota;
 
@@ -103,8 +132,13 @@ export function evaluateAndLazyReset(
 
   return {
     isAvailable,
+    isBlocked,
+    hasMinuteQuota,
+    hasDayQuota,
     effectiveRpm,
     effectiveRpd,
+    workerEffectiveRpm,
+    workerEffectiveRpd,
     countRequestsMin,
     countRequestsDay,
     windowStartMin,

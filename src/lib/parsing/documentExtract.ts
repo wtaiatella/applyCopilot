@@ -14,12 +14,14 @@ const getRepoRoot = (): string => {
 };
 
 /**
- * Hook to save raw uploaded files to debug/uploads/ only when LOG_LEVEL=debug.
- * Per spec: "In development mode (when LOG_LEVEL=debug), the raw uploaded CV files
- * are saved to the debug/uploads/ directory for troubleshooting text extraction failures.
- * No permanent storage of the raw file is allowed in production."
+ * @deprecated Legacy hook to save raw uploaded files to debug/uploads/ only when LOG_LEVEL=debug.
+ * Deprecated in favor of IngestionDebugSession in src/lib/parsing/debugIngestionStorage.ts (APC-37).
+ * Retained for backwards compatibility.
  */
-export function saveRawUploadForDebug(buffer: Buffer, originalFilename: string) {
+export function saveRawUploadForDebug(
+  buffer: Buffer,
+  originalFilename: string,
+) {
   try {
     const isDebug = process.env.LOG_LEVEL?.toLowerCase() === "debug";
 
@@ -33,7 +35,10 @@ export function saveRawUploadForDebug(buffer: Buffer, originalFilename: string) 
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const safeFilename = originalFilename.replace(/[^a-zA-Z0-9.-]/g, "_");
-      const filePath = path.join(debugUploadsDir, `${timestamp}-${safeFilename}`);
+      const filePath = path.join(
+        debugUploadsDir,
+        `${timestamp}-${safeFilename}`,
+      );
 
       fs.writeFileSync(filePath, buffer);
       logger.info(`Saved raw uploaded file for debugging: ${filePath}`);
@@ -120,9 +125,7 @@ export class DocumentExtractor {
           }, "");
         });
 
-        let pageText = lineTexts
-          .filter((l) => l.trim().length > 0)
-          .join("\n");
+        let pageText = lineTexts.filter((l) => l.trim().length > 0).join("\n");
 
         pageText = pageText.replace(/\n{3,}/g, "\n\n").trim();
 
@@ -151,9 +154,6 @@ export class DocumentExtractor {
    */
   static async extractText(buffer: Buffer, filename: string): Promise<string> {
     const ext = path.extname(filename).toLowerCase();
-    
-    // Save raw upload for debug before processing
-    saveRawUploadForDebug(buffer, filename);
 
     if (ext === ".pdf") {
       logger.info(`Extracting text from PDF: ${filename}`);
@@ -162,7 +162,9 @@ export class DocumentExtractor {
       logger.info(`Extracting text from DOCX: ${filename}`);
       return this.extractDOCX(buffer);
     } else {
-      throw new Error(`Unsupported file type: ${ext}. Only PDF and DOCX files are allowed.`);
+      throw new Error(
+        `Unsupported file type: ${ext}. Only PDF and DOCX files are allowed.`,
+      );
     }
   }
 }

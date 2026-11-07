@@ -119,4 +119,72 @@ describe("Quota Manager & Lazy Reset Unit Tests", () => {
     expect(result.countRequestsDay).toBe(0);
     expect(result.windowStartDay.getUTCDate()).toBe(1);
   });
+
+  it("reserves 1 RPM and 5% (min 1) RPD headroom for worker calls while allowing interactive user calls full quota", () => {
+    const now = new Date("2026-08-31T12:00:10Z");
+    const model = {
+      rpm: 10,
+      rpd: 100,
+      safetyMargin: 1.0, // effectiveRpm = 10, effectiveRpd = 100 -> workerEffectiveRpm = 9, workerEffectiveRpd = 95
+      blockedUntil: null,
+    };
+
+    const counterAtWorkerCeiling = {
+      windowStartMin: new Date("2026-08-31T12:00:00Z"),
+      countRequestsMin: 9, // 1 slot left for interactive users
+      countTokensMin: 0,
+      windowStartDay: new Date("2026-08-31T00:00:00Z"),
+      countRequestsDay: 50,
+      countTokensDay: 0,
+    };
+
+    const workerResult = evaluateAndLazyReset(
+      model,
+      counterAtWorkerCeiling,
+      now,
+      { isWorker: true },
+    );
+    expect(workerResult.effectiveRpm).toBe(10);
+    expect(workerResult.workerEffectiveRpm).toBe(9);
+    expect(workerResult.effectiveRpd).toBe(100);
+    expect(workerResult.workerEffectiveRpd).toBe(95);
+    expect(workerResult.isBlocked).toBe(false);
+    expect(workerResult.hasMinuteQuota).toBe(false);
+    expect(workerResult.hasDayQuota).toBe(true);
+    expect(workerResult.isAvailable).toBe(false);
+
+    const userResult = evaluateAndLazyReset(
+      model,
+      counterAtWorkerCeiling,
+      now,
+      { isWorker: false },
+    );
+    expect(userResult.hasMinuteQuota).toBe(true);
+    expect(userResult.hasDayQuota).toBe(true);
+    expect(userResult.isAvailable).toBe(true);
+  });
+
+  it("marks worker availability false when effectiveRpm is 1 and activeUserRequests > 0", () => {
+    const now = new Date("2026-08-31T12:00:10Z");
+    const model = {
+      rpm: 1,
+      rpd: 10,
+      safetyMargin: 1.0, // effectiveRpm = 1
+      blockedUntil: null,
+    };
+
+    const workerContended = evaluateAndLazyReset(model, null, now, {
+      isWorker: true,
+      activeUserRequests: 1,
+    });
+    expect(workerContended.isAvailable).toBe(false);
+    expect(workerContended.hasMinuteQuota).toBe(false);
+
+    const workerUncontended = evaluateAndLazyReset(model, null, now, {
+      isWorker: true,
+      activeUserRequests: 0,
+    });
+    expect(workerUncontended.isAvailable).toBe(true);
+    expect(workerUncontended.hasMinuteQuota).toBe(true);
+  });
 });

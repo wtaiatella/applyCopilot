@@ -417,6 +417,14 @@ export default function PortalSettingsList() {
             </Form.Item>
 
             <Form.Item
+              label="Classification Concurrency"
+              name="classifierConcurrency"
+              rules={[{ required: true, message: "Required" }]}
+            >
+              <InputNumber min={1} max={10} style={{ width: "100%" }} />
+            </Form.Item>
+
+            <Form.Item
               label="Período de Descarte de Vagas (Dias)"
               name="jobRetentionDays"
               rules={[{ required: true, message: "Required" }]}

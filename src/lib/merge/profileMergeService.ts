@@ -1,6 +1,7 @@
 import { prisma } from "../db/prisma";
 import { logger } from "../logging/logger";
 import { reconcileSkillMutation } from "../db/cvBulletMutations";
+import { normalizeProficiency } from "../normalization/proficiencyNormalizer";
 import {
   BasicDataDTO,
   ExperienceDTO,
@@ -489,14 +490,16 @@ export class ProfileMergeService {
       );
 
       const yearsExperience = incSkill.yearsExperience ?? null;
-      const proficiency = incSkill.proficiency ?? "INTERMEDIATE";
+      const normalizedProficiency = normalizeProficiency(
+        incSkill.proficiency as string | null | undefined,
+        incSkill.name,
+      );
 
       if (match) {
         // Keep the higher proficiency
         const existingVal =
           proficiencyMap[match.proficiency as ProficiencyLevel] || 2;
-        const incomingVal =
-          proficiencyMap[proficiency as ProficiencyLevel] || 2;
+        const incomingVal = proficiencyMap[normalizedProficiency] || 2;
         const finalProficiency =
           reverseProficiencyMap[Math.max(existingVal, incomingVal)];
 
@@ -522,7 +525,7 @@ export class ProfileMergeService {
           data: {
             profileId,
             name: incSkill.name,
-            proficiency,
+            proficiency: normalizedProficiency,
             yearsExperience,
           },
         });
@@ -569,6 +572,58 @@ export class ProfileMergeService {
           incB.sortOrder ?? idx,
         );
       }
+    }
+  }
+
+  /**
+   * Retrieves the fully reconciled UserProfile from the database with all relations,
+   * guaranteeing parity with the database state for debug auditing and inspection.
+   */
+  static async getReconciledProfile(profileId: string) {
+    try {
+      return await prisma.userProfile.findUnique({
+        where: { id: profileId },
+        include: {
+          experiences: {
+            include: {
+              bullets: {
+                where: { isArchived: false },
+                orderBy: { sortOrder: "asc" },
+              },
+            },
+            orderBy: { startDate: "desc" },
+          },
+          education: {
+            include: {
+              bullets: {
+                where: { isArchived: false },
+                orderBy: { sortOrder: "asc" },
+              },
+            },
+            orderBy: { startDate: "desc" },
+          },
+          projects: {
+            include: {
+              bullets: {
+                where: { isArchived: false },
+                orderBy: { sortOrder: "asc" },
+              },
+            },
+            orderBy: { startDate: "desc" },
+          },
+          skills: {
+            where: { isArchived: false },
+          },
+          summaries: {
+            orderBy: { sortOrder: "asc" },
+          },
+        },
+      });
+    } catch (error) {
+      logger.warn(`Failed to fetch reconciled profile for ${profileId}`, {
+        error,
+      });
+      return null;
     }
   }
 }

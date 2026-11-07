@@ -168,6 +168,14 @@ export async function withCircuitBreaker<T>(
   try {
     return await fn();
   } catch (error: unknown) {
+    if (
+      error &&
+      typeof error === "object" &&
+      (error as { name?: string }).name === "AIWorkerBackoffError"
+    ) {
+      throw error;
+    }
+
     const statusCode = extractHttpStatus(error);
 
     if (statusCode !== null && isBlockingHttpStatus(statusCode)) {

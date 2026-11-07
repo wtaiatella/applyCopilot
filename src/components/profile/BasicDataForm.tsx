@@ -28,6 +28,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { BasicDataDTO, SummaryDTO } from "../../types/profile";
 import SummaryGeneratorModal from "./SummaryGeneratorModal";
+import { EditableSocialLink } from "./shared";
 
 const { TextArea } = Input;
 
@@ -235,27 +236,21 @@ export default function BasicDataForm({
             label={<span className="text-zinc-300">LinkedIn URL</span>}
             rules={[{ type: "url", warningOnly: true, message: "Invalid URL format" }]}
           >
-            <Input 
-              className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700"
-            />
+            <EditableSocialLink placeholder="https://linkedin.com/in/username" ariaLabel="LinkedIn URL" />
           </Form.Item>
           <Form.Item 
             name="github" 
             label={<span className="text-zinc-300">GitHub URL</span>}
             rules={[{ type: "url", warningOnly: true, message: "Invalid URL format" }]}
           >
-            <Input 
-              className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700"
-            />
+            <EditableSocialLink placeholder="https://github.com/username" ariaLabel="GitHub URL" />
           </Form.Item>
           <Form.Item 
             name="website" 
             label={<span className="text-zinc-300">Website URL</span>}
             rules={[{ type: "url", warningOnly: true, message: "Invalid URL format" }]}
           >
-            <Input 
-              className="bg-zinc-950 border-zinc-800 text-white hover:border-zinc-700"
-            />
+            <EditableSocialLink placeholder="https://yourwebsite.com" ariaLabel="Website URL" />
           </Form.Item>
           <Form.Item name="title" label={<span className="text-zinc-300">Professional Title</span>}>
             <Input 

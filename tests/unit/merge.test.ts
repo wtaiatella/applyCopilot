@@ -623,5 +623,255 @@ describe("ProfileMergeService", () => {
         },
       });
     });
+
+    describe("resilient proficiency normalization", () => {
+      it("maps informal and non-standard proficiencies to canonical tiers when creating new skills", async () => {
+        const incomingSkills = [
+          {
+            name: "English",
+            proficiency: "Conversational" as any,
+            yearsExperience: 2,
+          },
+          { name: "Spanish", proficiency: "Fluent" as any, yearsExperience: 4 },
+          { name: "French", proficiency: "Basic" as any, yearsExperience: 1 },
+          {
+            name: "Portuguese",
+            proficiency: "Native" as any,
+            yearsExperience: 10,
+          },
+        ];
+
+        (prisma.skill.findMany as jest.Mock).mockResolvedValue([]);
+
+        await ProfileMergeService.mergeSkills(profileId, incomingSkills);
+
+        expect(prisma.skill.create).toHaveBeenCalledWith({
+          data: {
+            profileId,
+            name: "English",
+            proficiency: "INTERMEDIATE",
+            yearsExperience: 2,
+          },
+        });
+        expect(prisma.skill.create).toHaveBeenCalledWith({
+          data: {
+            profileId,
+            name: "Spanish",
+            proficiency: "ADVANCED",
+            yearsExperience: 4,
+          },
+        });
+        expect(prisma.skill.create).toHaveBeenCalledWith({
+          data: {
+            profileId,
+            name: "French",
+            proficiency: "BEGINNER",
+            yearsExperience: 1,
+          },
+        });
+        expect(prisma.skill.create).toHaveBeenCalledWith({
+          data: {
+            profileId,
+            name: "Portuguese",
+            proficiency: "EXPERT",
+            yearsExperience: 10,
+          },
+        });
+      });
+
+      it("falls back to INTERMEDIATE for missing, empty, null, or unrecognized proficiencies", async () => {
+        const incomingSkills = [
+          { name: "Docker", proficiency: "" as any, yearsExperience: 2 },
+          { name: "Kubernetes", proficiency: null as any, yearsExperience: 3 },
+          { name: "Terraform", proficiency: undefined, yearsExperience: 1 },
+          {
+            name: "Leadership",
+            proficiency: "rockstar" as any,
+            yearsExperience: 5,
+          },
+        ];
+
+        (prisma.skill.findMany as jest.Mock).mockResolvedValue([]);
+
+        await ProfileMergeService.mergeSkills(profileId, incomingSkills);
+
+        expect(prisma.skill.create).toHaveBeenCalledWith({
+          data: {
+            profileId,
+            name: "Docker",
+            proficiency: "INTERMEDIATE",
+            yearsExperience: 2,
+          },
+        });
+        expect(prisma.skill.create).toHaveBeenCalledWith({
+          data: {
+            profileId,
+            name: "Kubernetes",
+            proficiency: "INTERMEDIATE",
+            yearsExperience: 3,
+          },
+        });
+        expect(prisma.skill.create).toHaveBeenCalledWith({
+          data: {
+            profileId,
+            name: "Terraform",
+            proficiency: "INTERMEDIATE",
+            yearsExperience: 1,
+          },
+        });
+        expect(prisma.skill.create).toHaveBeenCalledWith({
+          data: {
+            profileId,
+            name: "Leadership",
+            proficiency: "INTERMEDIATE",
+            yearsExperience: 5,
+          },
+        });
+      });
+
+      it("normalizes non-standard incoming proficiency when reconciling with existing skills", async () => {
+        const incomingSkills = [
+          {
+            name: "Python",
+            proficiency: "Conversational" as any,
+            yearsExperience: 1,
+          },
+          { name: "Java", proficiency: "Basic" as any, yearsExperience: 2 },
+          { name: "Go", proficiency: "Fluent" as any, yearsExperience: 3 },
+        ];
+
+        (prisma.skill.findMany as jest.Mock).mockResolvedValue([
+          {
+            id: "s-python",
+            name: "Python",
+            proficiency: "BEGINNER",
+            yearsExperience: 2,
+          },
+          {
+            id: "s-java",
+            name: "Java",
+            proficiency: "ADVANCED",
+            yearsExperience: 5,
+          },
+          {
+            id: "s-go",
+            name: "Go",
+            proficiency: "INTERMEDIATE",
+            yearsExperience: 1,
+          },
+        ]);
+
+        await ProfileMergeService.mergeSkills(profileId, incomingSkills);
+
+        // Python: existing BEGINNER (1), incoming Conversational -> INTERMEDIATE (2) -> max is INTERMEDIATE
+        expect(prisma.skill.update).toHaveBeenCalledWith({
+          where: { id: "s-python" },
+          data: {
+            name: "Python",
+            proficiency: "INTERMEDIATE",
+            yearsExperience: 2,
+          },
+        });
+
+        // Java: existing ADVANCED (3), incoming Basic -> BEGINNER (1) -> max is ADVANCED
+        expect(prisma.skill.update).toHaveBeenCalledWith({
+          where: { id: "s-java" },
+          data: {
+            name: "Java",
+            proficiency: "ADVANCED",
+            yearsExperience: 5,
+          },
+        });
+
+        // Go: existing INTERMEDIATE (2), incoming Fluent -> ADVANCED (3) -> max is ADVANCED
+        expect(prisma.skill.update).toHaveBeenCalledWith({
+          where: { id: "s-go" },
+          data: {
+            name: "Go",
+            proficiency: "ADVANCED",
+            yearsExperience: 3,
+          },
+        });
+      });
+
+      it("processes a batch of 15 mixed-payload skills resiliently without throwing or aborting", async () => {
+        const mixedBatch = [
+          {
+            name: "Skill 1",
+            proficiency: "BEGINNER" as const,
+            yearsExperience: 1,
+          },
+          {
+            name: "Skill 2",
+            proficiency: "EXPERT" as const,
+            yearsExperience: 5,
+          },
+          {
+            name: "Skill 3",
+            proficiency: "advanced" as any,
+            yearsExperience: 3,
+          },
+          {
+            name: "Skill 4",
+            proficiency: "Intermediate" as any,
+            yearsExperience: 2,
+          },
+          {
+            name: "Skill 5",
+            proficiency: "Conversational" as any,
+            yearsExperience: 2,
+          },
+          { name: "Skill 6", proficiency: "Fluent" as any, yearsExperience: 4 },
+          { name: "Skill 7", proficiency: "Basic" as any, yearsExperience: 1 },
+          {
+            name: "Skill 8",
+            proficiency: "Native" as any,
+            yearsExperience: 10,
+          },
+          {
+            name: "Skill 9",
+            proficiency: "iniciante" as any,
+            yearsExperience: 1,
+          },
+          {
+            name: "Skill 10",
+            proficiency: "avançado" as any,
+            yearsExperience: 4,
+          },
+          {
+            name: "Skill 11",
+            proficiency: "fluente" as any,
+            yearsExperience: 3,
+          },
+          { name: "Skill 12", proficiency: "" as any, yearsExperience: 2 },
+          { name: "Skill 13", proficiency: "   " as any, yearsExperience: 1 },
+          { name: "Skill 14", proficiency: null as any, yearsExperience: 2 },
+          {
+            name: "Skill 15",
+            proficiency: "rockstar" as any,
+            yearsExperience: 5,
+          },
+        ];
+
+        (prisma.skill.findMany as jest.Mock).mockResolvedValue([]);
+
+        await expect(
+          ProfileMergeService.mergeSkills(profileId, mixedBatch),
+        ).resolves.not.toThrow();
+
+        expect(prisma.skill.create).toHaveBeenCalledTimes(15);
+
+        const canonicalTiers = new Set([
+          "BEGINNER",
+          "INTERMEDIATE",
+          "ADVANCED",
+          "EXPERT",
+        ]);
+        const createCalls = (prisma.skill.create as jest.Mock).mock.calls;
+        for (const [callArg] of createCalls) {
+          expect(canonicalTiers.has(callArg.data.proficiency)).toBe(true);
+        }
+      });
+    });
   });
 });

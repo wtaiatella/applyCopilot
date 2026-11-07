@@ -2,6 +2,7 @@ import {
   BasicDataInputSchema,
   ExperienceInputSchema,
   SkillInputSchema,
+  PermissiveSkillInputSchema,
   ReferenceInputSchema,
   BulletInputSchema,
   isValidUrl,
@@ -157,6 +158,75 @@ describe("Profile Validation Schemas (Zod)", () => {
 
       const result = SkillInputSchema.safeParse(invalidSkill);
       expect(result.success).toBe(false);
+    });
+
+    it("should reject informal proficiency levels to enforce strict user form editing", () => {
+      expect(
+        SkillInputSchema.safeParse({ name: "Python", proficiency: "fluent" })
+          .success,
+      ).toBe(false);
+      expect(
+        SkillInputSchema.safeParse({
+          name: "English",
+          proficiency: "conversational",
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe("PermissiveSkillInputSchema", () => {
+    it("should normalize informal proficiency synonyms to canonical enums", () => {
+      const result = PermissiveSkillInputSchema.parse({
+        name: "Python",
+        proficiency: "fluent",
+      });
+      expect(result).toEqual({
+        name: "Python",
+        proficiency: "ADVANCED",
+      });
+    });
+
+    it("should normalize empty string proficiency to INTERMEDIATE", () => {
+      const result = PermissiveSkillInputSchema.parse({
+        name: "SQL",
+        proficiency: "",
+      });
+      expect(result).toEqual({
+        name: "SQL",
+        proficiency: "INTERMEDIATE",
+      });
+    });
+
+    it("should normalize null or omitted proficiency to INTERMEDIATE", () => {
+      const withNull = PermissiveSkillInputSchema.parse({
+        name: "Docker",
+        proficiency: null,
+      });
+      expect(withNull).toEqual({
+        name: "Docker",
+        proficiency: "INTERMEDIATE",
+      });
+
+      const withOmitted = PermissiveSkillInputSchema.parse({
+        name: "K8s",
+      });
+      expect(withOmitted).toEqual({
+        name: "K8s",
+        proficiency: "INTERMEDIATE",
+      });
+    });
+
+    it("should preserve valid canonical proficiency levels", () => {
+      const result = PermissiveSkillInputSchema.parse({
+        name: "TypeScript",
+        proficiency: "EXPERT",
+        yearsExperience: 5,
+      });
+      expect(result).toEqual({
+        name: "TypeScript",
+        proficiency: "EXPERT",
+        yearsExperience: 5,
+      });
     });
   });
 

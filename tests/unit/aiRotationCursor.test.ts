@@ -1,4 +1,12 @@
-import { acquireNextAvailableFreeModel } from "../../src/lib/ai/rotation-cursor";
+import {
+  acquireFreeModelWithDiagnostics,
+  acquireNextAvailableFreeModel,
+} from "../../src/lib/ai/rotation-cursor";
+import {
+  evaluateAndLazyReset,
+  floorToMinute,
+  floorToUtcDay,
+} from "../../src/lib/ai/quota-manager";
 import { prisma } from "../../src/lib/db/prisma";
 
 describe("AI Rotation Cursor Unit Tests", () => {
@@ -93,5 +101,156 @@ describe("AI Rotation Cursor Unit Tests", () => {
         data: { blockedUntil: null },
       });
     }
+  });
+
+  it("returns MINUTE_QUOTA exhaustion reason and retryAfterSeconds (1..60) when minute quota is exhausted but day quota remains", async () => {
+    const freeModels = await prisma.aIModel.findMany({
+      where: { tier: "FREE", isEnabled: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+
+    if (freeModels.length === 0) return;
+
+    const now = new Date();
+    const minStart = floorToMinute(now);
+    const dayStart = floorToUtcDay(now);
+
+    for (const model of freeModels) {
+      const evalLimits = evaluateAndLazyReset(model, null, now);
+      await prisma.aIUsageCounter.upsert({
+        where: { modelId: model.id },
+        create: {
+          modelId: model.id,
+          windowStartMin: minStart,
+          countRequestsMin: evalLimits.effectiveRpm,
+          countTokensMin: 0,
+          windowStartDay: dayStart,
+          countRequestsDay: 1,
+          countTokensDay: 0,
+        },
+        update: {
+          windowStartMin: minStart,
+          countRequestsMin: evalLimits.effectiveRpm,
+          windowStartDay: dayStart,
+          countRequestsDay: 1,
+        },
+      });
+    }
+
+    const result = await acquireFreeModelWithDiagnostics({ isWorker: true });
+    expect(result.resolved).toBeNull();
+    expect(result.exhaustionReason).toBe("MINUTE_QUOTA");
+    expect(result.retryAfterSeconds).not.toBeNull();
+    expect(result.retryAfterSeconds!).toBeGreaterThanOrEqual(1);
+    expect(result.retryAfterSeconds!).toBeLessThanOrEqual(60);
+  });
+
+  it("returns DAILY_QUOTA exhaustion reason when all unblocked FREE models have exhausted their daily quota", async () => {
+    const freeModels = await prisma.aIModel.findMany({
+      where: { tier: "FREE", isEnabled: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+
+    if (freeModels.length === 0) return;
+
+    const now = new Date();
+    const minStart = floorToMinute(now);
+    const dayStart = floorToUtcDay(now);
+
+    for (const model of freeModels) {
+      const evalLimits = evaluateAndLazyReset(model, null, now);
+      await prisma.aIUsageCounter.upsert({
+        where: { modelId: model.id },
+        create: {
+          modelId: model.id,
+          windowStartMin: minStart,
+          countRequestsMin: 0,
+          countTokensMin: 0,
+          windowStartDay: dayStart,
+          countRequestsDay: evalLimits.effectiveRpd,
+          countTokensDay: 0,
+        },
+        update: {
+          windowStartMin: minStart,
+          countRequestsMin: 0,
+          windowStartDay: dayStart,
+          countRequestsDay: evalLimits.effectiveRpd,
+        },
+      });
+    }
+
+    const result = await acquireFreeModelWithDiagnostics({ isWorker: true });
+    expect(result.resolved).toBeNull();
+    expect(result.exhaustionReason).toBe("DAILY_QUOTA");
+    expect(result.retryAfterSeconds).toBeNull();
+  });
+
+  it("returns ALL_MODELS_BLOCKED when all enabled FREE models have blockedUntil in the future", async () => {
+    await prisma.aIModel.updateMany({
+      where: { tier: "FREE", isEnabled: true },
+      data: { blockedUntil: new Date(Date.now() + 60000) },
+    });
+
+    try {
+      const result = await acquireFreeModelWithDiagnostics({ isWorker: true });
+      expect(result.resolved).toBeNull();
+      expect(result.exhaustionReason).toBe("ALL_MODELS_BLOCKED");
+      expect(result.retryAfterSeconds).toBeNull();
+    } finally {
+      await prisma.aIModel.updateMany({
+        where: { tier: "FREE" },
+        data: { blockedUntil: null },
+      });
+    }
+  });
+
+  it("reserves the final RPM slot for interactive user calls while worker calls yield with MINUTE_QUOTA", async () => {
+    const freeModels = await prisma.aIModel.findMany({
+      where: { tier: "FREE", isEnabled: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+
+    if (freeModels.length === 0) return;
+
+    const now = new Date();
+    const minStart = floorToMinute(now);
+    const dayStart = floorToUtcDay(now);
+
+    for (const model of freeModels) {
+      const evalLimits = evaluateAndLazyReset(model, null, now, {
+        isWorker: true,
+      });
+      await prisma.aIUsageCounter.upsert({
+        where: { modelId: model.id },
+        create: {
+          modelId: model.id,
+          windowStartMin: minStart,
+          countRequestsMin: evalLimits.workerEffectiveRpm, // 1 slot left for interactive users
+          countTokensMin: 0,
+          windowStartDay: dayStart,
+          countRequestsDay: 1,
+          countTokensDay: 0,
+        },
+        update: {
+          windowStartMin: minStart,
+          countRequestsMin: evalLimits.workerEffectiveRpm,
+          windowStartDay: dayStart,
+          countRequestsDay: 1,
+        },
+      });
+    }
+
+    // Worker call should yield the final reserved slot
+    const workerAttempt = await acquireFreeModelWithDiagnostics({
+      isWorker: true,
+    });
+    expect(workerAttempt.resolved).toBeNull();
+    expect(workerAttempt.exhaustionReason).toBe("MINUTE_QUOTA");
+
+    // Interactive user call should succeed using the reserved slot
+    const userAttempt = await acquireFreeModelWithDiagnostics({
+      isWorker: false,
+    });
+    expect(userAttempt.resolved).not.toBeNull();
   });
 });

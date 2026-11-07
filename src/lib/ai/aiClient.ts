@@ -1,7 +1,12 @@
 import { prisma } from "../db/prisma";
 import { logger } from "../logging/logger";
 import { AIRouteId } from "@/types/ai-manager";
-import { acquireNextAvailableFreeModel, ResolvedFreeModel } from "./rotation-cursor";
+import {
+  acquireFreeModelWithDiagnostics,
+  FreeModelAcquisitionResult,
+  PoolExhaustionReason,
+  ResolvedFreeModel,
+} from "./rotation-cursor";
 import { GoogleGenAIAdapter } from "./adapters/googleGenAIAdapter";
 import { OpenAICompatAdapter } from "./adapters/openAICompatAdapter";
 import { OllamaAdapter } from "./adapters/ollamaAdapter";
@@ -16,6 +21,12 @@ export type ChatCapability =
 
 export type AIRouteOrCapability = AIRouteId | ChatCapability;
 
+let activeUserRequests = 0;
+
+export function getActiveUserRequestCount(): number {
+  return activeUserRequests;
+}
+
 export class AIServiceUnavailableError extends Error {
   public status: number = 503;
   constructor(message = "AI service temporarily unavailable across all providers. Please try again later.") {
@@ -27,9 +38,18 @@ export class AIServiceUnavailableError extends Error {
 export class AIWorkerBackoffError extends Error {
   public status: number = 429;
   public backoffMinutes: number = 5;
-  constructor(message = "All free-tier AI models and local fallbacks are currently exhausted. Worker pausing for 5 minutes.") {
+  public exhaustionReason: PoolExhaustionReason;
+  public retryAfterSeconds: number | null;
+
+  constructor(
+    message = "All free-tier AI models and local fallbacks are currently exhausted. Worker pausing for 5 minutes.",
+    exhaustionReason: PoolExhaustionReason = "MINUTE_QUOTA",
+    retryAfterSeconds: number | null = exhaustionReason === "MINUTE_QUOTA" ? 60 : null,
+  ) {
     super(message);
     this.name = "AIWorkerBackoffError";
+    this.exhaustionReason = exhaustionReason;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -141,6 +161,20 @@ async function executeWithOllama(
     : await OllamaAdapter.executeJSON(prompt, systemPrompt);
 }
 
+async function acquireFreeModelForRoute(
+  isWorker: boolean,
+): Promise<FreeModelAcquisitionResult> {
+  if (isWorker && activeUserRequests > 0) {
+    // Yield briefly so in-flight interactive user requests acquire free-tier capacity first
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  return await acquireFreeModelWithDiagnostics({
+    isWorker,
+    activeUserRequests,
+  });
+}
+
 /**
  * Central dispatcher for text generation requests across free-tier rotation pool & local fallback.
  */
@@ -154,50 +188,71 @@ export async function generateText(
 
   logger.info(`[AIClient] Routing request for ${routeId} (preferred: ${route.preferredTier})`);
 
-  if (route.preferredTier === "LOCAL") {
-    // 1. Try Local Ollama first
-    try {
-      return (await executeWithOllama("text", prompt, systemPrompt)) as string;
-    } catch (ollamaErr) {
-      logger.warn(`[AIClient] Local Ollama failed for ${routeId}, attempting FREE tier fallback`, { error: ollamaErr });
-      
-      // 2. Fallback to FREE tier pool
-      const freeModel = await acquireNextAvailableFreeModel();
+  if (!route.isWorker) {
+    activeUserRequests++;
+  }
+
+  let lastAcquisition: FreeModelAcquisitionResult | null = null;
+
+  try {
+    if (route.preferredTier === "LOCAL") {
+      // 1. Try Local Ollama first
+      try {
+        return (await executeWithOllama("text", prompt, systemPrompt)) as string;
+      } catch (ollamaErr) {
+        logger.warn(`[AIClient] Local Ollama failed for ${routeId}, attempting FREE tier fallback`, { error: ollamaErr });
+
+        // 2. Fallback to FREE tier pool
+        lastAcquisition = await acquireFreeModelForRoute(route.isWorker);
+        const freeModel = lastAcquisition.resolved;
+        if (freeModel) {
+          try {
+            return (await executeWithModel(freeModel, "text", prompt, systemPrompt)) as string;
+          } catch (freeErr) {
+            logger.error(`[AIClient] FREE tier fallback failed for ${routeId}`, { error: freeErr });
+          }
+        }
+      }
+    } else {
+      // 1. Try FREE tier rotation pool first
+      lastAcquisition = await acquireFreeModelForRoute(route.isWorker);
+      const freeModel = lastAcquisition.resolved;
       if (freeModel) {
         try {
           return (await executeWithModel(freeModel, "text", prompt, systemPrompt)) as string;
         } catch (freeErr) {
-          logger.error(`[AIClient] FREE tier fallback failed for ${routeId}`, { error: freeErr });
+          logger.warn(`[AIClient] FREE tier model ${freeModel.model.displayName} failed, attempting Local Ollama fallback`, { error: freeErr });
         }
+      } else {
+        logger.warn(`[AIClient] FREE tier pool exhausted for ${routeId}, attempting Local Ollama fallback`, {
+          exhaustionReason: lastAcquisition.exhaustionReason,
+          retryAfterSeconds: lastAcquisition.retryAfterSeconds,
+        });
       }
-    }
-  } else {
-    // 1. Try FREE tier rotation pool first
-    const freeModel = await acquireNextAvailableFreeModel();
-    if (freeModel) {
+
+      // 2. Fallback to Local Ollama
       try {
-        return (await executeWithModel(freeModel, "text", prompt, systemPrompt)) as string;
-      } catch (freeErr) {
-        logger.warn(`[AIClient] FREE tier model ${freeModel.model.displayName} failed, attempting Local Ollama fallback`, { error: freeErr });
+        return (await executeWithOllama("text", prompt, systemPrompt)) as string;
+      } catch (ollamaErr) {
+        logger.error(`[AIClient] Local Ollama fallback failed for ${routeId}`, { error: ollamaErr });
       }
+    }
+
+    // 3. Fallback Exhaustion
+    logger.error(`[AIClient] Fallback exhaustion for route ${routeId} (isWorker: ${route.isWorker})`);
+    if (route.isWorker) {
+      const exhaustionReason = lastAcquisition?.exhaustionReason ?? "MINUTE_QUOTA";
+      const retryAfterSeconds =
+        lastAcquisition?.retryAfterSeconds ??
+        (exhaustionReason === "MINUTE_QUOTA" ? 60 : null);
+      throw new AIWorkerBackoffError(undefined, exhaustionReason, retryAfterSeconds);
     } else {
-      logger.warn(`[AIClient] FREE tier pool exhausted for ${routeId}, attempting Local Ollama fallback`);
+      throw new AIServiceUnavailableError();
     }
-
-    // 2. Fallback to Local Ollama
-    try {
-      return (await executeWithOllama("text", prompt, systemPrompt)) as string;
-    } catch (ollamaErr) {
-      logger.error(`[AIClient] Local Ollama fallback failed for ${routeId}`, { error: ollamaErr });
+  } finally {
+    if (!route.isWorker) {
+      activeUserRequests = Math.max(0, activeUserRequests - 1);
     }
-  }
-
-  // 3. Fallback Exhaustion
-  logger.error(`[AIClient] Fallback exhaustion for route ${routeId} (isWorker: ${route.isWorker})`);
-  if (route.isWorker) {
-    throw new AIWorkerBackoffError();
-  } else {
-    throw new AIServiceUnavailableError();
   }
 }
 
@@ -214,49 +269,70 @@ export async function generateJSON<T>(
 
   logger.info(`[AIClient] Routing JSON request for ${routeId} (preferred: ${route.preferredTier})`);
 
-  if (route.preferredTier === "LOCAL") {
-    // 1. Try Local Ollama first
-    try {
-      return (await executeWithOllama("json", prompt, systemPrompt)) as T;
-    } catch (ollamaErr) {
-      logger.warn(`[AIClient] Local Ollama failed for JSON ${routeId}, attempting FREE tier fallback`, { error: ollamaErr });
-      
-      // 2. Fallback to FREE tier pool
-      const freeModel = await acquireNextAvailableFreeModel();
+  if (!route.isWorker) {
+    activeUserRequests++;
+  }
+
+  let lastAcquisition: FreeModelAcquisitionResult | null = null;
+
+  try {
+    if (route.preferredTier === "LOCAL") {
+      // 1. Try Local Ollama first
+      try {
+        return (await executeWithOllama("json", prompt, systemPrompt)) as T;
+      } catch (ollamaErr) {
+        logger.warn(`[AIClient] Local Ollama failed for JSON ${routeId}, attempting FREE tier fallback`, { error: ollamaErr });
+
+        // 2. Fallback to FREE tier pool
+        lastAcquisition = await acquireFreeModelForRoute(route.isWorker);
+        const freeModel = lastAcquisition.resolved;
+        if (freeModel) {
+          try {
+            return (await executeWithModel(freeModel, "json", prompt, systemPrompt)) as T;
+          } catch (freeErr) {
+            logger.error(`[AIClient] FREE tier fallback failed for JSON ${routeId}`, { error: freeErr });
+          }
+        }
+      }
+    } else {
+      // 1. Try FREE tier rotation pool first
+      lastAcquisition = await acquireFreeModelForRoute(route.isWorker);
+      const freeModel = lastAcquisition.resolved;
       if (freeModel) {
         try {
           return (await executeWithModel(freeModel, "json", prompt, systemPrompt)) as T;
         } catch (freeErr) {
-          logger.error(`[AIClient] FREE tier fallback failed for JSON ${routeId}`, { error: freeErr });
+          logger.warn(`[AIClient] FREE tier model ${freeModel.model.displayName} failed for JSON, attempting Local Ollama fallback`, { error: freeErr });
         }
+      } else {
+        logger.warn(`[AIClient] FREE tier pool exhausted for JSON ${routeId}, attempting Local Ollama fallback`, {
+          exhaustionReason: lastAcquisition.exhaustionReason,
+          retryAfterSeconds: lastAcquisition.retryAfterSeconds,
+        });
       }
-    }
-  } else {
-    // 1. Try FREE tier rotation pool first
-    const freeModel = await acquireNextAvailableFreeModel();
-    if (freeModel) {
+
+      // 2. Fallback to Local Ollama
       try {
-        return (await executeWithModel(freeModel, "json", prompt, systemPrompt)) as T;
-      } catch (freeErr) {
-        logger.warn(`[AIClient] FREE tier model ${freeModel.model.displayName} failed for JSON, attempting Local Ollama fallback`, { error: freeErr });
+        return (await executeWithOllama("json", prompt, systemPrompt)) as T;
+      } catch (ollamaErr) {
+        logger.error(`[AIClient] Local Ollama fallback failed for JSON ${routeId}`, { error: ollamaErr });
       }
+    }
+
+    // 3. Fallback Exhaustion
+    logger.error(`[AIClient] Fallback exhaustion for JSON route ${routeId} (isWorker: ${route.isWorker})`);
+    if (route.isWorker) {
+      const exhaustionReason = lastAcquisition?.exhaustionReason ?? "MINUTE_QUOTA";
+      const retryAfterSeconds =
+        lastAcquisition?.retryAfterSeconds ??
+        (exhaustionReason === "MINUTE_QUOTA" ? 60 : null);
+      throw new AIWorkerBackoffError(undefined, exhaustionReason, retryAfterSeconds);
     } else {
-      logger.warn(`[AIClient] FREE tier pool exhausted for JSON ${routeId}, attempting Local Ollama fallback`);
+      throw new AIServiceUnavailableError();
     }
-
-    // 2. Fallback to Local Ollama
-    try {
-      return (await executeWithOllama("json", prompt, systemPrompt)) as T;
-    } catch (ollamaErr) {
-      logger.error(`[AIClient] Local Ollama fallback failed for JSON ${routeId}`, { error: ollamaErr });
+  } finally {
+    if (!route.isWorker) {
+      activeUserRequests = Math.max(0, activeUserRequests - 1);
     }
-  }
-
-  // 3. Fallback Exhaustion
-  logger.error(`[AIClient] Fallback exhaustion for JSON route ${routeId} (isWorker: ${route.isWorker})`);
-  if (route.isWorker) {
-    throw new AIWorkerBackoffError();
-  } else {
-    throw new AIServiceUnavailableError();
   }
 }

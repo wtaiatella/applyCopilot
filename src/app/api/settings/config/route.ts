@@ -17,6 +17,7 @@ export async function GET() {
           in: [
             "SCRAPER_GLOBAL_INTERVAL",
             "SCRAPER_MAX_CONCURRENCY",
+            "CLASSIFIER_CONCURRENCY",
             "SCRAPER_RATE_LIMIT_DELAY",
             "SCRAPER_MAX_RETRIES",
             "SCRAPER_USER_AGENT",
@@ -27,17 +28,26 @@ export async function GET() {
     });
 
     const configMap = new Map(configs.map((c) => [c.key, c.value]));
+    const parsedClassifierConcurrency = parseInt(
+      configMap.get("CLASSIFIER_CONCURRENCY") || "3",
+      10,
+    );
 
     return NextResponse.json({
       globalScrapeInterval: parseInt(configMap.get("SCRAPER_GLOBAL_INTERVAL") || "360"),
       maxConcurrency: parseInt(configMap.get("SCRAPER_MAX_CONCURRENCY") || "3"),
+      classifierConcurrency:
+        Number.isNaN(parsedClassifierConcurrency) || parsedClassifierConcurrency < 1
+          ? 3
+          : parsedClassifierConcurrency,
       rateLimitDelay: parseInt(configMap.get("SCRAPER_RATE_LIMIT_DELAY") || "1000"),
       maxExtractionRetries: parseInt(configMap.get("SCRAPER_MAX_RETRIES") || "3"),
       userAgent: configMap.get("SCRAPER_USER_AGENT") || "ApplyCopilot/1.0",
       jobRetentionDays: parseInt(configMap.get("SCRAPER_JOB_RETENTION_DAYS") || "15"),
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -49,13 +59,45 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { globalScrapeInterval, maxConcurrency, rateLimitDelay, maxExtractionRetries, userAgent, jobRetentionDays } = body;
+    const {
+      globalScrapeInterval,
+      maxConcurrency,
+      classifierConcurrency,
+      rateLimitDelay,
+      maxExtractionRetries,
+      userAgent,
+      jobRetentionDays,
+    } = body;
+
+    if (classifierConcurrency !== undefined) {
+      const parsedConcurrency =
+        typeof classifierConcurrency === "number"
+          ? classifierConcurrency
+          : typeof classifierConcurrency === "string" && classifierConcurrency.trim() !== ""
+            ? Number(classifierConcurrency)
+            : NaN;
+
+      if (
+        !Number.isInteger(parsedConcurrency) ||
+        parsedConcurrency < 1 ||
+        parsedConcurrency > 10
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Invalid classifierConcurrency: must be an integer between 1 and 10",
+          },
+          { status: 400 },
+        );
+      }
+    }
 
     const updates = [
-      { key: "SCRAPER_GLOBAL_INTERVAL", value: String(globalScrapeInterval) },
-      { key: "SCRAPER_MAX_CONCURRENCY", value: String(maxConcurrency) },
-      { key: "SCRAPER_RATE_LIMIT_DELAY", value: String(rateLimitDelay) },
-      { key: "SCRAPER_MAX_RETRIES", value: String(maxExtractionRetries) },
+      { key: "SCRAPER_GLOBAL_INTERVAL", value: globalScrapeInterval !== undefined ? String(globalScrapeInterval) : undefined },
+      { key: "SCRAPER_MAX_CONCURRENCY", value: maxConcurrency !== undefined ? String(maxConcurrency) : undefined },
+      { key: "CLASSIFIER_CONCURRENCY", value: classifierConcurrency !== undefined ? String(classifierConcurrency) : undefined },
+      { key: "SCRAPER_RATE_LIMIT_DELAY", value: rateLimitDelay !== undefined ? String(rateLimitDelay) : undefined },
+      { key: "SCRAPER_MAX_RETRIES", value: maxExtractionRetries !== undefined ? String(maxExtractionRetries) : undefined },
       { key: "SCRAPER_USER_AGENT", value: userAgent },
       { key: "SCRAPER_JOB_RETENTION_DAYS", value: jobRetentionDays !== undefined ? String(jobRetentionDays) : undefined },
     ];
@@ -71,7 +113,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

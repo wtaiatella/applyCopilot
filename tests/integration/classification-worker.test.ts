@@ -2,33 +2,50 @@
  * @jest-environment node
  */
 
-import { runClassificationWorker } from "@/lib/workers/classification-worker";
+import {
+  runClassificationWorker,
+  recoverRunningClassifications,
+  gracefulShutdownClassificationWorker,
+  isCapacityUnavailabilityError,
+} from "@/lib/workers/classification-worker";
 
 // Mock Prisma
 jest.mock("@/lib/db/prisma", () => ({
   prisma: {
+    systemConfig: {
+      findUnique: jest.fn(),
+    },
     jobListing: {
       findMany: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     $executeRaw: jest.fn(),
   },
 }));
 
 // Mock Circuit Breaker
-jest.mock("@/lib/ai/circuit-breaker", () => ({
-  isProviderBlocked: jest.fn(),
-  withCircuitBreaker: jest.fn(),
-}));
+jest.mock("@/lib/ai/circuit-breaker", () => {
+  const actual = jest.requireActual("@/lib/ai/circuit-breaker");
+  return {
+    ...actual,
+    isProviderBlocked: jest.fn(),
+    withCircuitBreaker: jest.fn(),
+  };
+});
 
 // Mock aiClient — resolveAIConfig is used to determine the provider passed into the
 // circuit breaker (per-capability-and-provider block scoping); a fixed "gemini" here keeps
 // the existing key-based mockImplementation assertions below stable.
-jest.mock("@/lib/ai/aiClient", () => ({
-  resolveAIConfig: jest
-    .fn()
-    .mockResolvedValue({ provider: "gemini", model: "test-model" }),
-}));
+jest.mock("@/lib/ai/aiClient", () => {
+  const actual = jest.requireActual("@/lib/ai/aiClient");
+  return {
+    ...actual,
+    resolveAIConfig: jest
+      .fn()
+      .mockResolvedValue({ provider: "gemini", model: "test-model" }),
+  };
+});
 
 // Mock Classification Service
 jest.mock("@/services/jobClassificationService", () => ({
@@ -46,14 +63,17 @@ import {
   isProviderBlocked,
   withCircuitBreaker,
 } from "@/lib/ai/circuit-breaker";
+import { AIWorkerBackoffError } from "@/lib/ai/aiClient";
 import {
   classifyJobListing,
   canonicalizeJobFacts,
 } from "@/services/jobClassificationService";
 import { generateEmbedding } from "@/lib/ai/vector-service";
 
+const mockSystemConfigFindUnique = prisma.systemConfig.findUnique as jest.Mock;
 const mockFindMany = prisma.jobListing.findMany as jest.Mock;
 const mockUpdate = prisma.jobListing.update as jest.Mock;
+const mockUpdateMany = prisma.jobListing.updateMany as jest.Mock;
 const mockExecuteRaw = prisma.$executeRaw as unknown as jest.Mock;
 const mockIsProviderBlocked = isProviderBlocked as jest.Mock;
 const mockWithCircuitBreaker = withCircuitBreaker as jest.Mock;
@@ -110,6 +130,9 @@ describe("Classification Worker — runClassificationWorker", () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
+    // Default: no custom SystemConfig overrides
+    mockSystemConfigFindUnique.mockResolvedValue(null);
+
     // Default: provider is healthy
     mockIsProviderBlocked.mockResolvedValue(false);
 
@@ -133,6 +156,7 @@ describe("Classification Worker — runClassificationWorker", () => {
 
     // Default DB operations succeed
     mockUpdate.mockResolvedValue({});
+    mockUpdateMany.mockResolvedValue({ count: 0 });
     mockExecuteRaw.mockResolvedValue(1);
   });
 
@@ -218,7 +242,7 @@ describe("Classification Worker — runClassificationWorker", () => {
     expect(result).toEqual({ processed: 1, failed: 0, skippedBlocked: false });
   });
 
-  it("processes multiple pending jobs sequentially", async () => {
+  it("processes multiple pending jobs in a batch", async () => {
     const jobs = [
       makeMockJob({ id: "job-001", title: "Senior React Developer" }),
       makeMockJob({ id: "job-002", title: "Backend Node.js Engineer" }),
@@ -237,39 +261,255 @@ describe("Classification Worker — runClassificationWorker", () => {
   });
 
   // ──────────────────────────────────────────────────
-  // Scenario: Zod-invalid jobFacts — immediate FAILED, no attempts increment
+  // Scenario: Continuous multi-batch drain (US-1, AC.1, AC.2)
   // ──────────────────────────────────────────────────
 
-  it("marks job FAILED immediately (no attempts-loop retry) when jobFacts fails Zod validation", async () => {
-    const job = makeMockJob({ classificationAttempts: 0 });
-    mockFindMany.mockResolvedValue([job]);
+  it("continuously drains multiple batches ordered by createdAt desc until zero pending jobs remain", async () => {
+    const batch1 = [
+      makeMockJob({ id: "job-newest-1", title: "Newest Job 1" }),
+      makeMockJob({ id: "job-newest-2", title: "Newest Job 2" }),
+    ];
+    const batch2 = [
+      makeMockJob({ id: "job-older-3", title: "Older Job 3" }),
+      makeMockJob({ id: "job-oldest-4", title: "Oldest Job 4" }),
+    ];
 
-    // Schema-invalid: seniority is not one of the allowed enum values
-    mockClassifyJobListing.mockResolvedValue({
-      jobFacts: makeValidJobFacts({ seniority: "not-a-real-level" }),
+    mockFindMany
+      .mockResolvedValueOnce(batch1)
+      .mockResolvedValueOnce(batch2)
+      .mockResolvedValueOnce([]);
+
+    const sleepFn = jest.fn().mockResolvedValue(undefined);
+    const result = await runClassificationWorker({ sleepFn });
+
+    expect(mockFindMany).toHaveBeenCalledTimes(3);
+    for (const call of mockFindMany.mock.calls) {
+      expect(call[0]).toEqual(
+        expect.objectContaining({
+          orderBy: { createdAt: "desc" },
+        }),
+      );
+    }
+    expect(sleepFn).not.toHaveBeenCalled();
+    expect(result.processed).toBe(4);
+    expect(result.failed).toBe(0);
+    expect(result.skippedBlocked).toBe(false);
+    expect(result.batchesProcessed).toBe(2);
+  });
+
+  // ──────────────────────────────────────────────────
+  // Scenario: Bounded concurrent processing & runtime config reload (US-2, AC.1, AC.3)
+  // ──────────────────────────────────────────────────
+
+  it("classifies up to 3 jobs concurrently by default within a batch", async () => {
+    const jobs = Array.from({ length: 6 }, (_, idx) =>
+      makeMockJob({ id: `job-${idx + 1}` }),
+    );
+    mockFindMany.mockResolvedValueOnce(jobs).mockResolvedValueOnce([]);
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+
+    mockClassifyJobListing.mockImplementation(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      inFlight--;
+      return { jobFacts: makeValidJobFacts() };
     });
 
     const result = await runClassificationWorker();
 
-    // Should mark FAILED immediately, with no classificationAttempts increment
+    expect(maxInFlight).toBe(3);
+    expect(result.processed).toBe(6);
+    expect(result.failed).toBe(0);
+  });
+
+  it("applies updated CLASSIFIER_CONCURRENCY from SystemConfig on subsequent runs without restart", async () => {
+    mockSystemConfigFindUnique.mockImplementation(
+      async ({ where }: { where: { key: string } }) => {
+        if (where.key === "CLASSIFIER_CONCURRENCY") {
+          return { key: "CLASSIFIER_CONCURRENCY", value: "5" };
+        }
+        return null;
+      },
+    );
+
+    const jobs = Array.from({ length: 6 }, (_, idx) =>
+      makeMockJob({ id: `job-c5-${idx + 1}` }),
+    );
+    mockFindMany.mockResolvedValueOnce(jobs).mockResolvedValueOnce([]);
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+
+    mockClassifyJobListing.mockImplementation(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      inFlight--;
+      return { jobFacts: makeValidJobFacts() };
+    });
+
+    const result = await runClassificationWorker();
+
+    expect(maxInFlight).toBe(5);
+    expect(result.processed).toBe(6);
+  });
+
+  // ──────────────────────────────────────────────────
+  // Scenario: Reactive waiting on per-minute vs daily quota exhaustion (US-3, US-4, AC.4, AC.5)
+  // ──────────────────────────────────────────────────
+
+  it("pauses for retryAfterSeconds on MINUTE_QUOTA exhaustion, resets job to PENDING with 0 attempt penalty, and resumes draining", async () => {
+    const job = makeMockJob({ id: "job-min-quota", classificationAttempts: 0 });
+    mockFindMany
+      .mockResolvedValueOnce([job])
+      .mockResolvedValueOnce([job])
+      .mockResolvedValueOnce([]);
+
+    mockClassifyJobListing
+      .mockRejectedValueOnce(
+        new AIWorkerBackoffError(
+          "Minute quota exhausted across free models",
+          "MINUTE_QUOTA",
+          12,
+        ),
+      )
+      .mockResolvedValueOnce({ jobFacts: makeValidJobFacts() });
+
+    const sleepFn = jest.fn().mockResolvedValue(undefined);
+    const result = await runClassificationWorker({ sleepFn });
+
+    // Must pause for 12s (12000ms)
+    expect(sleepFn).toHaveBeenCalledTimes(1);
+    expect(sleepFn).toHaveBeenCalledWith(12000);
+
+    // First attempt reverted to PENDING without touching classificationAttempts
+    const pendingRevertCall = mockUpdate.mock.calls.find(
+      (call) => call[0]?.data?.classificationStatus === "PENDING",
+    );
+    expect(pendingRevertCall).toBeDefined();
+    expect(pendingRevertCall?.[0]?.data).not.toHaveProperty(
+      "classificationAttempts",
+    );
+
+    // Resumed after sleep and completed the job
+    expect(result.processed).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(result.skippedBlocked).toBe(false);
+    expect(result.pausedForMinuteQuotaCount).toBe(1);
+  });
+
+  it("stops draining immediately without sleeping on DAILY_QUOTA exhaustion and keeps job PENDING with unchanged attempts", async () => {
+    const job = makeMockJob({ id: "job-daily-quota", classificationAttempts: 2 });
+    mockFindMany.mockResolvedValueOnce([job]);
+
+    mockClassifyJobListing.mockRejectedValueOnce(
+      new AIWorkerBackoffError(
+        "Daily quota exhausted across all free models",
+        "DAILY_QUOTA",
+        null,
+      ),
+    );
+
+    const sleepFn = jest.fn().mockResolvedValue(undefined);
+    const result = await runClassificationWorker({ sleepFn });
+
+    expect(sleepFn).not.toHaveBeenCalled();
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: job.id },
+      data: { classificationStatus: "PENDING" },
+    });
+    expect(
+      mockUpdate.mock.calls.some(
+        (call) => call[0]?.data?.classificationStatus === "FAILED",
+      ),
+    ).toBe(false);
+    expect(result).toEqual({ processed: 0, failed: 0, skippedBlocked: true });
+  });
+
+  it("stops draining immediately without sleeping on ALL_MODELS_BLOCKED and keeps job PENDING with unchanged attempts", async () => {
+    const job = makeMockJob({ id: "job-blocked", classificationAttempts: 1 });
+    mockFindMany.mockResolvedValueOnce([job]);
+
+    mockClassifyJobListing.mockRejectedValueOnce(
+      new AIWorkerBackoffError(
+        "All models blocked by circuit breaker",
+        "ALL_MODELS_BLOCKED",
+        null,
+      ),
+    );
+
+    const sleepFn = jest.fn().mockResolvedValue(undefined);
+    const result = await runClassificationWorker({ sleepFn });
+
+    expect(sleepFn).not.toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: job.id },
+      data: { classificationStatus: "PENDING" },
+    });
+    expect(result).toEqual({ processed: 0, failed: 0, skippedBlocked: true });
+  });
+
+  // ──────────────────────────────────────────────────
+  // Scenario: Zod-invalid jobFacts — unified 3-attempt listing-specific failure rule (US-4, AC.6)
+  // ──────────────────────────────────────────────────
+
+  it("increments classificationAttempts and returns to PENDING on 1st and 2nd Zod validation failures, marking FAILED on 3rd attempt", async () => {
+    //Schema-invalid: seniority is not one of the allowed enum values
+    mockClassifyJobListing.mockResolvedValue({
+      jobFacts: makeValidJobFacts({ seniority: "not-a-real-level" }),
+    });
+
+    // Attempt 1 (0 -> 1): stays PENDING
+    mockFindMany.mockResolvedValueOnce([
+      makeMockJob({ id: "job-zod", classificationAttempts: 0 }),
+    ]);
+    const res1 = await runClassificationWorker();
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: "job-zod" },
       data: {
-        classificationStatus: "FAILED",
+        classificationStatus: "PENDING",
+        classificationAttempts: 1,
         classificationError: expect.any(String),
       },
     });
-    // The FAILED update must NOT include classificationAttempts (no retry-loop bump)
-    const failedCall = mockUpdate.mock.calls.find(
-      (call) => call[0]?.data?.classificationStatus === "FAILED",
-    );
-    expect(failedCall?.[0]?.data).not.toHaveProperty("classificationAttempts");
+    expect(res1).toEqual({ processed: 0, failed: 0, skippedBlocked: false });
 
-    // Should never call the embedding provider for an invalid-shape job
+    // Attempt 2 (1 -> 2): stays PENDING
+    mockUpdate.mockClear();
+    mockFindMany.mockResolvedValueOnce([
+      makeMockJob({ id: "job-zod", classificationAttempts: 1 }),
+    ]);
+    const res2 = await runClassificationWorker();
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: "job-zod" },
+      data: {
+        classificationStatus: "PENDING",
+        classificationAttempts: 2,
+        classificationError: expect.any(String),
+      },
+    });
+    expect(res2).toEqual({ processed: 0, failed: 0, skippedBlocked: false });
+
+    // Attempt 3 (2 -> 3): marked FAILED
+    mockUpdate.mockClear();
+    mockFindMany.mockResolvedValueOnce([
+      makeMockJob({ id: "job-zod", classificationAttempts: 2 }),
+    ]);
+    const res3 = await runClassificationWorker();
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: "job-zod" },
+      data: {
+        classificationStatus: "FAILED",
+        classificationAttempts: 3,
+        classificationError: expect.any(String),
+      },
+    });
+    expect(res3).toEqual({ processed: 0, failed: 1, skippedBlocked: false });
     expect(mockGenerateEmbedding).not.toHaveBeenCalled();
     expect(mockExecuteRaw).not.toHaveBeenCalled();
-
-    expect(result).toEqual({ processed: 0, failed: 1, skippedBlocked: false });
   });
 
   // ──────────────────────────────────────────────────
@@ -342,7 +582,7 @@ describe("Classification Worker — runClassificationWorker", () => {
   });
 
   // ──────────────────────────────────────────────────
-  // Scenario: Embedding-provider failure (separate circuit breaker, FR-23)
+  // Scenario: Embedding-provider failure (separate circuit breaker, FR-23 & FR-9)
   // ──────────────────────────────────────────────────
 
   it("stays PENDING and increments classificationAttempts when the embedding provider fails transiently (parsing succeeded)", async () => {
@@ -379,14 +619,38 @@ describe("Classification Worker — runClassificationWorker", () => {
     expect(result).toEqual({ processed: 0, failed: 0, skippedBlocked: false });
   });
 
-  it("marks job FAILED after max attempts when the embedding provider is BLOCKED on the final attempt", async () => {
+  it("reverts job to PENDING without incrementing attempts and returns skippedBlocked=true when embedding provider hits HTTP 429 block", async () => {
+    const job = makeMockJob({ classificationAttempts: 2 }); // Even on 3rd attempt, capacity 429 must NOT mark FAILED
+    mockFindMany.mockResolvedValueOnce([job]);
+
+    mockWithCircuitBreaker.mockImplementation(
+      (key: string, _provider: string, fn: () => Promise<unknown>) => {
+        if (key === EMBEDDING_PROVIDER_KEY) {
+          return Promise.reject(new Error("Embedding provider BLOCKED (429)"));
+        }
+        return fn();
+      },
+    );
+
+    const sleepFn = jest.fn().mockResolvedValue(undefined);
+    const result = await runClassificationWorker({ sleepFn });
+
+    expect(sleepFn).not.toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: job.id },
+      data: { classificationStatus: "PENDING" },
+    });
+    expect(result).toEqual({ processed: 0, failed: 0, skippedBlocked: true });
+  });
+
+  it("marks job FAILED after max attempts when the embedding provider fails with a non-capacity error on the 3rd attempt", async () => {
     const job = makeMockJob({ classificationAttempts: 2 }); // 3rd attempt
     mockFindMany.mockResolvedValue([job]);
 
     mockWithCircuitBreaker.mockImplementation(
       (key: string, _provider: string, fn: () => Promise<unknown>) => {
         if (key === EMBEDDING_PROVIDER_KEY) {
-          return Promise.reject(new Error("Embedding provider BLOCKED (429)"));
+          return Promise.reject(new Error("Embedding vector dimension mismatch"));
         }
         return fn();
       },
@@ -472,15 +736,51 @@ describe("Classification Worker — runClassificationWorker", () => {
   });
 
   // ──────────────────────────────────────────────────
+  // Scenario: Graceful shutdown and crash recovery lifecycle (US-6, AC.8)
+  // ──────────────────────────────────────────────────
+
+  it("recoverRunningClassifications resets RUNNING listings to PENDING without modifying classificationAttempts", async () => {
+    mockUpdateMany.mockResolvedValueOnce({ count: 3 });
+
+    const recovered = await recoverRunningClassifications("startup");
+
+    expect(recovered).toBe(3);
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { classificationStatus: "RUNNING" },
+      data: { classificationStatus: "PENDING" },
+    });
+  });
+
+  it("gracefulShutdownClassificationWorker resets RUNNING listings to PENDING on shutdown signal", async () => {
+    mockUpdateMany.mockResolvedValueOnce({ count: 2 });
+
+    await gracefulShutdownClassificationWorker("SIGTERM");
+
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { classificationStatus: "RUNNING" },
+      data: { classificationStatus: "PENDING" },
+    });
+  });
+
+  it("isCapacityUnavailabilityError identifies AIWorkerBackoffError and HTTP 429/401/402 while excluding listing errors", () => {
+    expect(
+      isCapacityUnavailabilityError(
+        new AIWorkerBackoffError("exhausted", "MINUTE_QUOTA", 30),
+      ),
+    ).toBe(true);
+    expect(
+      isCapacityUnavailabilityError(new Error("Provider rate limit 429")),
+    ).toBe(true);
+    expect(
+      isCapacityUnavailabilityError({ status: 402, message: "Quota exceeded" }),
+    ).toBe(true);
+    expect(
+      isCapacityUnavailabilityError(new Error("JobFacts validation failed")),
+    ).toBe(false);
+  });
+
+  // ──────────────────────────────────────────────────
   // T008/T011: canonicalization write-path wiring (FR-08)
-  //
-  // The 4-step canonicalization state machine itself (exact hit / alias-confirm / new-row /
-  // kind isolation) is unit-tested directly against `skillCanonicalizationService` in
-  // tests/unit/skillCanonicalizationService.test.ts (T009) — `jobClassificationService` is
-  // mocked at the module boundary here (matching this file's existing convention), so these
-  // tests assert only that the worker (a) calls `canonicalizeJobFacts` with the raw extraction
-  // before `JobFactsSchema` validation/persistence, and (b) persists whatever canonical result
-  // it returns — the wiring contract, not the resolution algorithm.
   // ──────────────────────────────────────────────────
 
   it("canonicalizes jobFacts before JobFactsSchema validation, and persists the canonicalized result", async () => {
@@ -527,9 +827,6 @@ describe("Classification Worker — runClassificationWorker", () => {
         jobFacts: makeValidJobFacts({ mustHave: ["PostgreSQL"] }),
       });
 
-    // Simulates `resolveCanonicalSkills` converging both spellings on the same canonical
-    // displayName (the alias-confirm mechanism itself is covered by T009's exact-alias-hit
-    // and above-threshold-confirmed unit tests).
     mockCanonicalizeJobFacts.mockImplementation(
       (jobFacts: { mustHave: string[] }) =>
         Promise.resolve({

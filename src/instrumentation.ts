@@ -20,15 +20,6 @@ export async function register() {
       console.log(
         `[instrumentation] Recovered ${recoveryResult.count} tasks from RUNNING to PENDING.`,
       );
-
-      // Crash recovery for JobListings stuck in RUNNING classification state
-      const classificationRecovery = await prisma.jobListing.updateMany({
-        where: { classificationStatus: "RUNNING" },
-        data: { classificationStatus: "PENDING" },
-      });
-      console.log(
-        `[instrumentation] Recovered ${classificationRecovery.count} job(s) from RUNNING to PENDING classification.`,
-      );
     } catch (error) {
       console.error("[instrumentation] Crash recovery failed:", error);
     }
@@ -46,8 +37,14 @@ export async function register() {
 
     try {
       // Classification worker (Step 2: LLM clean + vectorize job listings)
-      const { bootstrapClassificationWorker } =
-        await import("@/lib/workers/classification-worker");
+      const {
+        recoverRunningClassifications,
+        bootstrapClassificationWorker,
+      } = await import("@/lib/workers/classification-worker");
+      const recoveredCount = await recoverRunningClassifications("startup");
+      console.log(
+        `[instrumentation] Recovered ${recoveredCount} job(s) from RUNNING to PENDING classification.`,
+      );
       await bootstrapClassificationWorker();
     } catch (error) {
       console.error(

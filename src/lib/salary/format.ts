@@ -3,7 +3,7 @@
  * Deliberately avoids Intl / toLocaleString to prevent SSR/CSR hydration
  * mismatches and ICU differences between runtimes.
  */
-import type { SalaryPeriod } from "./salary";
+import { usable, type SalaryPeriod } from "./salary";
 
 export type SalaryFormatMode = "compact" | "full";
 
@@ -28,10 +28,6 @@ const SUFFIXES: Record<SalaryPeriod, string> = {
   YEARLY: "/yr",
 };
 
-function usable(n: number | null | undefined): n is number {
-  return typeof n === "number" && Number.isFinite(n) && n > 0;
-}
-
 /** Round to at most `decimals` places and drop trailing zeros. */
 function trim(n: number, decimals: number): string {
   const f = 10 ** decimals;
@@ -51,10 +47,11 @@ function formatNumber(amount: number, mode: SalaryFormatMode): string {
   return dec ? `${group(int)}.${dec}` : group(int);
 }
 
-function currencyPrefix(currency: string | null | undefined): string {
-  const code = currency?.trim().toUpperCase();
-  if (!code) return "";
-  return SYMBOLS[code] ?? `${code} `;
+function currencyPrefix(currency: unknown): string {
+  if (typeof currency !== "string") return "";
+  const code = currency.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(code)) return "";
+  return Object.hasOwn(SYMBOLS, code) ? SYMBOLS[code] : `${code} `;
 }
 
 /** One amount with its currency symbol/prefix, no period suffix. */

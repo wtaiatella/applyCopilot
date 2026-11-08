@@ -92,3 +92,28 @@ describe("formatMoney", () => {
     expect(formatMoney(60000, "USD", "compact")).toBe("US$60k");
   });
 });
+
+describe("formatSalary hardening", () => {
+  const b = { salaryMin: 5000, salaryMax: null, salaryPeriod: "MONTHLY" as const };
+  it("pins 1,000,000 compact", () => {
+    expect(formatMoney(1_000_000, "USD", "compact")).toBe("US$1000k");
+    expect(formatMoney(1_000_000, null, "compact")).toBe("1000k");
+  });
+  it("renders other valid codes with a CODE prefix", () => {
+    expect(formatSalary({ ...b, currency: " cad " })).toBe("CAD 5k/mo");
+  });
+  it("renders no prefix for invalid or missing currency", () => {
+    for (const currency of ["", "US", "USDX", "U$D", "1234", "__proto__", "constructor"]) {
+      expect(formatSalary({ ...b, currency })).toBe("5k/mo");
+    }
+    expect(formatSalary({ ...b, currency: null })).toBe("5k/mo");
+  });
+  it("treats non-string currency as missing without throwing", () => {
+    for (const currency of [123, {}, [], undefined, null]) {
+      const c = currency as unknown as string;
+      expect(() => formatSalary({ ...b, currency: c })).not.toThrow();
+      expect(formatSalary({ ...b, currency: c })).toBe("5k/mo");
+      expect(formatMoney(5000, c, "compact")).toBe("5k");
+    }
+  });
+});

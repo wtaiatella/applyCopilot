@@ -150,3 +150,17 @@ describe("evaluateSalaryFit", () => {
     });
   });
 });
+
+describe("evaluateSalaryFit non-string currency", () => {
+  it("never throws and behaves as a missing currency", () => {
+    for (const bad of [123, null, {}, undefined]) {
+      const c = bad as unknown as string;
+      expect(() => evaluateSalaryFit(job({ currency: c }), prefs())).not.toThrow();
+      expect(evaluateSalaryFit(job({ currency: c }), prefs()).reason).toBe("CURRENCY_MISMATCH");
+      expect(evaluateSalaryFit(job({ currency: c, salaryPeriod: null }), prefs()).reason).toBe("INFERENCE_BLOCKED");
+      expect(
+        evaluateSalaryFit(job(), prefs({ salaryCurrency: c })).reason
+      ).toBe("CURRENCY_MISMATCH");
+    }
+  });
+});

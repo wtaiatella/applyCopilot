@@ -44,7 +44,7 @@ export interface SalaryFit {
   reason: SalaryFitReason;
 }
 
-function usable(n: number | null | undefined): n is number {
+export function usable(n: number | null | undefined): n is number {
   return typeof n === "number" && Number.isFinite(n) && n > 0;
 }
 
@@ -64,7 +64,8 @@ export function yearlyEquivalent(monthly: number): number {
   return Math.round(monthly * MONTHS_PER_YEAR);
 }
 
-function sameCurrency(a: string | null, b: string | null): boolean {
+function sameCurrency(a: unknown, b: unknown): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
   if (!a || !b) return false;
   return a.trim().toUpperCase() === b.trim().toUpperCase();
 }

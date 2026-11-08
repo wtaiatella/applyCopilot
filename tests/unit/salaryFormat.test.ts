@@ -116,4 +116,13 @@ describe("formatSalary hardening", () => {
       expect(formatMoney(5000, c, "compact")).toBe("5k");
     }
   });
+  it("renders no suffix (never 'undefined') for an out-of-range period", () => {
+    const out = formatSalary({
+      ...b,
+      currency: "USD",
+      salaryPeriod: "WEEKLY" as unknown as "MONTHLY",
+    });
+    expect(out).toBe("US$5k");
+    expect(out).not.toContain("undefined");
+  });
 });

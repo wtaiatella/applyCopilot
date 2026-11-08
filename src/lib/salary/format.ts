@@ -76,7 +76,7 @@ export function formatSalary(
   if (min === null && max === null) return null;
 
   const period = salary.salaryPeriod === undefined ? "YEARLY" : salary.salaryPeriod;
-  const suffix = period ? SUFFIXES[period] : "";
+  const suffix = period ? (SUFFIXES[period] ?? "") : "";
 
   const lo = min ?? max!;
   const hi = max ?? min!;

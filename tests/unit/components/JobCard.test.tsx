@@ -90,6 +90,20 @@ describe("JobCard - compact salary line (APC-44)", () => {
     expect(screen.getByText("US$40 - US$60/hr")).toBeInTheDocument();
   });
 
+  it("shows /mo for a monthly salary", () => {
+    render(
+      <JobCard
+        job={{
+          ...baseJob,
+          jobFacts: { salaryMin: 5000, salaryMax: 8000, currency: "USD", salaryPeriod: "MONTHLY" },
+        }}
+        isSelected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText("US$5k - US$8k/mo")).toBeInTheDocument();
+  });
+
   it("renders /yr when the salaryPeriod key is absent (legacy fact)", () => {
     render(
       <JobCard
@@ -125,6 +139,7 @@ describe("JobCard - compact salary line (APC-44)", () => {
     );
     expect(container.textContent).not.toMatch(/\/(hr|mo|yr)/);
     expect(container.textContent).not.toMatch(/US\$/);
+    expect(container.querySelector("[title*='US$']")).toBeNull();
   });
 
   it("omits the salary line when jobFacts is absent", () => {
@@ -132,5 +147,6 @@ describe("JobCard - compact salary line (APC-44)", () => {
       <JobCard job={baseJob} isSelected={false} onClick={() => {}} />,
     );
     expect(container.textContent).not.toMatch(/US\$/);
+    expect(container.querySelector("[title*='US$']")).toBeNull();
   });
 });

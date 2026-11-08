@@ -95,6 +95,9 @@ describe("GET/PUT /api/profile/preferences (T019/T022)", () => {
         requiresVisaRelocation: null,
         salaryMin: null,
         salaryCurrency: null,
+        salaryPeriod: "YEARLY",
+        hourlyMin: null,
+        hourlyCurrency: null,
         excludeKeywords: [],
       });
     });
@@ -143,6 +146,9 @@ describe("GET/PUT /api/profile/preferences (T019/T022)", () => {
         requiresVisaRelocation: false,
         salaryMin: 120000,
         salaryCurrency: "USD",
+        salaryPeriod: "YEARLY",
+        hourlyMin: null,
+        hourlyCurrency: null,
         excludeKeywords: ["php", "wordpress"],
       };
 
@@ -194,6 +200,117 @@ describe("GET/PUT /api/profile/preferences (T019/T022)", () => {
         where: { profileId: testProfileId },
       });
       expect(onlyOneRow).toHaveLength(1);
+    });
+
+    it("round-trips MONTHLY salary plus hourly minimum (AC-3, AC-8a)", async () => {
+      const payload = {
+        seniority: null,
+        totalYearsExperience: null,
+        acceptsContract: null,
+        acceptsFreelance: null,
+        acceptsOnsite: null,
+        acceptsHybrid: null,
+        acceptsRemote: null,
+        onlyWorldwide: null,
+        hasUsWorkAuth: null,
+        requiresVisaRelocation: null,
+        salaryMin: 5000,
+        salaryCurrency: "EUR",
+        salaryPeriod: "MONTHLY",
+        hourlyMin: 45.5,
+        hourlyCurrency: "USD",
+        excludeKeywords: [],
+      };
+      const putRes = await putPreferencesHandler(
+        new Request("http://localhost:3000/api/profile/preferences", {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        }),
+      );
+      expect(putRes.status).toBe(200);
+      expect(await putRes.json()).toEqual(payload);
+      const getRes = await getPreferencesHandler();
+      expect(await getRes.json()).toEqual(payload);
+    });
+
+    it("defaults to YEARLY when an old client omits the new keys, and reads a period-less row as YEARLY (AC-6, AC-8)", async () => {
+      const putRes = await putPreferencesHandler(
+        new Request("http://localhost:3000/api/profile/preferences", {
+          method: "PUT",
+          body: JSON.stringify({
+            seniority: null,
+            totalYearsExperience: null,
+            acceptsContract: null,
+            acceptsFreelance: null,
+            acceptsOnsite: null,
+            acceptsHybrid: null,
+            acceptsRemote: null,
+            onlyWorldwide: null,
+            hasUsWorkAuth: null,
+            requiresVisaRelocation: null,
+            salaryMin: 90000,
+            salaryCurrency: "USD",
+            excludeKeywords: [],
+          }),
+        }),
+      );
+      expect(putRes.status).toBe(200);
+      const data = await putRes.json();
+      expect(data.salaryPeriod).toBe("YEARLY");
+      expect(data.hourlyMin).toBeNull();
+      expect(data.hourlyCurrency).toBeNull();
+
+      // Row created directly without a period (DB default) reads YEARLY.
+      await prisma.userPreferences.deleteMany({
+        where: { profileId: otherProfileId },
+      });
+      await prisma.userPreferences.create({
+        data: { profileId: otherProfileId, salaryMin: 1000 },
+      });
+      mockAuth.mockResolvedValue({
+        user: { id: otherUserId, email: otherEmail, role: "USER" },
+        expires: "any",
+      });
+      const getData = await (await getPreferencesHandler()).json();
+      expect(getData.salaryPeriod).toBe("YEARLY");
+      expect(getData.hourlyMin).toBeNull();
+    });
+
+    it("rejects MONTHLY salaryMin > 1,000,000 and HOURLY period with 400", async () => {
+      const mk = (extra: Record<string, unknown>) =>
+        new Request("http://localhost:3000/api/profile/preferences", {
+          method: "PUT",
+          body: JSON.stringify({
+            seniority: null,
+            totalYearsExperience: null,
+            acceptsContract: null,
+            acceptsFreelance: null,
+            acceptsOnsite: null,
+            acceptsHybrid: null,
+            acceptsRemote: null,
+            onlyWorldwide: null,
+            hasUsWorkAuth: null,
+            requiresVisaRelocation: null,
+            salaryMin: null,
+            salaryCurrency: null,
+            excludeKeywords: [],
+            ...extra,
+          }),
+        });
+      const monthly = await putPreferencesHandler(
+        mk({ salaryPeriod: "MONTHLY", salaryMin: 1_000_001 }),
+      );
+      expect(monthly.status).toBe(400);
+      const body = await monthly.json();
+      expect(body.error).toBe("Validation failed");
+      expect(
+        body.details.some((d: { field: string }) => d.field === "salaryMin"),
+      ).toBe(true);
+
+      const hourly = await putPreferencesHandler(
+        mk({ salaryPeriod: "HOURLY" }),
+      );
+      expect(hourly.status).toBe(400);
     });
 
     it("scopes strictly to the authenticated session's own profile, never a different user's", async () => {

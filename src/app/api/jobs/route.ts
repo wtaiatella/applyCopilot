@@ -35,6 +35,9 @@ const DEFAULT_PREFERENCES: UserPreferencesDTO = {
   requiresVisaRelocation: null,
   salaryMin: null,
   salaryCurrency: null,
+  salaryPeriod: "YEARLY",
+  hourlyMin: null,
+  hourlyCurrency: null,
   excludeKeywords: [],
 };
 
@@ -141,6 +144,10 @@ export async function GET(request: Request) {
           requiresVisaRelocation: prefsRow.requiresVisaRelocation,
           salaryMin: prefsRow.salaryMin,
           salaryCurrency: prefsRow.salaryCurrency,
+          salaryPeriod:
+            prefsRow.salaryPeriod === "MONTHLY" ? "MONTHLY" : "YEARLY",
+          hourlyMin: prefsRow.hourlyMin,
+          hourlyCurrency: prefsRow.hourlyCurrency,
           excludeKeywords: prefsRow.excludeKeywords,
         };
       }

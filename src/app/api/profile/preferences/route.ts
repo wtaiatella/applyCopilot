@@ -21,8 +21,18 @@ const DEFAULT_PREFERENCES: UserPreferencesDTO = {
   requiresVisaRelocation: null,
   salaryMin: null,
   salaryCurrency: null,
+  salaryPeriod: "YEARLY",
+  hourlyMin: null,
+  hourlyCurrency: null,
   excludeKeywords: [],
 };
+
+// DB enum also allows HOURLY, but Zod rejects it on every write path; fall back to YEARLY defensively.
+function toPreferencePeriod(
+  period: string,
+): UserPreferencesDTO["salaryPeriod"] {
+  return period === "MONTHLY" ? "MONTHLY" : "YEARLY";
+}
 
 export async function GET() {
   try {
@@ -62,6 +72,9 @@ export async function GET() {
       requiresVisaRelocation: preferences.requiresVisaRelocation,
       salaryMin: preferences.salaryMin,
       salaryCurrency: preferences.salaryCurrency,
+      salaryPeriod: toPreferencePeriod(preferences.salaryPeriod),
+      hourlyMin: preferences.hourlyMin,
+      hourlyCurrency: preferences.hourlyCurrency,
       excludeKeywords: preferences.excludeKeywords,
     };
 
@@ -140,6 +153,9 @@ export async function PUT(req: Request) {
       requiresVisaRelocation: saved.requiresVisaRelocation,
       salaryMin: saved.salaryMin,
       salaryCurrency: saved.salaryCurrency,
+      salaryPeriod: toPreferencePeriod(saved.salaryPeriod),
+      hourlyMin: saved.hourlyMin,
+      hourlyCurrency: saved.hourlyCurrency,
       excludeKeywords: saved.excludeKeywords,
     };
 

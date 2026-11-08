@@ -28,6 +28,9 @@ const DEFAULT_PREFERENCES: UserPreferencesDTO = {
   requiresVisaRelocation: null,
   salaryMin: null,
   salaryCurrency: null,
+  salaryPeriod: "YEARLY",
+  hourlyMin: null,
+  hourlyCurrency: null,
   excludeKeywords: [],
 };
 

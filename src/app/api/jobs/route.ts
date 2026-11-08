@@ -13,7 +13,7 @@ import type { ProfileFacts } from "@/lib/validation/profileFactsSchema";
 import type { JobFacts } from "@/lib/validation/jobFactsSchema";
 import type { UserPreferencesDTO } from "@/types/profile";
 import { logger } from "@/lib/logging/logger";
-import { toPreferencePeriod } from "@/lib/salary/salary";
+import { toPreferencePeriod, type SalaryFit } from "@/lib/salary/salary";
 
 // Fixed Stage-1 SQL prefilter pool size — intentionally decoupled from the client's requested
 // page size (FR-12, spectech.md Architecture "Two-stage ranking" Technical Decision).
@@ -197,6 +197,41 @@ export async function GET(request: Request) {
       ]);
     }
 
+    // Aggregated salary-comparison diagnostics (APC-44, Q8): one counter per SalaryFitReason.
+    // "Evaluated" means a job that reached salary evaluation in computeMatchScore; jobs
+    // disqualified early by the elimination rules never reach it and are intentionally not
+    // counted, so the counters sum to the number of scored (non-disqualified) jobs.
+    const salaryCounters = {
+      compared: 0,
+      inferred: 0,
+      inferenceBlocked: 0,
+      currencyMismatch: 0,
+      noPreference: 0,
+      noJobAmount: 0,
+    };
+    const collectSalaryFit = (fit: SalaryFit): void => {
+      switch (fit.reason) {
+        case "COMPARED":
+          salaryCounters.compared++;
+          break;
+        case "COMPARED_INFERRED":
+          salaryCounters.inferred++;
+          break;
+        case "INFERENCE_BLOCKED":
+          salaryCounters.inferenceBlocked++;
+          break;
+        case "CURRENCY_MISMATCH":
+          salaryCounters.currencyMismatch++;
+          break;
+        case "NO_PREFERENCE":
+          salaryCounters.noPreference++;
+          break;
+        case "NO_JOB_AMOUNT":
+          salaryCounters.noJobAmount++;
+          break;
+      }
+    };
+
     let scoredJobs: ScoredJob[] = stage1Jobs.map((job) => {
       if (canScore && job.jobFacts && job.mustHaveSimilarity !== null) {
         const mustHave = scoreMaxCosine(
@@ -227,6 +262,7 @@ export async function GET(request: Request) {
           { profileFacts: profileFacts as ProfileFacts },
           preferences,
           skillMatchThreshold,
+          collectSalaryFit,
         );
         return {
           ...job,
@@ -257,6 +293,8 @@ export async function GET(request: Request) {
         disqualifyReason: null,
       };
     });
+
+    logger.debug("Salary comparison summary", { ...salaryCounters });
 
     // Sort: disqualified jobs demoted to the end, then by composite score DESC, then jobs with
     // no score at all last within their group (spectech.md Architecture — Stage 2 sort

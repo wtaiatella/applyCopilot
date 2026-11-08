@@ -401,9 +401,44 @@ export async function runClassificationWorker(
 
             // Validate the extracted JobFacts shape — schema validation failures follow
             // the unified 3-attempt listing-specific failure rule (FR-10, AC.6).
+            // Capture the raw AI period before parse so a value nulled by the schema
+            // preprocess (unrecognised string) can be logged (spectech D10).
+            const rawSalaryPeriod = (
+              canonicalizedJobFacts as { salaryPeriod?: unknown }
+            ).salaryPeriod;
             const parseResult = JobFactsSchema.safeParse(canonicalizedJobFacts);
             if (!parseResult.success) {
               throw new Error(parseResult.error.message);
+            }
+
+            // Always persist salaryPeriod explicitly (null = unknown) so new facts are
+            // never mistaken for legacy facts, whose key is absent (tri-state).
+            const persistedFacts = {
+              ...parseResult.data,
+              salaryPeriod: parseResult.data.salaryPeriod ?? null,
+            };
+
+            if (
+              persistedFacts.salaryPeriod === null &&
+              rawSalaryPeriod !== undefined &&
+              rawSalaryPeriod !== null
+            ) {
+              logger.warn("Unrecognised salary period dropped", {
+                jobId: job.id,
+                raw: rawSalaryPeriod,
+              });
+            }
+            if (
+              persistedFacts.salaryPeriod === null &&
+              (persistedFacts.salaryMin !== null ||
+                persistedFacts.salaryMax !== null)
+            ) {
+              logger.info("Job salary period unknown", {
+                jobId: job.id,
+                hasMin: persistedFacts.salaryMin !== null,
+                hasMax: persistedFacts.salaryMax !== null,
+                currency: persistedFacts.currency,
+              });
             }
 
             // Generate the embedding vector for the must-have skill list, under a separate
@@ -421,7 +456,7 @@ export async function runClassificationWorker(
             await prisma.$executeRaw`
               UPDATE "JobListing"
               SET
-                "jobFacts" = ${JSON.stringify(parseResult.data)}::jsonb,
+                "jobFacts" = ${JSON.stringify(persistedFacts)}::jsonb,
                 "embedding" = ${vectorString}::vector,
                 "classificationStatus" = 'COMPLETED',
                 "classificationError" = NULL,

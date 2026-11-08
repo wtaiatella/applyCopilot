@@ -10,6 +10,22 @@ import { z } from "zod";
  * Shape mirrors `match-score-architecture.md` §3.2's job-extraction contract exactly
  * (spectech.md Data Models / Database Schema).
  */
+const SALARY_PERIODS = ["HOURLY", "MONTHLY", "YEARLY"] as const;
+
+/**
+ * Tolerant preprocess for `salaryPeriod` (spectech D10). Tri-state is preserved:
+ * `undefined` (key absent, legacy) stays `undefined`, `null` stays `null`, a
+ * case-insensitive HOURLY|MONTHLY|YEARLY match is upper-cased, and anything else
+ * (unrecognised or empty string, wrong type) becomes `null` so a bad period never
+ * fails the whole job.
+ */
+function normalisePeriod(value: unknown): unknown {
+  if (value === undefined || value === null) return value;
+  if (typeof value !== "string") return null;
+  const upper = value.trim().toUpperCase();
+  return (SALARY_PERIODS as readonly string[]).includes(upper) ? upper : null;
+}
+
 export const JobFactsSchema = z.object({
   mustHave: z.array(z.string().min(1).max(100)).max(50),
   niceToHave: z.array(z.string().min(1).max(100)).max(50),
@@ -30,6 +46,9 @@ export const JobFactsSchema = z.object({
     .string()
     .regex(/^[A-Z]{3}$/)
     .nullable(),
+  salaryPeriod: z
+    .preprocess(normalisePeriod, z.enum(SALARY_PERIODS).nullable())
+    .optional(),
 });
 
 export type JobFacts = z.infer<typeof JobFactsSchema>;

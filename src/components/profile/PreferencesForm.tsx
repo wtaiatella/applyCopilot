@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { Card, Select, InputNumber, Input, Badge, Tooltip } from "antd";
+import { Card, Select, InputNumber, AutoComplete, Badge } from "antd";
 import {
   CloudSyncOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import { UserPreferencesDTO, SeniorityLevel } from "@/types/profile";
+import { yearlyEquivalent } from "@/lib/salary/salary";
+import { formatMoney } from "@/lib/salary/format";
 
 const { Option } = Select;
 
@@ -50,6 +52,31 @@ const TRISTATE_OPTIONS: { value: string; label: string }[] = [
   { value: "true", label: "Accept / Yes" },
   { value: "false", label: "Reject / No" },
 ];
+
+const SALARY_MAX = { YEARLY: 10_000_000, MONTHLY: 1_000_000 } as const;
+const HOURLY_MAX = 100_000;
+
+const PERIOD_OPTIONS = [
+  { value: "YEARLY", label: "Yearly" },
+  { value: "MONTHLY", label: "Monthly" },
+];
+
+const COMMON_CURRENCIES = ["USD", "EUR", "GBP", "BRL", "CAD", "AUD"];
+
+// Common codes plus whatever 3-letter code the user typed (any ISO 4217 code is valid).
+function currencyOptions(current: string | null) {
+  const codes =
+    current && /^[A-Z]{3}$/.test(current) && !COMMON_CURRENCIES.includes(current)
+      ? [...COMMON_CURRENCIES, current]
+      : COMMON_CURRENCIES;
+  return codes
+    .filter((c) => !current || c.startsWith(current))
+    .map((c) => ({ value: c, label: c }));
+}
+
+function normalizeCurrency(value: string | undefined): string | null {
+  return (value ?? "").toUpperCase().slice(0, 3) || null;
+}
 
 function toTriStateValue(value: boolean | null): string {
   return value === null ? "null" : String(value);
@@ -159,6 +186,19 @@ export default function PreferencesForm() {
       return next;
     });
   };
+
+  const handlePeriodChange = (period: "YEARLY" | "MONTHLY") => {
+    updateField("salaryPeriod", period);
+    // Keep the saved amount valid for the new period's limit.
+    if (prefs.salaryMin !== null && prefs.salaryMin > SALARY_MAX[period]) {
+      updateField("salaryMin", SALARY_MAX[period]);
+    }
+  };
+
+  const showYearlyHint =
+    prefs.salaryPeriod === "MONTHLY" &&
+    prefs.salaryMin !== null &&
+    prefs.salaryMin > 0;
 
   if (loading) {
     return (
@@ -378,39 +418,128 @@ export default function PreferencesForm() {
             </Select>
           </div>
 
-          <div>
-            <label className="text-zinc-300 text-sm block mb-1">
-              Minimum Salary
-            </label>
-            <InputNumber
-              min={0}
-              max={10_000_000}
-              value={prefs.salaryMin ?? undefined}
-              onChange={(value) => updateField("salaryMin", value ?? null)}
-              className="w-full bg-zinc-950 border-zinc-800 text-white"
-              placeholder="Not stated"
-            />
-          </div>
+          <fieldset className="md:col-span-2 border border-zinc-800 rounded-md p-3">
+            <legend className="text-zinc-300 text-sm px-1">
+              Minimum salary (annual/monthly)
+            </legend>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label
+                  htmlFor="pref-salary-min"
+                  className="text-zinc-300 text-sm block mb-1"
+                >
+                  Minimum Salary
+                </label>
+                <InputNumber
+                  id="pref-salary-min"
+                  min={0}
+                  max={SALARY_MAX[prefs.salaryPeriod]}
+                  value={prefs.salaryMin ?? undefined}
+                  onChange={(value) => updateField("salaryMin", value ?? null)}
+                  className="w-full bg-zinc-950 border-zinc-800 text-white"
+                  placeholder="Not stated"
+                  aria-describedby={
+                    showYearlyHint ? "pref-salary-hint" : "pref-salary-help"
+                  }
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="pref-salary-currency"
+                  className="text-zinc-300 text-sm block mb-1"
+                >
+                  Salary Currency
+                </label>
+                <AutoComplete
+                  id="pref-salary-currency"
+                  value={prefs.salaryCurrency ?? ""}
+                  options={currencyOptions(prefs.salaryCurrency)}
+                  onChange={(value: string) =>
+                    updateField("salaryCurrency", normalizeCurrency(value))
+                  }
+                  placeholder="USD"
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="pref-salary-period"
+                  className="text-zinc-300 text-sm block mb-1"
+                >
+                  Salary Period
+                </label>
+                <Select
+                  id="pref-salary-period"
+                  value={prefs.salaryPeriod}
+                  onChange={handlePeriodChange}
+                  options={PERIOD_OPTIONS}
+                  className="w-full"
+                />
+              </div>
+            </div>
+            {showYearlyHint && (
+              <p
+                id="pref-salary-hint"
+                className="text-emerald-400 text-xs mt-2"
+              >
+                {`≈ ${formatMoney(
+                  yearlyEquivalent(prefs.salaryMin as number),
+                  prefs.salaryCurrency,
+                )} per year`}
+              </p>
+            )}
+            <p id="pref-salary-help" className="text-zinc-500 text-xs mt-2">
+              Set a currency (e.g. USD, EUR, BRL): salaries are only compared
+              with jobs that state the same currency.
+            </p>
+          </fieldset>
 
-          <div>
-            <Tooltip title="3-letter ISO 4217 currency code, e.g. USD, EUR, BRL">
-              <label className="text-zinc-300 text-sm block mb-1">
-                Salary Currency
-              </label>
-            </Tooltip>
-            <Input
-              value={prefs.salaryCurrency ?? ""}
-              onChange={(e) =>
-                updateField(
-                  "salaryCurrency",
-                  e.target.value.toUpperCase().slice(0, 3) || null,
-                )
-              }
-              maxLength={3}
-              placeholder="USD"
-              className="bg-zinc-950 border-zinc-800 text-white"
-            />
-          </div>
+          <fieldset className="md:col-span-2 border border-zinc-800 rounded-md p-3">
+            <legend className="text-zinc-300 text-sm px-1">
+              Minimum hourly rate
+            </legend>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label
+                  htmlFor="pref-hourly-min"
+                  className="text-zinc-300 text-sm block mb-1"
+                >
+                  Minimum Hourly Rate
+                </label>
+                <InputNumber
+                  id="pref-hourly-min"
+                  min={0}
+                  max={HOURLY_MAX}
+                  value={prefs.hourlyMin ?? undefined}
+                  onChange={(value) => updateField("hourlyMin", value ?? null)}
+                  className="w-full bg-zinc-950 border-zinc-800 text-white"
+                  placeholder="Not stated"
+                  aria-describedby="pref-hourly-help"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="pref-hourly-currency"
+                  className="text-zinc-300 text-sm block mb-1"
+                >
+                  Hourly Currency
+                </label>
+                <AutoComplete
+                  id="pref-hourly-currency"
+                  value={prefs.hourlyCurrency ?? ""}
+                  options={currencyOptions(prefs.hourlyCurrency)}
+                  onChange={(value: string) =>
+                    updateField("hourlyCurrency", normalizeCurrency(value))
+                  }
+                  placeholder="USD"
+                  className="w-full"
+                />
+              </div>
+            </div>
+            <p id="pref-hourly-help" className="text-zinc-500 text-xs mt-2">
+              Set a currency (e.g. USD, EUR, BRL) so hourly jobs can be compared.
+            </p>
+          </fieldset>
 
           <div className="md:col-span-2">
             <label className="text-zinc-300 text-sm block mb-1">

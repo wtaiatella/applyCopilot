@@ -5,6 +5,10 @@ import * as path from "path";
 import { prisma } from "@/lib/db/prisma";
 import { getStrategy } from "./registry";
 import { logger } from "@/lib/logging/logger";
+import {
+  normalisePeriod,
+  describeUntrustedForLog,
+} from "@/lib/validation/jobFactsSchema";
 import type { SalaryPeriod } from "@/lib/salary/salary";
 
 const turndown = new TurndownService({
@@ -484,6 +488,22 @@ export async function runTask(taskId: string) {
         }
         // Period is replaced only when salary data is supplied; otherwise the
         // stored period is left untouched (undefined = no change in Prisma).
+        // Coerce the strategy-supplied period against the shared allow-list; an
+        // out-of-enum or non-string value becomes null (never throws the batch).
+        const salaryPeriod = normalisePeriod(item.salaryPeriod) as
+          | SalaryPeriod
+          | null
+          | undefined;
+        if (
+          salaryPeriod === null &&
+          item.salaryPeriod !== undefined &&
+          item.salaryPeriod !== null
+        ) {
+          logger.warn("Unrecognised salary period dropped", {
+            jobExternalId: item.externalJobId,
+            ...describeUntrustedForLog(item.salaryPeriod),
+          });
+        }
         const hasSalaryData = Boolean(item.salaryMin || item.salaryMax);
         // Upsert listing using unique compound constraint (portalId + externalJobId)
         await prisma.jobListing.upsert({
@@ -509,7 +529,7 @@ export async function runTask(taskId: string) {
             postedAt: item.postedAt || null,
             salaryMin: item.salaryMin || null,
             salaryMax: item.salaryMax || null,
-            salaryPeriod: item.salaryPeriod ?? null,
+            salaryPeriod: salaryPeriod ?? null,
             currency: item.currency || null,
           },
           update: {
@@ -527,7 +547,7 @@ export async function runTask(taskId: string) {
             postedAt: item.postedAt || null,
             salaryMin: item.salaryMin || null,
             salaryMax: item.salaryMax || null,
-            salaryPeriod: hasSalaryData ? (item.salaryPeriod ?? null) : undefined,
+            salaryPeriod: hasSalaryData ? (salaryPeriod ?? null) : undefined,
             currency: item.currency || null,
           },
         });

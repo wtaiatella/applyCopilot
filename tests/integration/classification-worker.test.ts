@@ -949,7 +949,32 @@ describe("Classification Worker — runClassificationWorker", () => {
     expect(persistedFacts().salaryPeriod).toBeNull();
     expect(logger.warn).toHaveBeenCalledWith(
       "Unrecognised salary period dropped",
-      { jobId: "job-001", raw: "WEEKLY" },
+      { jobId: "job-001", rawType: "string", raw: "WEEKLY" },
     );
+  });
+
+  it("logs oversized, multi-line and object raw periods only in bounded form", async () => {
+    const cases: unknown[] = [
+      "X".repeat(5000),
+      "line1\nline2\r\nline3\u0007",
+      { nested: "x".repeat(5000) },
+    ];
+    for (const raw of cases) {
+      jest.clearAllMocks();
+      mockFindMany.mockResolvedValue([makeMockJob()]);
+      mockClassifyJobListing.mockResolvedValue({
+        jobFacts: makeValidJobFacts({ salaryMin: 900, salaryPeriod: raw }),
+      });
+      await runClassificationWorker();
+      const call = (logger.warn as jest.Mock).mock.calls.find(
+        (c) => c[0] === "Unrecognised salary period dropped",
+      );
+      expect(call).toBeDefined();
+      const payload = call![1] as { raw: unknown; rawType: string };
+      expect(typeof payload.raw).toBe("string");
+      expect((payload.raw as string).length).toBeLessThanOrEqual(32);
+      expect(payload.raw as string).not.toMatch(/[\u0000-\u001f]/);
+      expect(payload.rawType).toBe(typeof raw);
+    }
   });
 });

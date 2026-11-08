@@ -19,11 +19,31 @@ const SALARY_PERIODS = ["HOURLY", "MONTHLY", "YEARLY"] as const;
  * (unrecognised or empty string, wrong type) becomes `null` so a bad period never
  * fails the whole job.
  */
-function normalisePeriod(value: unknown): unknown {
+export function normalisePeriod(value: unknown): unknown {
   if (value === undefined || value === null) return value;
   if (typeof value !== "string") return null;
   const upper = value.trim().toUpperCase();
   return (SALARY_PERIODS as readonly string[]).includes(upper) ? upper : null;
+}
+
+/**
+ * Bounded, log-safe description of an untrusted raw value: its type plus at most
+ * 32 characters of its string form with control characters (incl. newlines) removed.
+ */
+export function describeUntrustedForLog(value: unknown): {
+  rawType: string;
+  raw: string;
+} {
+  let text: string;
+  try {
+    text = String(value);
+  } catch {
+    text = "";
+  }
+  return {
+    rawType: typeof value,
+    raw: text.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").slice(0, 32),
+  };
 }
 
 export const JobFactsSchema = z.object({

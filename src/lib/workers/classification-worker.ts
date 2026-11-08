@@ -12,7 +12,10 @@ import {
   canonicalizeJobFacts,
 } from "../../services/jobClassificationService";
 import { generateEmbedding } from "../ai/vector-service";
-import { JobFactsSchema } from "../validation/jobFactsSchema";
+import {
+  JobFactsSchema,
+  describeUntrustedForLog,
+} from "../validation/jobFactsSchema";
 
 /** The SystemConfig key for the Parsing Provider capability */
 const PARSING_PROVIDER_KEY = "AI_PROVIDER_PARSING";
@@ -425,7 +428,7 @@ export async function runClassificationWorker(
             ) {
               logger.warn("Unrecognised salary period dropped", {
                 jobId: job.id,
-                raw: rawSalaryPeriod,
+                ...describeUntrustedForLog(rawSalaryPeriod),
               });
             }
             if (

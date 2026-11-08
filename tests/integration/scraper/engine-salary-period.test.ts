@@ -140,4 +140,29 @@ describe("Scraper engine - salaryPeriod persistence (APC-44)", () => {
     expect(row.salaryPeriod).toBe("HOURLY");
     expect(row.salaryMin).toBeNull();
   });
+
+  it("(a) coerces an unrecognised period to NULL without throwing the batch", async () => {
+    await run([
+      item("bad-a", {
+        salaryMin: 10,
+        salaryPeriod: "WEEKLY" as unknown as ListResult["salaryPeriod"],
+      }),
+      item("bad-b", {
+        salaryMin: 20,
+        salaryPeriod: { x: 1 } as unknown as ListResult["salaryPeriod"],
+      }),
+      item("good-after", { salaryMin: 30, salaryPeriod: "YEARLY" }),
+    ]);
+    expect((await stored("bad-a")).salaryPeriod).toBeNull();
+    expect((await stored("bad-b")).salaryPeriod).toBeNull();
+    expect((await stored("good-after")).salaryPeriod).toBe("YEARLY");
+  });
+
+  it("(b) update supplying only salaryMax and no period replaces the stored period with NULL", async () => {
+    await run([item("upd-b", { salaryMin: 40, salaryPeriod: "HOURLY" })]);
+    await run([item("upd-b", { salaryMax: 9000 })]);
+    const row = await stored("upd-b");
+    expect(row.salaryMax).toBe(9000);
+    expect(row.salaryPeriod).toBeNull();
+  });
 });

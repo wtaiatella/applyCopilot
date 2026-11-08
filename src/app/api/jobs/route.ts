@@ -13,6 +13,7 @@ import type { ProfileFacts } from "@/lib/validation/profileFactsSchema";
 import type { JobFacts } from "@/lib/validation/jobFactsSchema";
 import type { UserPreferencesDTO } from "@/types/profile";
 import { logger } from "@/lib/logging/logger";
+import { toPreferencePeriod } from "@/lib/salary/salary";
 
 // Fixed Stage-1 SQL prefilter pool size — intentionally decoupled from the client's requested
 // page size (FR-12, spectech.md Architecture "Two-stage ranking" Technical Decision).
@@ -144,8 +145,12 @@ export async function GET(request: Request) {
           requiresVisaRelocation: prefsRow.requiresVisaRelocation,
           salaryMin: prefsRow.salaryMin,
           salaryCurrency: prefsRow.salaryCurrency,
-          salaryPeriod:
-            prefsRow.salaryPeriod === "MONTHLY" ? "MONTHLY" : "YEARLY",
+          salaryPeriod: toPreferencePeriod(prefsRow.salaryPeriod, (original) =>
+            logger.warn("Collapsed unsupported stored salaryPeriod to YEARLY", {
+              profileId: profileRow.id,
+              salaryPeriod: original,
+            }),
+          ),
           hourlyMin: prefsRow.hourlyMin,
           hourlyCurrency: prefsRow.hourlyCurrency,
           excludeKeywords: prefsRow.excludeKeywords,

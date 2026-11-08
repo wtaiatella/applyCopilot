@@ -8,6 +8,7 @@ import {
 } from "@/app/api/profile/preferences/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
+import { logger } from "@/lib/logging/logger";
 import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
@@ -274,6 +275,29 @@ describe("GET/PUT /api/profile/preferences (T019/T022)", () => {
       const getData = await (await getPreferencesHandler()).json();
       expect(getData.salaryPeriod).toBe("YEARLY");
       expect(getData.hourlyMin).toBeNull();
+    });
+
+    it("collapses a stray DB HOURLY period to YEARLY and logs a bounded warn", async () => {
+      await prisma.userPreferences.deleteMany({
+        where: { profileId: testProfileId },
+      });
+      await prisma.userPreferences.create({
+        data: { profileId: testProfileId, salaryMin: 50, salaryPeriod: "HOURLY" },
+      });
+      const warn = jest.spyOn(logger, "warn");
+      try {
+        const data = await (await getPreferencesHandler()).json();
+        expect(data.salaryPeriod).toBe("YEARLY");
+        expect(warn).toHaveBeenCalledWith(
+          "Collapsed unsupported stored salaryPeriod to YEARLY",
+          { profileId: testProfileId, salaryPeriod: "HOURLY" },
+        );
+      } finally {
+        warn.mockRestore();
+        await prisma.userPreferences.deleteMany({
+          where: { profileId: testProfileId },
+        });
+      }
     });
 
     it("rejects MONTHLY salaryMin > 1,000,000 and HOURLY period with 400", async () => {

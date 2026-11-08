@@ -26,6 +26,20 @@ export interface SalaryPrefs {
   hourlyCurrency: string | null;
 }
 
+/**
+ * Collapses a stored preference period to the two valid values. The DB enum also allows
+ * HOURLY, but every write path rejects it; any other value falls back to YEARLY.
+ * `onCollapse` receives the (enum) value that was collapsed so callers can log it.
+ */
+export function toPreferencePeriod(
+  period: string,
+  onCollapse?: (original: string) => void,
+): "YEARLY" | "MONTHLY" {
+  if (period === "MONTHLY" || period === "YEARLY") return period;
+  onCollapse?.(period);
+  return "YEARLY";
+}
+
 export type SalaryFitReason =
   | "COMPARED"
   | "COMPARED_INFERRED"

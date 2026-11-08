@@ -2,6 +2,7 @@ import {
   inferPeriod,
   toYearly,
   yearlyEquivalent,
+  toPreferencePeriod,
   evaluateSalaryFit,
   MONTHS_PER_YEAR,
   type JobSalaryInput,
@@ -162,5 +163,19 @@ describe("evaluateSalaryFit non-string currency", () => {
         evaluateSalaryFit(job(), prefs({ salaryCurrency: c })).reason
       ).toBe("CURRENCY_MISMATCH");
     }
+  });
+});
+
+describe("toPreferencePeriod", () => {
+  it("keeps YEARLY and MONTHLY without calling back", () => {
+    const cb = jest.fn();
+    expect(toPreferencePeriod("YEARLY", cb)).toBe("YEARLY");
+    expect(toPreferencePeriod("MONTHLY", cb)).toBe("MONTHLY");
+    expect(cb).not.toHaveBeenCalled();
+  });
+  it("collapses HOURLY to YEARLY and reports the original value", () => {
+    const cb = jest.fn();
+    expect(toPreferencePeriod("HOURLY", cb)).toBe("YEARLY");
+    expect(cb).toHaveBeenCalledWith("HOURLY");
   });
 });

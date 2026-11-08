@@ -128,6 +128,7 @@ export default function PreferencesForm() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [clampNotice, setClampNotice] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -170,6 +171,7 @@ export default function PreferencesForm() {
         });
         if (!res.ok) throw new Error("Failed to save preferences");
         setSaveStatus("saved");
+        setClampNotice(false);
       } catch {
         setSaveStatus("error");
       }
@@ -192,6 +194,9 @@ export default function PreferencesForm() {
     // Keep the saved amount valid for the new period's limit.
     if (prefs.salaryMin !== null && prefs.salaryMin > SALARY_MAX[period]) {
       updateField("salaryMin", SALARY_MAX[period]);
+      setClampNotice(true);
+    } else {
+      setClampNotice(false);
     }
   };
 
@@ -435,12 +440,18 @@ export default function PreferencesForm() {
                   min={0}
                   max={SALARY_MAX[prefs.salaryPeriod]}
                   value={prefs.salaryMin ?? undefined}
-                  onChange={(value) => updateField("salaryMin", value ?? null)}
+                  onChange={(value) => {
+                    setClampNotice(false);
+                    updateField("salaryMin", value ?? null);
+                  }}
                   className="w-full bg-zinc-950 border-zinc-800 text-white"
                   placeholder="Not stated"
-                  aria-describedby={
-                    showYearlyHint ? "pref-salary-hint" : "pref-salary-help"
-                  }
+                  aria-describedby={[
+                    clampNotice ? "pref-salary-notice" : null,
+                    showYearlyHint ? "pref-salary-hint" : "pref-salary-help",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                 />
               </div>
               <div>
@@ -477,6 +488,15 @@ export default function PreferencesForm() {
                 />
               </div>
             </div>
+            {clampNotice && (
+              <p
+                id="pref-salary-notice"
+                role="status"
+                className="text-amber-400 text-xs mt-2"
+              >
+                Minimum adjusted to the monthly maximum of 1,000,000
+              </p>
+            )}
             {showYearlyHint && (
               <p
                 id="pref-salary-hint"

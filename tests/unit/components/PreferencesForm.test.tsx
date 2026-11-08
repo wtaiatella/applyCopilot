@@ -132,4 +132,89 @@ describe("PreferencesForm — multi-period salary (APC-44)", () => {
       jest.useRealTimers();
     }
   });
+
+  describe("monthly clamp notice", () => {
+    const switchToMonthly = async () => {
+      fireEvent.mouseDown(screen.getByLabelText("Salary Period"));
+      fireEvent.click(
+        await screen.findByText("Monthly", {
+          selector: ".ant-select-item-option-content",
+        }),
+      );
+    };
+    const notice = () =>
+      screen.queryByText("Minimum adjusted to the monthly maximum of 1,000,000");
+
+    it("clamps to 1,000,000 and shows a visible status notice", async () => {
+      await renderForm({ salaryMin: 5_000_000, salaryCurrency: "USD" });
+      await switchToMonthly();
+      expect(screen.getByLabelText("Minimum Salary")).toHaveValue("1000000");
+      const el = notice();
+      expect(el).toBeVisible();
+      expect(el).toHaveAttribute("role", "status");
+      expect(screen.getByLabelText("Minimum Salary").getAttribute("aria-describedby")).toContain(
+        el!.id,
+      );
+    });
+
+    it("shows no notice when the amount is within the monthly limit", async () => {
+      await renderForm({ salaryMin: 900_000, salaryCurrency: "USD" });
+      await switchToMonthly();
+      expect(screen.getByLabelText("Minimum Salary")).toHaveValue("900000");
+      expect(notice()).toBeNull();
+    });
+
+    it("clears the notice when the amount is edited", async () => {
+      await renderForm({ salaryMin: 5_000_000, salaryCurrency: "USD" });
+      await switchToMonthly();
+      expect(notice()).not.toBeNull();
+      fireEvent.change(screen.getByLabelText("Minimum Salary"), {
+        target: { value: "2000" },
+      });
+      expect(notice()).toBeNull();
+    });
+  });
+
+  describe("currency inputs", () => {
+    it("uppercases and cuts salaryCurrency to 3 letters", async () => {
+      jest.useFakeTimers();
+      try {
+        await renderForm();
+        fireEvent.change(screen.getByLabelText("Salary Currency"), {
+          target: { value: "brlx" },
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(2000);
+        });
+        await waitFor(() =>
+          expect(fetchMock.mock.calls.some((c) => c[1]?.method === "PUT")).toBe(true),
+        );
+        const put = fetchMock.mock.calls.find((c) => c[1]?.method === "PUT")!;
+        expect(JSON.parse(put[1].body).salaryCurrency).toBe("BRL");
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    const optionTexts = () =>
+      Array.from(
+        document.querySelectorAll(".ant-select-item-option-content"),
+      ).map((e) => e.textContent);
+
+    it("offers the common codes when empty", async () => {
+      await renderForm();
+      fireEvent.mouseDown(screen.getByLabelText("Salary Currency"));
+      await screen.findByText("USD", { selector: ".ant-select-item-option-content" });
+      expect(optionTexts()).toEqual(["USD", "EUR", "GBP", "BRL", "CAD", "AUD"]);
+    });
+
+    it("adds a typed uppercased 3-letter code that is not a common one", async () => {
+      await renderForm();
+      const input = screen.getByLabelText("Salary Currency");
+      fireEvent.mouseDown(input);
+      fireEvent.change(input, { target: { value: "chf" } });
+      await screen.findByText("CHF", { selector: ".ant-select-item-option-content" });
+      expect(optionTexts()).toEqual(["CHF"]);
+    });
+  });
 });

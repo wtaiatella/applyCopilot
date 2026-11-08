@@ -27,14 +27,14 @@ export const UserPreferencesInputSchema = z
     hasUsWorkAuth: nullableBoolean,
     requiresVisaRelocation: nullableBoolean,
 
-    salaryMin: z.number().nonnegative().max(10_000_000).nullable(),
+    salaryMin: z.number().finite().nonnegative().max(10_000_000).nullable(),
     salaryCurrency: z
       .string()
       .regex(/^[A-Z]{3}$/)
       .nullable(),
     // HOURLY is allowed by the DB enum but is never a valid preference period (APC-44 D9).
     salaryPeriod: z.enum(["YEARLY", "MONTHLY"]).default("YEARLY"),
-    hourlyMin: z.number().nonnegative().max(100_000).nullable().default(null),
+    hourlyMin: z.number().finite().nonnegative().max(100_000).nullable().default(null),
     hourlyCurrency: z
       .string()
       .regex(/^[A-Z]{3}$/)

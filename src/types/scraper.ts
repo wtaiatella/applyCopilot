@@ -1,3 +1,5 @@
+import type { SalaryPeriod } from '@/lib/salary/salary';
+
 export type ScrapeTaskType = 'LIST' | 'DEEP';
 export type ScrapeTaskStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
 export type PortalStatus = 'ACTIVE' | 'BROKEN' | 'DISABLED';
@@ -45,6 +47,7 @@ export interface JobListingDTO {
   postedAt: string | null;
   salaryMin: number | null;
   salaryMax: number | null;
+  salaryPeriod?: SalaryPeriod | null;
   currency: string | null;
 }
 

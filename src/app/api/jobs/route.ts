@@ -317,6 +317,10 @@ export async function GET(request: Request) {
             employmentType: job.jobFacts.employmentType,
             salaryMin: job.jobFacts.salaryMin,
             salaryMax: job.jobFacts.salaryMax,
+            // Tri-state passthrough: key omitted (legacy) vs null (unknown) vs stated value.
+            ...("salaryPeriod" in job.jobFacts
+              ? { salaryPeriod: job.jobFacts.salaryPeriod }
+              : {}),
             currency: job.jobFacts.currency,
           }
         : null,

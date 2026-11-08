@@ -75,3 +75,62 @@ describe("JobCard", () => {
     expect(screen.getByText("Sync Profile")).toBeInTheDocument();
   });
 });
+
+describe("JobCard - compact salary line (APC-44)", () => {
+  const facts = { salaryMin: 40, salaryMax: 60, currency: "USD" };
+
+  it("shows /hr for an hourly salary (AC-1)", () => {
+    render(
+      <JobCard
+        job={{ ...baseJob, jobFacts: { ...facts, salaryPeriod: "HOURLY" } }}
+        isSelected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText("US$40 - US$60/hr")).toBeInTheDocument();
+  });
+
+  it("renders /yr when the salaryPeriod key is absent (legacy fact)", () => {
+    render(
+      <JobCard
+        job={{ ...baseJob, jobFacts: { salaryMin: 120000, salaryMax: 160000, currency: "USD" } }}
+        isSelected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText("US$120k - US$160k/yr")).toBeInTheDocument();
+  });
+
+  it("renders no suffix when salaryPeriod is null", () => {
+    render(
+      <JobCard
+        job={{ ...baseJob, jobFacts: { ...facts, salaryPeriod: null } }}
+        isSelected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(screen.getByText("US$40 - US$60")).toBeInTheDocument();
+  });
+
+  it("omits the salary line when there is no salary (AC-7)", () => {
+    const { container } = render(
+      <JobCard
+        job={{
+          ...baseJob,
+          jobFacts: { salaryMin: null, salaryMax: null, currency: null },
+        }}
+        isSelected={false}
+        onClick={() => {}}
+      />,
+    );
+    expect(container.textContent).not.toMatch(/\/(hr|mo|yr)/);
+    expect(container.textContent).not.toMatch(/US\$/);
+  });
+
+  it("omits the salary line when jobFacts is absent", () => {
+    const { container } = render(
+      <JobCard job={baseJob} isSelected={false} onClick={() => {}} />,
+    );
+    expect(container.textContent).not.toMatch(/US\$/);
+  });
+});

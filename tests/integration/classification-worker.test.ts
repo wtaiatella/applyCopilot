@@ -53,12 +53,23 @@ jest.mock("@/services/jobClassificationService", () => ({
   canonicalizeJobFacts: jest.fn(),
 }));
 
+// Mock Logger (assert salary-period log events)
+jest.mock("@/lib/logging/logger", () => ({
+  logger: {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  },
+}));
+
 // Mock Vector Service
 jest.mock("@/lib/ai/vector-service", () => ({
   generateEmbedding: jest.fn(),
 }));
 
 import { prisma } from "@/lib/db/prisma";
+import { logger } from "@/lib/logging/logger";
 import {
   isProviderBlocked,
   withCircuitBreaker,
@@ -402,7 +413,10 @@ describe("Classification Worker — runClassificationWorker", () => {
   });
 
   it("stops draining immediately without sleeping on DAILY_QUOTA exhaustion and keeps job PENDING with unchanged attempts", async () => {
-    const job = makeMockJob({ id: "job-daily-quota", classificationAttempts: 2 });
+    const job = makeMockJob({
+      id: "job-daily-quota",
+      classificationAttempts: 2,
+    });
     mockFindMany.mockResolvedValueOnce([job]);
 
     mockClassifyJobListing.mockRejectedValueOnce(
@@ -650,7 +664,9 @@ describe("Classification Worker — runClassificationWorker", () => {
     mockWithCircuitBreaker.mockImplementation(
       (key: string, _provider: string, fn: () => Promise<unknown>) => {
         if (key === EMBEDDING_PROVIDER_KEY) {
-          return Promise.reject(new Error("Embedding vector dimension mismatch"));
+          return Promise.reject(
+            new Error("Embedding vector dimension mismatch"),
+          );
         }
         return fn();
       },
@@ -850,5 +866,115 @@ describe("Classification Worker — runClassificationWorker", () => {
     );
     expect(persistedPayloads[0]).toContain("PostgreSQL");
     expect(persistedPayloads[1]).toContain("PostgreSQL");
+  });
+
+  // ──────────────────────────────────────────────────
+  // Scenario: salaryPeriod tri-state persistence (APC-44, spectech D10)
+  // ──────────────────────────────────────────────────
+
+  function persistedFacts(): Record<string, unknown> {
+    const json = (mockExecuteRaw.mock.calls[0] as unknown[])
+      .flat()
+      .find(
+        (part): part is string =>
+          typeof part === "string" && part.includes("mustHave"),
+      );
+    return JSON.parse(json as string);
+  }
+
+  it("persists an explicit salaryPeriod: null when the AI omitted the key, and logs unknown period when an amount exists", async () => {
+    mockFindMany.mockResolvedValue([makeMockJob()]);
+    mockClassifyJobListing.mockResolvedValue({
+      jobFacts: makeValidJobFacts({ salaryMin: 50, currency: "USD" }),
+    });
+
+    await runClassificationWorker();
+
+    const facts = persistedFacts();
+    expect("salaryPeriod" in facts).toBe(true);
+    expect(facts.salaryPeriod).toBeNull();
+    expect(logger.info).toHaveBeenCalledWith("Job salary period unknown", {
+      jobId: "job-001",
+      hasMin: true,
+      hasMax: false,
+      currency: "USD",
+    });
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      "Unrecognised salary period dropped",
+      expect.anything(),
+    );
+  });
+
+  it("does not log unknown period when there is no salary amount", async () => {
+    mockFindMany.mockResolvedValue([makeMockJob()]);
+
+    await runClassificationWorker();
+
+    expect(persistedFacts().salaryPeriod).toBeNull();
+    expect(logger.info).not.toHaveBeenCalledWith(
+      "Job salary period unknown",
+      expect.anything(),
+    );
+  });
+
+  it("persists a stated period normalised to upper case without warnings", async () => {
+    mockFindMany.mockResolvedValue([makeMockJob()]);
+    mockClassifyJobListing.mockResolvedValue({
+      jobFacts: makeValidJobFacts({
+        salaryMin: 50,
+        salaryMax: 80,
+        currency: "USD",
+        salaryPeriod: "hourly",
+      }),
+    });
+
+    await runClassificationWorker();
+
+    expect(persistedFacts().salaryPeriod).toBe("HOURLY");
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      "Unrecognised salary period dropped",
+      expect.anything(),
+    );
+  });
+
+  it("drops an unrecognised period to null, warns with the raw value, and still classifies the job", async () => {
+    mockFindMany.mockResolvedValue([makeMockJob()]);
+    mockClassifyJobListing.mockResolvedValue({
+      jobFacts: makeValidJobFacts({ salaryMin: 900, salaryPeriod: "WEEKLY" }),
+    });
+
+    const result = await runClassificationWorker();
+
+    expect(result.processed).toBe(1);
+    expect(persistedFacts().salaryPeriod).toBeNull();
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Unrecognised salary period dropped",
+      { jobId: "job-001", rawType: "string", raw: "WEEKLY" },
+    );
+  });
+
+  it("logs oversized, multi-line and object raw periods only in bounded form", async () => {
+    const cases: unknown[] = [
+      "X".repeat(5000),
+      "line1\nline2\r\nline3\u0007",
+      { nested: "x".repeat(5000) },
+    ];
+    for (const raw of cases) {
+      jest.clearAllMocks();
+      mockFindMany.mockResolvedValue([makeMockJob()]);
+      mockClassifyJobListing.mockResolvedValue({
+        jobFacts: makeValidJobFacts({ salaryMin: 900, salaryPeriod: raw }),
+      });
+      await runClassificationWorker();
+      const call = (logger.warn as jest.Mock).mock.calls.find(
+        (c) => c[0] === "Unrecognised salary period dropped",
+      );
+      expect(call).toBeDefined();
+      const payload = call![1] as { raw: unknown; rawType: string };
+      expect(typeof payload.raw).toBe("string");
+      expect((payload.raw as string).length).toBeLessThanOrEqual(32);
+      expect(payload.raw as string).not.toMatch(/[\u0000-\u001f]/);
+      expect(payload.rawType).toBe(typeof raw);
+    }
   });
 });

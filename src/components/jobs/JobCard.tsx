@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Card, Typography, Space, Tag } from "antd";
 import { MapPin, Calendar, Building2, Star } from "lucide-react";
 import MatchBadge from "./MatchBadge";
+import { formatSalary, type FormattableSalary } from "@/lib/salary/format";
 
 const { Text } = Typography;
 
@@ -24,6 +25,7 @@ export interface JobCardProps {
     disqualified?: boolean;
     disqualifyReason?: string | null;
     favorite?: boolean;
+    jobFacts?: FormattableSalary | null;
   };
   isSelected: boolean;
   onClick: () => void;
@@ -67,6 +69,8 @@ export default function JobCard({ job, isSelected, onClick }: JobCardProps) {
     0,
     MAX_CARD_SKILL_TAGS,
   );
+
+  const salaryText = job.jobFacts ? formatSalary(job.jobFacts, "compact") : null;
 
   return (
     <Card
@@ -128,6 +132,14 @@ export default function JobCard({ job, isSelected, onClick }: JobCardProps) {
                 {skill}
               </Tag>
             ))}
+          </div>
+        )}
+
+        {salaryText && (
+          <div className="flex items-center gap-1 text-xs text-emerald-400/90 font-medium min-w-0">
+            <span className="truncate" title={salaryText}>
+              {salaryText}
+            </span>
           </div>
         )}
 

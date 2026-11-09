@@ -6,11 +6,31 @@ import { GET as getJobsHandler } from "@/app/api/jobs/route";
 import { prisma, pool } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/auth";
 import { EMBEDDING_DIMENSION } from "@/lib/ai/vector-service";
+import { logger } from "@/lib/logging/logger";
 import { safeCleanup } from "./helpers/test-fixtures";
 
 jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
 }));
+
+// Pass-through wrapper around the real Stage-1 query. By default it changes nothing; the APC-44
+// salary-summary suite sets `stage1Restriction` so the (shared dev DB's) unrelated jobs are not
+// scored, which lets it assert exact counter sums against its own fixtures.
+const stage1Restriction: { ids: string[] | null } = { ids: null };
+jest.mock("@/lib/db/job-query", () => {
+  const actual = jest.requireActual("@/lib/db/job-query");
+  return {
+    ...actual,
+    getJobsWithSimilarity: async (...args: unknown[]) => {
+      const rows = await actual.getJobsWithSimilarity(...args);
+      return stage1Restriction.ids
+        ? rows.filter((r: { id: string }) =>
+            stage1Restriction.ids!.includes(r.id),
+          )
+        : rows;
+    },
+  };
+});
 
 interface JobsApiResponseItem {
   id: string;
@@ -231,8 +251,6 @@ describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034
         });
       },
     );
-    await prisma.$disconnect();
-    await pool.end();
   });
 
   beforeEach(() => {
@@ -342,4 +360,259 @@ describe("GET /api/jobs — Stage 1 + Stage 2 composite scoring end-to-end (T034
       });
     }
   });
+});
+
+describe("GET /api/jobs — multi-period salary scoring and summary counters (APC-44, T028)", () => {
+  const mockAuth = auth as unknown as jest.Mock;
+  const testEmail = `jobs-salary-${Date.now()}@example.com`;
+  let userId: string;
+  let profileId: string;
+  const jobIds: string[] = [];
+
+  const profileFacts = {
+    skills: ["React-TestFixture"],
+    softSkills: [],
+    seniority: "mid",
+    totalYearsExperience: 4,
+    domains: [],
+  };
+
+  const baseFacts = {
+    niceToHave: [] as string[],
+    softSkills: [] as string[],
+    mustHave: ["React-TestFixture"],
+    employmentType: "permanent",
+    workMode: null,
+    isWorldwide: null,
+    requiresUsWorkAuth: null as boolean | null,
+    providesRelocationVisa: null,
+    location: null,
+    seniority: "mid",
+    yearsExperienceMin: 3,
+    salaryMin: null as number | null,
+    salaryMax: null as number | null,
+    currency: null as string | null,
+  };
+
+  const jobDefs: Array<{ title: string; facts: Record<string, unknown> }> = [
+    {
+      title: "Hourly High",
+      facts: { salaryMin: 50, currency: "USD", salaryPeriod: "HOURLY" },
+    },
+    {
+      title: "Hourly Low",
+      facts: { salaryMin: 20, currency: "USD", salaryPeriod: "HOURLY" },
+    },
+    {
+      title: "Monthly",
+      facts: { salaryMin: 9000, currency: "USD", salaryPeriod: "MONTHLY" },
+    },
+    // Legacy fact: NO salaryPeriod key at all -> treated as yearly (AC-6).
+    { title: "Legacy 120k", facts: { salaryMin: 120000, currency: "USD" } },
+    {
+      title: "Explicit Yearly 120k",
+      facts: { salaryMin: 120000, currency: "USD", salaryPeriod: "YEARLY" },
+    },
+    { title: "Legacy 30k", facts: { salaryMin: 30000, currency: "USD" } },
+    {
+      title: "Explicit Yearly 30k",
+      facts: { salaryMin: 30000, currency: "USD", salaryPeriod: "YEARLY" },
+    },
+    // Unknown period (null) with a hourly-looking amount -> inferred HOURLY.
+    {
+      title: "Inferred Hourly",
+      facts: { salaryMin: 45, currency: "USD", salaryPeriod: null },
+    },
+    { title: "No Amount", facts: { currency: "USD", salaryPeriod: "YEARLY" } },
+    {
+      title: "Currency Mismatch",
+      facts: { salaryMin: 120000, currency: "EUR", salaryPeriod: "YEARLY" },
+    },
+    // Eliminated before salary evaluation -> must not be counted.
+    {
+      title: "Disqualified",
+      facts: {
+        salaryMin: 120000,
+        currency: "USD",
+        salaryPeriod: "YEARLY",
+        requiresUsWorkAuth: true,
+      },
+    },
+  ];
+
+  async function runAndCaptureSummary(): Promise<{
+    jobs: Array<JobsApiResponseItem>;
+    counters: Record<string, number>;
+  }> {
+    const spy = jest.spyOn(logger, "debug") as unknown as jest.SpyInstance<
+      unknown,
+      unknown[]
+    >;
+    try {
+      const res = await getJobsHandler(
+        new Request("http://localhost:3000/api/jobs?days=3650&limit=100"),
+      );
+      expect(res.status).toBe(200);
+      const jobs = (await res.json()) as JobsApiResponseItem[];
+      const calls = spy.mock.calls.filter(
+        (c) => c[0] === "Salary comparison summary",
+      );
+      expect(calls).toHaveLength(1);
+      return {
+        jobs,
+        counters: calls[0][1] as unknown as Record<string, number>,
+      };
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  const sum = (c: Record<string, number>) =>
+    Object.values(c).reduce((a, b) => a + b, 0);
+
+  beforeAll(async () => {
+    await seedSkillEmbedding("react-testfixture", "React-TestFixture");
+    const user = await prisma.user.create({
+      data: {
+        email: testEmail,
+        password: "hashedpassword123",
+        profile: { create: { firstName: "Salary", lastName: "Tester" } },
+      },
+    });
+    userId = user.id;
+    profileId = (
+      await prisma.userProfile.findUniqueOrThrow({ where: { userId } })
+    ).id;
+    await prisma.$executeRawUnsafe(
+      `UPDATE "UserProfile" SET embedding = $1::vector, "profileFacts" = $2::jsonb WHERE id = $3`,
+      makeVector(0.9),
+      JSON.stringify(profileFacts),
+      profileId,
+    );
+    await prisma.userPreferences.create({
+      data: {
+        profileId,
+        hasUsWorkAuth: false,
+        seniority: "mid",
+        totalYearsExperience: 4,
+        salaryMin: 100000,
+        salaryCurrency: "USD",
+        salaryPeriod: "YEARLY",
+        hourlyMin: 40,
+        hourlyCurrency: "USD",
+      },
+    });
+    for (const def of jobDefs) {
+      const job = await prisma.jobListing.create({
+        data: {
+          portalId: "test-portal",
+          externalJobId: `jobs-salary-${Date.now()}-${Math.random()}`,
+          title: def.title,
+          company: "Test Co",
+          url: `https://example.com/salary/${encodeURIComponent(def.title)}`,
+          isFullDescriptionFetched: true,
+          classificationStatus: "COMPLETED",
+          postedAt: new Date(),
+        },
+      });
+      jobIds.push(job.id);
+      await prisma.$executeRawUnsafe(
+        `UPDATE "JobListing" SET embedding = $1::vector, "jobFacts" = $2::jsonb WHERE id = $3`,
+        makeVector(0.9),
+        JSON.stringify({ ...baseFacts, ...def.facts }),
+        job.id,
+      );
+    }
+    stage1Restriction.ids = jobIds;
+  });
+
+  afterAll(async () => {
+    stage1Restriction.ids = null;
+    await safeCleanup(
+      "jobs-scoring.test.ts salary userPreferences",
+      async () => {
+        await prisma.userPreferences.deleteMany({ where: { profileId } });
+      },
+    );
+    await safeCleanup("jobs-scoring.test.ts salary jobListing", async () => {
+      await prisma.jobListing.deleteMany({ where: { id: { in: jobIds } } });
+    });
+    await safeCleanup("jobs-scoring.test.ts salary user", async () => {
+      await prisma.user.delete({ where: { id: userId } });
+    });
+    await safeCleanup(
+      "jobs-scoring.test.ts salary skillEmbedding",
+      async () => {
+        await prisma.skillEmbedding.deleteMany({
+          where: { skill: "react-testfixture" },
+        });
+      },
+    );
+  });
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue({
+      user: { id: userId, email: testEmail, role: "USER" },
+      expires: "any",
+    });
+  });
+
+  it("scores hourly, monthly and legacy-yearly jobs like-for-like and counts each evaluated job once", async () => {
+    const { jobs, counters } = await runAndCaptureSummary();
+    const byTitle = (t: string) => jobs.find((j) => j.title === t)!;
+
+    expect(jobs).toHaveLength(jobDefs.length);
+    // Hourly compared against the hourly preference (40/h): 50 meets it, 20 falls short.
+    expect(byTitle("Hourly High").matchScore!).toBeGreaterThan(
+      byTitle("Hourly Low").matchScore!,
+    );
+    // Monthly 9000 -> 108000/yr meets the 100000 yearly preference: same salary sub-score as
+    // a yearly job that meets it.
+    expect(byTitle("Monthly").matchScore).toBe(
+      byTitle("Explicit Yearly 120k").matchScore,
+    );
+    // AC-6: a legacy fact (no salaryPeriod key) behaves exactly like an explicit YEARLY one.
+    expect(byTitle("Legacy 120k").matchScore).toBe(
+      byTitle("Explicit Yearly 120k").matchScore,
+    );
+    expect(byTitle("Legacy 30k").matchScore).toBe(
+      byTitle("Explicit Yearly 30k").matchScore,
+    );
+    expect(byTitle("Legacy 30k").matchScore!).toBeLessThan(
+      byTitle("Legacy 120k").matchScore!,
+    );
+    expect(byTitle("Disqualified").disqualified).toBe(true);
+
+    expect(counters).toEqual({
+      compared: 7, // Hourly High/Low, Monthly, Legacy 120k/30k, Explicit Yearly 120k/30k
+      inferred: 1, // Inferred Hourly
+      inferenceBlocked: 0,
+      currencyMismatch: 1,
+      noPreference: 0,
+      noJobAmount: 1,
+    });
+    // Counters sum to the scored (non-disqualified) jobs; the disqualified one is not counted.
+    expect(sum(counters)).toBe(jobs.filter((j) => !j.disqualified).length);
+  });
+
+  it("increments noPreference, not inferenceBlocked, when the selected preference is unset", async () => {
+    await prisma.userPreferences.update({
+      where: { profileId },
+      data: { hourlyMin: null, hourlyCurrency: null },
+    });
+    const { jobs, counters } = await runAndCaptureSummary();
+
+    // Hourly High/Low (stated) and Inferred Hourly all face the unset hourly preference.
+    expect(counters.noPreference).toBe(3);
+    expect(counters.inferenceBlocked).toBe(0);
+    expect(counters.inferred).toBe(0);
+    expect(counters.compared).toBe(5 - 0); // Monthly, Legacy x2, Explicit Yearly x2
+    expect(sum(counters)).toBe(jobs.filter((j) => !j.disqualified).length);
+  });
+});
+
+// Shared connection teardown for every suite in this file (runs after the last suite).
+afterAll(async () => {
+  await prisma.$disconnect();
+  await pool.end();
 });

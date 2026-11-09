@@ -6,6 +6,12 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum SalaryPeriod {
+  HOURLY
+  MONTHLY
+  YEARLY
+}
+
 enum Role {
   USER
   ADMIN
@@ -103,6 +109,9 @@ model UserPreferences {
 
   salaryMin              Float?
   salaryCurrency         String?
+  salaryPeriod           SalaryPeriod @default(YEARLY) // YEARLY|MONTHLY enforced by Zod
+  hourlyMin              Float?
+  hourlyCurrency         String?
 
   excludeKeywords        String[]     @default([])
 
@@ -411,6 +420,7 @@ model JobListing {
   salaryMin                Float?
   salaryMax                Float?
   currency                 String?
+  salaryPeriod             SalaryPeriod? // NULL = unknown/unstated
 
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt

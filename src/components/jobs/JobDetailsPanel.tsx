@@ -28,6 +28,9 @@ import {
   Ban,
 } from "lucide-react";
 
+import { formatSalary } from "@/lib/salary/format";
+import type { SalaryPeriod } from "@/lib/salary/salary";
+
 const { Title, Text, Paragraph } = Typography;
 
 interface JobFactsSummary {
@@ -43,6 +46,8 @@ interface JobFactsSummary {
   salaryMin: number | null;
   salaryMax: number | null;
   currency: string | null;
+  /** Tri-state: absent = legacy fact (shown as /yr), null = unknown, else stated period. */
+  salaryPeriod?: SalaryPeriod | null;
 }
 
 interface JobListing {
@@ -74,15 +79,7 @@ function formatBoolean(value: boolean | null | undefined): string {
 }
 
 function formatSalaryRange(facts: JobFactsSummary | null | undefined): string {
-  if (!facts || (facts.salaryMin == null && facts.salaryMax == null)) {
-    return "Not specified";
-  }
-  const currency = facts.currency ?? "";
-  if (facts.salaryMin != null && facts.salaryMax != null) {
-    return `${currency} ${facts.salaryMin.toLocaleString()} - ${facts.salaryMax.toLocaleString()}`.trim();
-  }
-  const value = facts.salaryMin ?? facts.salaryMax;
-  return `${currency} ${value!.toLocaleString()}`.trim();
+  return (facts && formatSalary(facts, "full")) ?? "Not specified";
 }
 
 interface JobDetailsPanelProps {

@@ -445,6 +445,7 @@ export default function PreferencesForm() {
                     updateField("salaryMin", value ?? null);
                   }}
                   className="w-full bg-zinc-950 border-zinc-800 text-white"
+                  style={{ width: "100%" }}
                   placeholder="Not stated"
                   aria-describedby={[
                     clampNotice ? "pref-salary-notice" : null,
@@ -533,6 +534,7 @@ export default function PreferencesForm() {
                   value={prefs.hourlyMin ?? undefined}
                   onChange={(value) => updateField("hourlyMin", value ?? null)}
                   className="w-full bg-zinc-950 border-zinc-800 text-white"
+                  style={{ width: "100%" }}
                   placeholder="Not stated"
                   aria-describedby="pref-hourly-help"
                 />

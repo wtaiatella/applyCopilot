@@ -6,6 +6,7 @@ import { purgeExpiredOrphanJobs } from "@/services/jobCleanupService";
 // Import strategy files to trigger auto-registration in Registry
 import "./portals/example";
 import "./portals/workable";
+import "./portals/jobspresso";
 
 let isWorkerRunning = false;
 

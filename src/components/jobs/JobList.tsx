@@ -6,6 +6,7 @@ import { RefreshCw, SlidersHorizontal, Sparkles } from "lucide-react";
 import JobCard from "./JobCard";
 import JobDetailsPanel from "./JobDetailsPanel";
 import { useProfileContext } from "@/contexts/ProfileContext";
+import type { SalaryPeriod } from "@/lib/salary/salary";
 
 const { Text, Title } = Typography;
 
@@ -22,6 +23,8 @@ export interface JobFactsSummary {
   salaryMin: number | null;
   salaryMax: number | null;
   currency: string | null;
+  /** Tri-state: absent = legacy fact (shown as /yr), null = unknown, else stated period. */
+  salaryPeriod?: SalaryPeriod | null;
 }
 
 export interface Job {

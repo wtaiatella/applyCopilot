@@ -111,3 +111,50 @@ describe("JobDetailsPanel — Match Comparison section (FR-16, Cenário 4)", () 
     ).toBeInTheDocument();
   });
 });
+
+describe("JobDetailsPanel - salary period display (APC-44)", () => {
+  const withFacts = (facts: Record<string, unknown>) => ({
+    ...baseJob,
+    jobFacts: { ...baseJob.jobFacts, ...facts },
+  });
+
+  it("shows /yr for a legacy fact with the salaryPeriod key absent (AC-2)", async () => {
+    render(<JobDetailsPanel job={baseJob} />);
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Salary Range: US\$120,000 - US\$160,000\/yr/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows /hr for an hourly salary", async () => {
+    render(
+      <JobDetailsPanel
+        job={withFacts({ salaryMin: 40, salaryMax: 60, salaryPeriod: "HOURLY" })}
+      />,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Salary Range: US\$40 - US\$60\/hr/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows the amount with no suffix when salaryPeriod is null", async () => {
+    render(<JobDetailsPanel job={withFacts({ salaryPeriod: null })} />);
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Salary Range: US\$120,000 - US\$160,000$/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows Not specified when there is no usable salary", async () => {
+    render(
+      <JobDetailsPanel job={withFacts({ salaryMin: null, salaryMax: null })} />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/Salary Range: Not specified/)).toBeInTheDocument();
+    });
+  });
+});

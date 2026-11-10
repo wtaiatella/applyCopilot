@@ -161,7 +161,8 @@ Return ONLY a raw JSON object with exactly these properties (no markdown, no com
   "location": string | null,               // free-text primary location/country, if stated
   "salaryMin": number | null,
   "salaryMax": number | null,
-  "currency": string | null                // ISO 4217 3-letter code (e.g. "USD", "EUR", "BRL")
+  "currency": string | null,               // ISO 4217 3-letter code (e.g. "USD", "EUR", "BRL")
+  "salaryPeriod": "HOURLY" | "MONTHLY" | "YEARLY" | null  // the period the published salary amounts refer to
 }
 
 Vocabulary normalization rules (apply to every entry in "mustHave", "niceToHave", and "softSkills"):
@@ -175,6 +176,11 @@ Worldwide / US-work-authorization / relocation extraction rules:
 - Set "requiresUsWorkAuth": true ONLY when the listing explicitly requires US work authorization, US citizenship, a US-based visa, or states "must be authorized to work in the United States". Otherwise null.
 - Set "providesRelocationVisa": true ONLY when the listing explicitly offers relocation assistance or visa sponsorship. Set false ONLY when it explicitly states it does NOT sponsor visas/relocation. Otherwise null.
 - Never guess these three fields from silence — omission must map to null, not false or true.
+
+Salary extraction rules:
+- Set "salaryPeriod" ONLY when the listing explicitly states the period: "HOURLY" for per hour/hourly/hr, "MONTHLY" for per month/monthly, "YEARLY" for per year/annual/yearly/p.a. Otherwise null — never guess the period from the amount's size.
+- NEVER convert amounts between periods. Report "salaryMin" and "salaryMax" exactly as published (e.g. "$50/hour" is salaryMin/salaryMax 50 with "HOURLY", not an annual figure).
+- If the listing states no salary, set "salaryMin", "salaryMax", "currency" and "salaryPeriod" all to null.
 
 If a field is not mentioned in the listing, use null (or an empty array for the list fields). Do not include markdown headers, introductions, annotations, or JSON wrapping — return the raw JSON object only.`;
 }

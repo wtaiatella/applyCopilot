@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
 import { UserPreferencesInputSchema } from "@/lib/validation/preferencesSchemas";
 import { UserPreferencesDTO } from "@/types/profile";
+import { toPreferencePeriod } from "@/lib/salary/salary";
 
 // Default all-null shape returned by GET when the user never saved preferences
 // (spectech.md Clarifications & Assumptions) — keeps the auto-save form bound to a
@@ -21,8 +22,20 @@ const DEFAULT_PREFERENCES: UserPreferencesDTO = {
   requiresVisaRelocation: null,
   salaryMin: null,
   salaryCurrency: null,
+  salaryPeriod: "YEARLY",
+  hourlyMin: null,
+  hourlyCurrency: null,
   excludeKeywords: [],
 };
+
+function collapsePeriod(period: string, profileId: string) {
+  return toPreferencePeriod(period, (original) =>
+    logger.warn("Collapsed unsupported stored salaryPeriod to YEARLY", {
+      profileId,
+      salaryPeriod: original,
+    }),
+  );
+}
 
 export async function GET() {
   try {
@@ -62,6 +75,9 @@ export async function GET() {
       requiresVisaRelocation: preferences.requiresVisaRelocation,
       salaryMin: preferences.salaryMin,
       salaryCurrency: preferences.salaryCurrency,
+      salaryPeriod: collapsePeriod(preferences.salaryPeriod, profile.id),
+      hourlyMin: preferences.hourlyMin,
+      hourlyCurrency: preferences.hourlyCurrency,
       excludeKeywords: preferences.excludeKeywords,
     };
 
@@ -140,6 +156,9 @@ export async function PUT(req: Request) {
       requiresVisaRelocation: saved.requiresVisaRelocation,
       salaryMin: saved.salaryMin,
       salaryCurrency: saved.salaryCurrency,
+      salaryPeriod: collapsePeriod(saved.salaryPeriod, profile.id),
+      hourlyMin: saved.hourlyMin,
+      hourlyCurrency: saved.hourlyCurrency,
       excludeKeywords: saved.excludeKeywords,
     };
 

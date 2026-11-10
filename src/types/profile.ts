@@ -138,6 +138,9 @@ export interface UserPreferencesDTO {
 
   salaryMin: number | null;
   salaryCurrency: string | null;
+  salaryPeriod: "YEARLY" | "MONTHLY";
+  hourlyMin: number | null;
+  hourlyCurrency: string | null;
 
   excludeKeywords: string[];
 }

@@ -1,6 +1,7 @@
 import type { JobFacts } from "@/lib/validation/jobFactsSchema";
 import type { ProfileFacts } from "@/lib/validation/profileFactsSchema";
 import type { UserPreferencesDTO } from "@/types/profile";
+import { evaluateSalaryFit, type SalaryFit } from "@/lib/salary/salary";
 
 /**
  * Pure Stage-2 composite scorer (spectech.md Architecture, Technical Decisions) — no
@@ -155,6 +156,7 @@ export function computeSeniorityFit(
 export function computePreferencesFit(
   jobFacts: JobFacts,
   prefs: UserPreferencesDTO,
+  onSalaryFit?: (fit: SalaryFit) => void,
 ): number {
   const subScores: number[] = [];
 
@@ -196,15 +198,33 @@ export function computePreferencesFit(
     subScores.push(75); // unstated work mode
   }
 
-  if (prefs.salaryMin && jobFacts.salaryMin) {
-    if (jobFacts.salaryMin >= prefs.salaryMin) {
+  // Period- and currency-aware salary comparison (APC-44). Only COMPARED / COMPARED_INFERRED
+  // are scored; every other reason is neutral. A falsy preference amount is treated as unset.
+  const fit = evaluateSalaryFit(
+    {
+      salaryMin: jobFacts.salaryMin ?? null,
+      salaryMax: jobFacts.salaryMax ?? null,
+      currency: jobFacts.currency ?? null,
+      salaryPeriod: jobFacts.salaryPeriod,
+    },
+    {
+      salaryMin: prefs.salaryMin || null,
+      salaryCurrency: prefs.salaryCurrency ?? null,
+      salaryPeriod: prefs.salaryPeriod ?? "YEARLY",
+      hourlyMin: prefs.hourlyMin || null,
+      hourlyCurrency: prefs.hourlyCurrency ?? null,
+    },
+  );
+  onSalaryFit?.(fit);
+  if (fit.comparable && fit.jobAmount !== undefined && fit.prefAmount !== undefined) {
+    if (fit.jobAmount >= fit.prefAmount) {
       subScores.push(100);
     } else {
-      const ratio = jobFacts.salaryMin / prefs.salaryMin;
+      const ratio = fit.jobAmount / fit.prefAmount;
       subScores.push(Math.max(0, Math.round(ratio * 80)));
     }
   } else {
-    subScores.push(75); // unstated salary is neutral
+    subScores.push(75); // unstated / not comparable salary is neutral
   }
 
   if (subScores.length === 0) return 100; // user has no specific preferences set
@@ -254,6 +274,7 @@ export function computeMatchScore(
   profile: { profileFacts: ProfileFacts },
   preferences: UserPreferencesDTO,
   skillMatchThreshold: number,
+  onSalaryFit?: (fit: SalaryFit) => void,
 ): MatchScoreResult {
   const elimination = checkDisqualification(job.jobFacts, preferences);
   if (elimination.disqualified) {
@@ -279,7 +300,7 @@ export function computeMatchScore(
     job.jobFacts.yearsExperienceMin,
     preferences.totalYearsExperience,
   );
-  const preferencesScore = computePreferencesFit(job.jobFacts, preferences);
+  const preferencesScore = computePreferencesFit(job.jobFacts, preferences, onSalaryFit);
 
   const score =
     mustHaveScore * 0.45 +

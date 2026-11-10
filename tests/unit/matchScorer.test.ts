@@ -7,6 +7,7 @@ import {
 import type { JobFacts } from "@/lib/validation/jobFactsSchema";
 import type { ProfileFacts } from "@/lib/validation/profileFactsSchema";
 import type { UserPreferencesDTO } from "@/types/profile";
+import type { SalaryFit } from "@/lib/salary/salary";
 
 // Default FR-13 threshold used across fixtures unless a test overrides it.
 const DEFAULT_THRESHOLD = 60;
@@ -66,6 +67,9 @@ function makePrefs(
     requiresVisaRelocation: null,
     salaryMin: null,
     salaryCurrency: null,
+    salaryPeriod: "YEARLY",
+    hourlyMin: null,
+    hourlyCurrency: null,
     excludeKeywords: [],
     ...overrides,
   };
@@ -293,8 +297,8 @@ describe("computePreferencesFit", () => {
   describe("salary dimension (always active)", () => {
     it("scores 88 when job salaryMin meets/exceeds the user's minimum (100 blended with work-mode's neutral 75)", () => {
       const score = computePreferencesFit(
-        makeJobFacts({ workMode: null, salaryMin: 120_000 }),
-        makePrefs({ salaryMin: 100_000 }),
+        makeJobFacts({ workMode: null, salaryMin: 120_000, currency: "USD" }),
+        makePrefs({ salaryMin: 100_000, salaryCurrency: "USD" }),
       );
       expect(score).toBe(88); // round((75 + 100) / 2)
     });
@@ -307,11 +311,205 @@ describe("computePreferencesFit", () => {
     });
     it("scores a partial ratio-based value when job salary is below the user's minimum", () => {
       const score = computePreferencesFit(
-        makeJobFacts({ workMode: null, salaryMin: 50_000 }),
-        makePrefs({ salaryMin: 100_000 }),
+        makeJobFacts({ workMode: null, salaryMin: 50_000, currency: "USD" }),
+        makePrefs({ salaryMin: 100_000, salaryCurrency: "USD" }),
       );
       // salary sub-score: ratio 0.5 * 80 = 40; blended with work-mode's neutral 75 -> round((75+40)/2)
       expect(score).toBe(58);
+    });
+  });
+
+  describe("salary dimension: period and currency awareness (APC-44)", () => {
+    // work-mode null => neutral 75; blended score = round((75 + salarySubScore) / 2)
+    const run = (
+      job: Partial<JobFacts>,
+      prefs: Partial<UserPreferencesDTO>,
+    ) => {
+      const fits: SalaryFit[] = [];
+      const score = computePreferencesFit(
+        makeJobFacts({ workMode: null, ...job }),
+        makePrefs(prefs),
+        (f) => fits.push(f),
+      );
+      return { score, fits };
+    };
+
+    it("compares hourly job vs hourly preference (AC-4)", () => {
+      const hit = run(
+        { salaryMin: 60, salaryPeriod: "HOURLY", currency: "USD" },
+        { hourlyMin: 50, hourlyCurrency: "USD" },
+      );
+      expect(hit.score).toBe(88);
+      expect(hit.fits).toHaveLength(1);
+      expect(hit.fits[0].reason).toBe("COMPARED");
+      const miss = run(
+        { salaryMin: 25, salaryPeriod: "HOURLY", currency: "USD" },
+        { hourlyMin: 50, hourlyCurrency: "USD" },
+      );
+      expect(miss.score).toBe(58); // ratio 0.5 -> 40
+    });
+
+    it("is neutral for hourly job with only an annual preference (AC-4a)", () => {
+      const r = run(
+        { salaryMin: 60, salaryPeriod: "HOURLY", currency: "USD" },
+        { salaryMin: 100_000, salaryCurrency: "USD" },
+      );
+      expect(r.score).toBe(75);
+      expect(r.fits[0].reason).toBe("NO_PREFERENCE");
+    });
+
+    it("is neutral for yearly/monthly job with only an hourly preference (AC-4a)", () => {
+      for (const salaryPeriod of ["YEARLY", "MONTHLY"] as const) {
+        const r = run(
+          { salaryMin: 5000, salaryPeriod, currency: "USD" },
+          { hourlyMin: 50, hourlyCurrency: "USD" },
+        );
+        expect(r.score).toBe(75);
+        expect(r.fits[0].reason).toBe("NO_PREFERENCE");
+      }
+    });
+
+    it("converts monthly job vs yearly preference (AC-4b)", () => {
+      expect(
+        run(
+          { salaryMin: 5000, salaryPeriod: "MONTHLY", currency: "USD" },
+          { salaryMin: 50_000, salaryCurrency: "USD" },
+        ).score,
+      ).toBe(88); // 60,000 >= 50,000
+      expect(
+        run(
+          { salaryMin: 3000, salaryPeriod: "MONTHLY", currency: "USD" },
+          { salaryMin: 72_000, salaryCurrency: "USD" },
+        ).score,
+      ).toBe(58); // 36,000 / 72,000 = 0.5
+    });
+
+    it("converts yearly job vs monthly preference (AC-4b)", () => {
+      expect(
+        run(
+          { salaryMin: 60_000, salaryPeriod: "YEARLY", currency: "USD" },
+          { salaryMin: 4000, salaryPeriod: "MONTHLY", salaryCurrency: "USD" },
+        ).score,
+      ).toBe(88); // 60,000 >= 48,000
+      expect(
+        run(
+          { salaryMin: 24_000, salaryPeriod: "YEARLY", currency: "USD" },
+          { salaryMin: 4000, salaryPeriod: "MONTHLY", salaryCurrency: "USD" },
+        ).score,
+      ).toBe(58); // 24,000 / 48,000 = 0.5
+    });
+
+    it("compares with an inferred period when salaryPeriod is null (AC-4c)", () => {
+      const yearly = run(
+        { salaryMin: 120_000, salaryPeriod: null, currency: "USD" },
+        { salaryMin: 100_000, salaryCurrency: "USD" },
+      );
+      expect(yearly.score).toBe(88);
+      expect(yearly.fits[0]).toMatchObject({ reason: "COMPARED_INFERRED", inferred: true });
+      const monthly = run(
+        { salaryMin: 6000, salaryPeriod: null, currency: "USD" },
+        { salaryMin: 60_000, salaryCurrency: "USD" },
+      );
+      expect(monthly.score).toBe(88); // inferred MONTHLY -> 72,000
+      expect(monthly.fits[0].reason).toBe("COMPARED_INFERRED");
+      const hourly = run(
+        { salaryMin: 40, salaryPeriod: null, currency: "USD" },
+        { hourlyMin: 50, hourlyCurrency: "USD" },
+      );
+      expect(hourly.score).toBe(70); // ratio 0.8 -> 64; round(139 / 2)
+      expect(hourly.fits[0].reason).toBe("COMPARED_INFERRED");
+    });
+
+    it("blocks inference when the currency does not match (AC-4d)", () => {
+      const r = run(
+        { salaryMin: 120_000, salaryPeriod: null, currency: null },
+        { salaryMin: 100_000, salaryCurrency: "USD" },
+      );
+      expect(r.score).toBe(75);
+      expect(r.fits[0].reason).toBe("INFERENCE_BLOCKED");
+    });
+
+    it("lets a stated period win over magnitude (AC-4e)", () => {
+      // 40 stated YEARLY is not re-inferred as HOURLY: compared against the annual preference.
+      const yearly = run(
+        { salaryMin: 40, salaryPeriod: "YEARLY", currency: "USD" },
+        { salaryMin: 100_000, salaryCurrency: "USD" },
+      );
+      expect(yearly.fits[0]).toMatchObject({ family: "ANNUAL", inferred: false });
+      expect(yearly.score).toBe(38); // sub-score 0 -> round(75 / 2)
+      // 30,000 stated MONTHLY is not re-inferred as YEARLY.
+      const monthly = run(
+        { salaryMin: 30_000, salaryPeriod: "MONTHLY", currency: "USD" },
+        { salaryMin: 100_000, salaryCurrency: "USD" },
+      );
+      expect(monthly.fits[0]).toMatchObject({ jobAmount: 360_000, inferred: false });
+      expect(monthly.score).toBe(88);
+      // 100,000 stated HOURLY stays in the hourly family.
+      const hourly = run(
+        { salaryMin: 100_000, salaryPeriod: "HOURLY", currency: "USD" },
+        { hourlyMin: 50, hourlyCurrency: "USD" },
+      );
+      expect(hourly.fits[0].family).toBe("HOURLY");
+      expect(hourly.score).toBe(88);
+    });
+
+    it("is neutral on currency mismatch or missing currency (AC-5)", () => {
+      const mismatch = run(
+        { salaryMin: 120_000, currency: "EUR" },
+        { salaryMin: 100_000, salaryCurrency: "USD" },
+      );
+      expect(mismatch.score).toBe(75);
+      expect(mismatch.fits[0].reason).toBe("CURRENCY_MISMATCH");
+      const jobMissing = run(
+        { salaryMin: 120_000, currency: null },
+        { salaryMin: 100_000, salaryCurrency: "USD" },
+      );
+      expect(jobMissing.fits[0].reason).toBe("CURRENCY_MISMATCH");
+      const prefMissing = run(
+        { salaryMin: 120_000, currency: "USD" },
+        { salaryMin: 100_000, salaryCurrency: null },
+      );
+      expect(prefMissing.score).toBe(75);
+      expect(prefMissing.fits[0].reason).toBe("CURRENCY_MISMATCH");
+    });
+
+    it("is neutral 75 with no job salary (AC-7)", () => {
+      const r = run(
+        { salaryMin: null, salaryMax: null },
+        { salaryMin: 100_000, salaryCurrency: "USD" },
+      );
+      expect(r.score).toBe(75);
+      expect(r.fits[0].reason).toBe("NO_JOB_AMOUNT");
+    });
+
+    it("treats a falsy preference amount as unset", () => {
+      const r = run(
+        { salaryMin: 120_000, currency: "USD" },
+        { salaryMin: 0, salaryCurrency: "USD" },
+      );
+      expect(r.score).toBe(75);
+      expect(r.fits[0].reason).toBe("NO_PREFERENCE");
+    });
+
+    it("precedence: unset preference + inferred period reports NO_PREFERENCE, not INFERENCE_BLOCKED", () => {
+      const r = run(
+        { salaryMin: 120_000, salaryPeriod: null, currency: null },
+        { salaryMin: null, salaryCurrency: null },
+      );
+      expect(r.fits[0].reason).toBe("NO_PREFERENCE");
+    });
+
+    it("precedence: inferred period + currency problem is INFERENCE_BLOCKED; stated/legacy is CURRENCY_MISMATCH", () => {
+      const prefs = { salaryMin: 100_000, salaryCurrency: "USD" };
+      expect(
+        run({ salaryMin: 120_000, salaryPeriod: null, currency: "EUR" }, prefs).fits[0].reason,
+      ).toBe("INFERENCE_BLOCKED");
+      expect(
+        run({ salaryMin: 120_000, salaryPeriod: "YEARLY", currency: "EUR" }, prefs).fits[0].reason,
+      ).toBe("CURRENCY_MISMATCH");
+      expect(run({ salaryMin: 120_000, currency: "EUR" }, prefs).fits[0].reason).toBe(
+        "CURRENCY_MISMATCH",
+      );
     });
   });
 

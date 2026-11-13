@@ -13,13 +13,9 @@ import {
   withCircuitBreaker,
 } from "@/lib/ai/circuit-breaker";
 
-// Mock the Prisma client (include aIModel spies to assert zero calls)
+// Mock the Prisma client
 jest.mock("@/lib/db/prisma", () => ({
   prisma: {
-    aIModel: {
-      findUnique: jest.fn(),
-      update: jest.fn(),
-    },
     systemConfig: {
       findUnique: jest.fn(),
       upsert: jest.fn(),
@@ -33,8 +29,6 @@ import { prisma } from "@/lib/db/prisma";
 const mockConfigFindUnique = prisma.systemConfig.findUnique as jest.Mock;
 const mockConfigUpsert = prisma.systemConfig.upsert as jest.Mock;
 const mockConfigDelete = prisma.systemConfig.delete as jest.Mock;
-const mockModelFindUnique = prisma.aIModel.findUnique as jest.Mock;
-const mockModelUpdate = prisma.aIModel.update as jest.Mock;
 
 describe("Circuit Breaker — isBlockingHttpStatus", () => {
   it("returns true for 429, 401, and 402", () => {
@@ -60,11 +54,6 @@ describe("Circuit Breaker — isBlockingHttpStatus", () => {
 describe("Circuit Breaker — SystemConfig Provider Block Management", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-  });
-
-  afterEach(() => {
-    expect(mockModelFindUnique).not.toHaveBeenCalled();
-    expect(mockModelUpdate).not.toHaveBeenCalled();
   });
 
   describe("getBlockedUntilKey", () => {

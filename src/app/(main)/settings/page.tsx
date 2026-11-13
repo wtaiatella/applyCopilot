@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
 import DatabasePanel from "@/components/settings/DatabasePanel";
 import Link from "next/link";
-import { Cpu, Globe } from "lucide-react";
+import { Globe } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -26,31 +26,6 @@ export default async function SettingsPage() {
       </div>
 
       <div className="space-y-4">
-        {/* LLM Models Link Card */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 hover:border-blue-500 transition-colors">
-          <div className="flex items-center justify-between">
-            <div className="flex items-start gap-4">
-              <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0 mt-0.5">
-                <Cpu className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-white">
-                  LLM Models & Provider Rotation
-                </h2>
-                <p className="text-zinc-400 text-sm mt-1">
-                  Configure free-tier provider pool, rate limits, sliding window quotas, and per-route fallback preferences.
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/settings/llm-models"
-              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-colors text-sm shrink-0"
-            >
-              Configure Models
-            </Link>
-          </div>
-        </div>
-
         {/* Scraper Settings Link Card */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 hover:border-blue-500 transition-colors">
           <div className="flex items-center justify-between">

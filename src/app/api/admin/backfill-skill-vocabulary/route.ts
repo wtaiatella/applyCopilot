@@ -7,8 +7,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Admin-triggered backfill for existing profiles/job listings that predate the canonical skill
- * vocabulary (FR-16, AC-7). Reuses the exact reset shape from
- * `src/app/api/admin/llm-config/route.ts:257-282` (the embedding-provider-change reset): eligible
+ * vocabulary (FR-16, AC-7). Uses the embedding-provider-change reset shape: eligible
  * `JobListing` rows go back to `PENDING` (attempts/error cleared) and eligible `UserProfile` rows
  * have `embeddingSyncedAt` cleared. No new job/worker is created here — the already-running
  * classification worker and user-triggered profile-sync pick these rows back up on their own.

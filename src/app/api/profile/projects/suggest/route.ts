@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
-import { generateJSON } from "@/lib/ai/aiClient";
+import { generateJSON, AIServiceUnavailableError } from "@/lib/ai/aiClient";
 import { logger } from "@/lib/logging/logger";
 
 const MAX_SUGGEST_PER_DAY = 10;
@@ -106,6 +106,9 @@ Requirements:
 
     return NextResponse.json(suggestion);
   } catch (error) {
+    if (error instanceof AIServiceUnavailableError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     logger.error("Failed to suggest project", { error });
     return NextResponse.json({ error: "Failed to generate project suggestion" }, { status: 500 });
   }

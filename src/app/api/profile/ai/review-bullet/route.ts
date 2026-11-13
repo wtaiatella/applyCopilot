@@ -7,6 +7,7 @@ import {
   assertAiRateLimit,
   AiRateLimitExceededError,
 } from "@/lib/ai/aiRateLimit";
+import { AIServiceUnavailableError } from "@/lib/ai/aiClient";
 import { runReviewBullet } from "@/services/profileBulletAIService";
 
 export async function POST(req: Request) {
@@ -70,6 +71,9 @@ export async function POST(req: Request) {
   } catch (error) {
     if (error instanceof AiRateLimitExceededError) {
       return NextResponse.json({ error: error.message }, { status: 429 });
+    }
+    if (error instanceof AIServiceUnavailableError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
     }
     logger.error("Failed to run review-bullet", { error });
     return NextResponse.json(

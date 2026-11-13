@@ -17,9 +17,6 @@ import {
   describeUntrustedForLog,
 } from "../validation/jobFactsSchema";
 
-/** The SystemConfig key for the Parsing Provider capability */
-const PARSING_PROVIDER_KEY = "AI_PROVIDER_PARSING";
-
 /** The SystemConfig key for the Embedding Provider capability (FR-23, separate circuit breaker from parsing) */
 const EMBEDDING_PROVIDER_KEY = "AI_PROVIDER_EMBEDDING";
 
@@ -290,23 +287,22 @@ export async function runClassificationWorker(
         );
       }
 
-      // Resolve the currently-configured provider for each capability
-      const { provider: parsingProvider } = await resolveAIConfig("parsing");
+      // Resolve the currently-configured provider for the embedding capability
       const { provider: embeddingProvider } =
         await resolveAIConfig("embedding");
 
-      // Step 2: Check if the (parsing capability, currently-configured provider) pair is blocked
+      // Step 2: Check if the (embedding capability, currently-configured provider) pair is blocked
       const blocked = await isProviderBlocked(
-        PARSING_PROVIDER_KEY,
-        parsingProvider,
+        EMBEDDING_PROVIDER_KEY,
+        embeddingProvider,
       );
 
       if (blocked) {
         logger.warn(
-          `[ClassificationWorker] Parsing provider (${PARSING_PROVIDER_KEY}/${parsingProvider}) is BLOCKED. Stopping drain cycle and returning to idle polling.`,
+          `[ClassificationWorker] Embedding provider (${EMBEDDING_PROVIDER_KEY}/${embeddingProvider}) is BLOCKED. Stopping drain cycle and returning to idle polling.`,
           {
             exhaustionReason: "PROVIDER_BLOCKED",
-            provider: parsingProvider,
+            provider: embeddingProvider,
           },
         );
         skippedBlocked = true;
@@ -385,19 +381,13 @@ export async function runClassificationWorker(
           });
 
           try {
-            // LLM extraction — circuit breaker uses the configured cooldown
-            const { jobFacts } = await withCircuitBreaker(
-              PARSING_PROVIDER_KEY,
-              parsingProvider,
-              () =>
-                classifyJobListing({
-                  id: job.id,
-                  title: job.title,
-                  company: job.company,
-                  fullDescription: job.fullDescription!,
-                }),
-              cooldownMs,
-            );
+            // LLM extraction — routed through LiteLLM gateway
+            const { jobFacts } = await classifyJobListing({
+              id: job.id,
+              title: job.title,
+              company: job.company,
+              fullDescription: job.fullDescription!,
+            });
 
             // Canonicalize mustHave/niceToHave/softSkills against the write-path vocabulary
             const canonicalizedJobFacts = await canonicalizeJobFacts(jobFacts);
@@ -570,7 +560,6 @@ export async function runClassificationWorker(
           "[ClassificationWorker] AI capacity unavailable. Stopping drain cycle and returning to idle polling.",
           {
             exhaustionReason,
-            provider: parsingProvider,
           },
         );
         skippedBlocked = true;

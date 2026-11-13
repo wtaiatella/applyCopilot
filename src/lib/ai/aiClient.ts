@@ -1,16 +1,22 @@
-import { prisma } from "../db/prisma";
 import { logger } from "../logging/logger";
-import { AIRouteId } from "@/types/ai-manager";
-import {
-  acquireFreeModelWithDiagnostics,
-  FreeModelAcquisitionResult,
-  PoolExhaustionReason,
-  ResolvedFreeModel,
-} from "./rotation-cursor";
-import { GoogleGenAIAdapter } from "./adapters/googleGenAIAdapter";
-import { OpenAICompatAdapter } from "./adapters/openAICompatAdapter";
-import { OllamaAdapter } from "./adapters/ollamaAdapter";
-import { withCircuitBreaker } from "./circuit-breaker";
+
+export type AIRouteId =
+  | "cv.parse.basicData"
+  | "cv.parse.experiences"
+  | "cv.parse.projects"
+  | "cv.parse.education"
+  | "cv.parse.skills"
+  | "jobs.classification"
+  | "jobs.deepAnalysis"
+  | "profile.summaryGenerate"
+  | "profile.bulletReviewAll"
+  | "profile.bulletImprove"
+  | "profile.bulletGenerate"
+  | "profile.summaryAI"
+  | "profile.syncFacts"
+  | "profile.skillAlias"
+  | "profile.projectSuggest"
+  | "profile.skillsSuggest";
 
 export type ChatCapability =
   | "parsing"
@@ -21,15 +27,43 @@ export type ChatCapability =
 
 export type AIRouteOrCapability = AIRouteId | ChatCapability;
 
-let activeUserRequests = 0;
+export type PoolExhaustionReason =
+  | "MINUTE_QUOTA"
+  | "DAILY_QUOTA"
+  | "ALL_MODELS_BLOCKED"
+  | "NO_MODELS"
+  | "ALL_MODELS_UNAVAILABLE";
 
-export function getActiveUserRequestCount(): number {
-  return activeUserRequests;
+export type LiteLLMModelAlias = "chat-free" | "local-only";
+
+interface ChatCompletionResponse {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+  error?: {
+    message?: string;
+    type?: string;
+    code?: string | number;
+  };
 }
+
+const DEFAULT_LITELLM_BASE_URL = "http://127.0.0.1:4000/v1";
+const DEFAULT_LITELLM_TIMEOUT_MS = 60_000;
+const SANITIZED_UNAVAILABLE_MESSAGE =
+  "AI service temporarily unavailable. Please try again later.";
+
+const WORKER_ROUTES: ReadonlySet<AIRouteId> = new Set<AIRouteId>([
+  "jobs.classification",
+  "profile.syncFacts",
+  "profile.skillAlias",
+]);
 
 export class AIServiceUnavailableError extends Error {
   public status: number = 503;
-  constructor(message = "AI service temporarily unavailable across all providers. Please try again later.") {
+
+  constructor(message = SANITIZED_UNAVAILABLE_MESSAGE) {
     super(message);
     this.name = "AIServiceUnavailableError";
   }
@@ -73,31 +107,67 @@ function normalizeToRouteId(routeOrCapability: AIRouteOrCapability): AIRouteId {
   }
 }
 
-/**
- * Resolves the route configuration for a given route ID.
- */
-export async function resolveAIRoute(routeId: AIRouteId) {
-  try {
-    const route = await prisma.aIRoutePreference.findUnique({
-      where: { routeId },
-    });
-    if (route) return route;
-  } catch (error) {
-    logger.warn("[AIClient] Failed to read route preference, defaulting to FREE", { error, routeId });
-  }
+function getLocalRoutesSet(): Set<string> {
+  const raw = process.env.LITELLM_LOCAL_ROUTES || "";
+  return new Set(
+    raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+}
 
-  return {
-    routeId,
-    groupName: "Default",
-    displayName: routeId,
-    preferredTier: "FREE" as const,
-    isWorker: ["jobs.classification", "profile.syncFacts", "profile.skillAlias"].includes(routeId),
-    updatedAt: new Date(),
-  };
+function resolveModelAlias(routeId: AIRouteId): LiteLLMModelAlias {
+  return getLocalRoutesSet().has(routeId) ? "local-only" : "chat-free";
+}
+
+function getLiteLLMBaseUrl(): string {
+  const raw = process.env.LITELLM_BASE_URL?.trim() || DEFAULT_LITELLM_BASE_URL;
+  return raw.replace(/\/+$/, "");
+}
+
+function getLiteLLMTimeoutMs(): number {
+  const parsed = Number(process.env.LITELLM_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_LITELLM_TIMEOUT_MS;
+}
+
+function throwGatewayUnavailable(
+  isWorker: boolean,
+  reason: PoolExhaustionReason = "ALL_MODELS_UNAVAILABLE",
+  retryAfterSeconds: number | null = null,
+): never {
+  if (isWorker) {
+    throw new AIWorkerBackoffError(undefined, reason, retryAfterSeconds);
+  }
+  throw new AIServiceUnavailableError(SANITIZED_UNAVAILABLE_MESSAGE);
+}
+
+function parseRetryAfterSeconds(headerValue: string | null | undefined): number | null {
+  if (!headerValue) return null;
+  const parsed = Number(headerValue);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.ceil(parsed);
+  }
+  return null;
+}
+
+function stripMarkdownFences(rawText: string): string {
+  let cleaned = rawText.trim();
+  if (cleaned.startsWith("```json")) {
+    cleaned = cleaned.substring(7);
+  } else if (cleaned.startsWith("```")) {
+    cleaned = cleaned.substring(3);
+  }
+  if (cleaned.endsWith("```")) {
+    cleaned = cleaned.substring(0, cleaned.length - 3);
+  }
+  return cleaned.trim();
 }
 
 /**
- * Legacy compatibility resolver (used for embedding or legacy tests).
+ * Legacy compatibility resolver (preserved for 768d embeddings until APC-45).
  */
 export async function resolveAIConfig(
   capability: "embedding",
@@ -121,62 +191,103 @@ export async function resolveAIConfig(
   };
 }
 
-async function executeWithModel(
-  resolved: ResolvedFreeModel,
-  type: "text" | "json",
+async function callLiteLLM(
+  routeId: AIRouteId,
   prompt: string,
   systemPrompt?: string,
-): Promise<unknown> {
-  const { model, provider } = resolved;
+): Promise<string> {
+  const modelAlias = resolveModelAlias(routeId);
+  const isWorker = WORKER_ROUTES.has(routeId);
+  const apiKey = process.env.LITELLM_API_KEY?.trim();
 
-  return await withCircuitBreaker(
-    model.id,
-    provider.name,
-    async () => {
-      if (provider.sdkType === "GOOGLE_GENAI") {
-        return type === "text"
-          ? await GoogleGenAIAdapter.executeText(prompt, model, provider, systemPrompt)
-          : await GoogleGenAIAdapter.executeJSON(prompt, model, provider, systemPrompt);
-      }
-      if (provider.sdkType === "OPENAI_COMPATIBLE") {
-        return type === "text"
-          ? await OpenAICompatAdapter.executeText(prompt, model, provider, systemPrompt)
-          : await OpenAICompatAdapter.executeJSON(prompt, model, provider, systemPrompt);
-      }
-      // OLLAMA as free model
-      return type === "text"
-        ? await OllamaAdapter.executeText(prompt, systemPrompt)
-        : await OllamaAdapter.executeJSON(prompt, systemPrompt);
-    },
-  );
-}
-
-async function executeWithOllama(
-  type: "text" | "json",
-  prompt: string,
-  systemPrompt?: string,
-): Promise<unknown> {
-  return type === "text"
-    ? await OllamaAdapter.executeText(prompt, systemPrompt)
-    : await OllamaAdapter.executeJSON(prompt, systemPrompt);
-}
-
-async function acquireFreeModelForRoute(
-  isWorker: boolean,
-): Promise<FreeModelAcquisitionResult> {
-  if (isWorker && activeUserRequests > 0) {
-    // Yield briefly so in-flight interactive user requests acquire free-tier capacity first
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  if (!apiKey) {
+    logger.error("[AIClient] LITELLM_API_KEY is not configured", {
+      routeId,
+      modelAlias,
+      isWorker,
+    });
+    throwGatewayUnavailable(isWorker, "ALL_MODELS_UNAVAILABLE", null);
   }
 
-  return await acquireFreeModelWithDiagnostics({
+  const baseUrl = getLiteLLMBaseUrl();
+  const timeoutMs = getLiteLLMTimeoutMs();
+
+  const messages: Array<{ role: "system" | "user"; content: string }> = [];
+  if (systemPrompt) {
+    messages.push({ role: "system", content: systemPrompt });
+  }
+  messages.push({ role: "user", content: prompt });
+
+  logger.info("[AIClient] Dispatching LiteLLM request", {
+    routeId,
+    modelAlias,
     isWorker,
-    activeUserRequests,
   });
+
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelAlias,
+        messages,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (!response.ok) {
+      const statusCode = response.status;
+      logger.error("[AIClient] LiteLLM gateway returned error status", {
+        routeId,
+        modelAlias,
+        statusCode,
+        isWorker,
+      });
+
+      if (statusCode === 429) {
+        const retryAfterSeconds =
+          parseRetryAfterSeconds(response.headers?.get?.("retry-after")) ?? 60;
+        throwGatewayUnavailable(isWorker, "MINUTE_QUOTA", retryAfterSeconds);
+      }
+
+      throwGatewayUnavailable(isWorker, "ALL_MODELS_UNAVAILABLE", null);
+    }
+
+    const data = (await response.json()) as ChatCompletionResponse;
+    if (data.error) {
+      logger.error("[AIClient] LiteLLM response contained error payload", {
+        routeId,
+        modelAlias,
+        isWorker,
+        errorCode: data.error.code ?? null,
+      });
+      throwGatewayUnavailable(isWorker, "ALL_MODELS_UNAVAILABLE", null);
+    }
+
+    return data.choices?.[0]?.message?.content ?? "";
+  } catch (error) {
+    if (
+      error instanceof AIWorkerBackoffError ||
+      error instanceof AIServiceUnavailableError
+    ) {
+      throw error;
+    }
+
+    logger.error("[AIClient] LiteLLM gateway request failed", {
+      routeId,
+      modelAlias,
+      isWorker,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+    throwGatewayUnavailable(isWorker, "ALL_MODELS_UNAVAILABLE", null);
+  }
 }
 
 /**
- * Central dispatcher for text generation requests across free-tier rotation pool & local fallback.
+ * Central dispatcher for text generation requests routed through LiteLLM.
  */
 export async function generateText(
   prompt: string,
@@ -184,80 +295,11 @@ export async function generateText(
   systemPrompt?: string,
 ): Promise<string> {
   const routeId = normalizeToRouteId(routeOrCap);
-  const route = await resolveAIRoute(routeId);
-
-  logger.info(`[AIClient] Routing request for ${routeId} (preferred: ${route.preferredTier})`);
-
-  if (!route.isWorker) {
-    activeUserRequests++;
-  }
-
-  let lastAcquisition: FreeModelAcquisitionResult | null = null;
-
-  try {
-    if (route.preferredTier === "LOCAL") {
-      // 1. Try Local Ollama first
-      try {
-        return (await executeWithOllama("text", prompt, systemPrompt)) as string;
-      } catch (ollamaErr) {
-        logger.warn(`[AIClient] Local Ollama failed for ${routeId}, attempting FREE tier fallback`, { error: ollamaErr });
-
-        // 2. Fallback to FREE tier pool
-        lastAcquisition = await acquireFreeModelForRoute(route.isWorker);
-        const freeModel = lastAcquisition.resolved;
-        if (freeModel) {
-          try {
-            return (await executeWithModel(freeModel, "text", prompt, systemPrompt)) as string;
-          } catch (freeErr) {
-            logger.error(`[AIClient] FREE tier fallback failed for ${routeId}`, { error: freeErr });
-          }
-        }
-      }
-    } else {
-      // 1. Try FREE tier rotation pool first
-      lastAcquisition = await acquireFreeModelForRoute(route.isWorker);
-      const freeModel = lastAcquisition.resolved;
-      if (freeModel) {
-        try {
-          return (await executeWithModel(freeModel, "text", prompt, systemPrompt)) as string;
-        } catch (freeErr) {
-          logger.warn(`[AIClient] FREE tier model ${freeModel.model.displayName} failed, attempting Local Ollama fallback`, { error: freeErr });
-        }
-      } else {
-        logger.warn(`[AIClient] FREE tier pool exhausted for ${routeId}, attempting Local Ollama fallback`, {
-          exhaustionReason: lastAcquisition.exhaustionReason,
-          retryAfterSeconds: lastAcquisition.retryAfterSeconds,
-        });
-      }
-
-      // 2. Fallback to Local Ollama
-      try {
-        return (await executeWithOllama("text", prompt, systemPrompt)) as string;
-      } catch (ollamaErr) {
-        logger.error(`[AIClient] Local Ollama fallback failed for ${routeId}`, { error: ollamaErr });
-      }
-    }
-
-    // 3. Fallback Exhaustion
-    logger.error(`[AIClient] Fallback exhaustion for route ${routeId} (isWorker: ${route.isWorker})`);
-    if (route.isWorker) {
-      const exhaustionReason = lastAcquisition?.exhaustionReason ?? "MINUTE_QUOTA";
-      const retryAfterSeconds =
-        lastAcquisition?.retryAfterSeconds ??
-        (exhaustionReason === "MINUTE_QUOTA" ? 60 : null);
-      throw new AIWorkerBackoffError(undefined, exhaustionReason, retryAfterSeconds);
-    } else {
-      throw new AIServiceUnavailableError();
-    }
-  } finally {
-    if (!route.isWorker) {
-      activeUserRequests = Math.max(0, activeUserRequests - 1);
-    }
-  }
+  return await callLiteLLM(routeId, prompt, systemPrompt);
 }
 
 /**
- * Central dispatcher for JSON generation requests across free-tier rotation pool & local fallback.
+ * Central dispatcher for structured JSON generation requests routed through LiteLLM.
  */
 export async function generateJSON<T>(
   prompt: string,
@@ -265,74 +307,20 @@ export async function generateJSON<T>(
   systemPrompt?: string,
 ): Promise<T> {
   const routeId = normalizeToRouteId(routeOrCap);
-  const route = await resolveAIRoute(routeId);
+  const jsonSystemPrompt = systemPrompt
+    ? `${systemPrompt}\nReturn ONLY valid JSON. Do not include markdown wraps or extra commentary.`
+    : "Return ONLY valid JSON. Do not include markdown wraps or extra commentary.";
 
-  logger.info(`[AIClient] Routing JSON request for ${routeId} (preferred: ${route.preferredTier})`);
-
-  if (!route.isWorker) {
-    activeUserRequests++;
-  }
-
-  let lastAcquisition: FreeModelAcquisitionResult | null = null;
+  const responseText = await callLiteLLM(routeId, prompt, jsonSystemPrompt);
+  const cleanedText = stripMarkdownFences(responseText);
 
   try {
-    if (route.preferredTier === "LOCAL") {
-      // 1. Try Local Ollama first
-      try {
-        return (await executeWithOllama("json", prompt, systemPrompt)) as T;
-      } catch (ollamaErr) {
-        logger.warn(`[AIClient] Local Ollama failed for JSON ${routeId}, attempting FREE tier fallback`, { error: ollamaErr });
-
-        // 2. Fallback to FREE tier pool
-        lastAcquisition = await acquireFreeModelForRoute(route.isWorker);
-        const freeModel = lastAcquisition.resolved;
-        if (freeModel) {
-          try {
-            return (await executeWithModel(freeModel, "json", prompt, systemPrompt)) as T;
-          } catch (freeErr) {
-            logger.error(`[AIClient] FREE tier fallback failed for JSON ${routeId}`, { error: freeErr });
-          }
-        }
-      }
-    } else {
-      // 1. Try FREE tier rotation pool first
-      lastAcquisition = await acquireFreeModelForRoute(route.isWorker);
-      const freeModel = lastAcquisition.resolved;
-      if (freeModel) {
-        try {
-          return (await executeWithModel(freeModel, "json", prompt, systemPrompt)) as T;
-        } catch (freeErr) {
-          logger.warn(`[AIClient] FREE tier model ${freeModel.model.displayName} failed for JSON, attempting Local Ollama fallback`, { error: freeErr });
-        }
-      } else {
-        logger.warn(`[AIClient] FREE tier pool exhausted for JSON ${routeId}, attempting Local Ollama fallback`, {
-          exhaustionReason: lastAcquisition.exhaustionReason,
-          retryAfterSeconds: lastAcquisition.retryAfterSeconds,
-        });
-      }
-
-      // 2. Fallback to Local Ollama
-      try {
-        return (await executeWithOllama("json", prompt, systemPrompt)) as T;
-      } catch (ollamaErr) {
-        logger.error(`[AIClient] Local Ollama fallback failed for JSON ${routeId}`, { error: ollamaErr });
-      }
-    }
-
-    // 3. Fallback Exhaustion
-    logger.error(`[AIClient] Fallback exhaustion for JSON route ${routeId} (isWorker: ${route.isWorker})`);
-    if (route.isWorker) {
-      const exhaustionReason = lastAcquisition?.exhaustionReason ?? "MINUTE_QUOTA";
-      const retryAfterSeconds =
-        lastAcquisition?.retryAfterSeconds ??
-        (exhaustionReason === "MINUTE_QUOTA" ? 60 : null);
-      throw new AIWorkerBackoffError(undefined, exhaustionReason, retryAfterSeconds);
-    } else {
-      throw new AIServiceUnavailableError();
-    }
-  } finally {
-    if (!route.isWorker) {
-      activeUserRequests = Math.max(0, activeUserRequests - 1);
-    }
+    return JSON.parse(cleanedText) as T;
+  } catch (error) {
+    logger.error("[AIClient] Failed to parse JSON from LiteLLM response", {
+      routeId,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+    throw error;
   }
 }

@@ -92,7 +92,6 @@ const mockClassifyJobListing = classifyJobListing as jest.Mock;
 const mockCanonicalizeJobFacts = canonicalizeJobFacts as jest.Mock;
 const mockGenerateEmbedding = generateEmbedding as jest.Mock;
 
-const PARSING_PROVIDER_KEY = "AI_PROVIDER_PARSING";
 const EMBEDDING_PROVIDER_KEY = "AI_PROVIDER_EMBEDDING";
 
 // A reusable factory for mock job listings
@@ -224,13 +223,7 @@ describe("Classification Worker — runClassificationWorker", () => {
       data: { classificationStatus: "RUNNING" },
     });
 
-    // Should call the classification service under the PARSING_PROVIDER_KEY breaker
-    expect(mockWithCircuitBreaker).toHaveBeenCalledWith(
-      PARSING_PROVIDER_KEY,
-      "gemini",
-      expect.any(Function),
-      expect.any(Number),
-    );
+    // Should call the classification service directly (parsing circuit breaker retired in favor of LiteLLM gateway)
     expect(mockClassifyJobListing).toHaveBeenCalledWith({
       id: job.id,
       title: job.title,
@@ -239,6 +232,7 @@ describe("Classification Worker — runClassificationWorker", () => {
     });
 
     // Should generate the mustHave-skill-list embedding under the EMBEDDING_PROVIDER_KEY breaker
+    expect(mockWithCircuitBreaker).toHaveBeenCalledTimes(1);
     expect(mockWithCircuitBreaker).toHaveBeenCalledWith(
       EMBEDDING_PROVIDER_KEY,
       "gemini",
@@ -533,12 +527,7 @@ describe("Classification Worker — runClassificationWorker", () => {
   it("resets job to PENDING and increments attempts on transient error (first attempt)", async () => {
     const job = makeMockJob({ classificationAttempts: 0 });
     mockFindMany.mockResolvedValue([job]);
-    mockWithCircuitBreaker.mockImplementation((key: string) => {
-      if (key === PARSING_PROVIDER_KEY) {
-        return Promise.reject(new Error("Gateway Timeout"));
-      }
-      return Promise.resolve(new Array(768).fill(0.5));
-    });
+    mockClassifyJobListing.mockRejectedValueOnce(new Error("Gateway Timeout"));
 
     const result = await runClassificationWorker();
 
@@ -559,7 +548,7 @@ describe("Classification Worker — runClassificationWorker", () => {
   it("resets job to PENDING on second attempt failure (attempts=1)", async () => {
     const job = makeMockJob({ classificationAttempts: 1 });
     mockFindMany.mockResolvedValue([job]);
-    mockWithCircuitBreaker.mockRejectedValue(new Error("Timeout"));
+    mockClassifyJobListing.mockRejectedValueOnce(new Error("Timeout"));
 
     const result = await runClassificationWorker();
 
@@ -578,7 +567,7 @@ describe("Classification Worker — runClassificationWorker", () => {
   it("marks job as FAILED after MAX_CLASSIFICATION_ATTEMPTS (3rd attempt)", async () => {
     const job = makeMockJob({ classificationAttempts: 2 }); // 3rd attempt will fail
     mockFindMany.mockResolvedValue([job]);
-    mockWithCircuitBreaker.mockRejectedValue(new Error("Repeated failure"));
+    mockClassifyJobListing.mockRejectedValueOnce(new Error("Repeated failure"));
 
     const result = await runClassificationWorker();
 
@@ -712,17 +701,13 @@ describe("Classification Worker — runClassificationWorker", () => {
     const badJob = makeMockJob({ id: "job-002", classificationAttempts: 2 }); // Will be FAILED after this attempt
     mockFindMany.mockResolvedValue([goodJob, badJob]);
 
-    // First job succeeds end-to-end, second job's parsing breaker rejects
-    let callCount = 0;
-    mockWithCircuitBreaker.mockImplementation(
-      (key: string, _provider: string, fn: () => Promise<unknown>) => {
-        if (key === PARSING_PROVIDER_KEY) {
-          callCount++;
-          if (callCount === 2) {
-            return Promise.reject(new Error("LLM error"));
-          }
+    // First job succeeds end-to-end, second job's classification rejects with a listing-specific error
+    mockClassifyJobListing.mockImplementation(
+      async ({ id }: { id: string }) => {
+        if (id === "job-002") {
+          throw new Error("LLM error");
         }
-        return fn();
+        return { jobFacts: makeValidJobFacts() };
       },
     );
 

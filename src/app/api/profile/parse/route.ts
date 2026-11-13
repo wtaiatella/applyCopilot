@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { DocumentExtractor } from "@/lib/parsing/documentExtract";
 import { ProfileMergeService } from "@/lib/merge/profileMergeService";
-import { generateJSON } from "@/lib/ai/aiClient";
+import { generateJSON, AIServiceUnavailableError } from "@/lib/ai/aiClient";
 import { normalizeProficiency } from "@/lib/normalization/proficiencyNormalizer";
 import { logger } from "@/lib/logging/logger";
 import { IngestionDebugSession } from "@/lib/parsing/debugIngestionStorage";
@@ -506,6 +506,9 @@ ${extractedText}`;
       },
     });
   } catch (error) {
+    if (error instanceof AIServiceUnavailableError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     const err = error as Error;
     logger.error("Failed to start CV parsing SSE handler", {
       error: err.message,

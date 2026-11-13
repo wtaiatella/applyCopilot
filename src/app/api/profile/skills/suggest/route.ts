@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
-import { generateJSON, resolveAIConfig } from "@/lib/ai/aiClient";
+import { generateJSON, AIServiceUnavailableError } from "@/lib/ai/aiClient";
 import {
-  withCircuitBreaker,
-  isProviderBlocked,
   isBlockingHttpStatus,
   extractHttpStatus,
 } from "@/lib/ai/circuit-breaker";
@@ -12,13 +10,6 @@ import { logger } from "@/lib/logging/logger";
 import { ProfileMergeService } from "@/lib/merge/profileMergeService";
 
 const MAX_SUGGEST_PER_HOUR = 10;
-
-/** Same SystemConfig key the admin panel's "Default" provider + its Reset-block button already
- * target (src/app/api/admin/llm-config/route.ts) — this route previously called `generateJSON`
- * directly with no circuit-breaker protection, so a 429 here kept getting re-hit on every
- * subsequent click with no cooldown (unlike the classification worker / skill canonicalization
- * write paths, which have been circuit-breaker-protected since earlier in this ticket). */
-const DEFAULT_PROVIDER_KEY = "AI_PROVIDER_DEFAULT";
 
 interface SuggestedSkill {
   name: string;
@@ -179,6 +170,10 @@ Requirements:
 
     return NextResponse.json(responseData);
   } catch (error) {
+    if (error instanceof AIServiceUnavailableError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
+
     logger.error("Failed to suggest skills", { error });
 
     // Surface a clear, actionable message for a rate-limit/quota/auth failure instead of a

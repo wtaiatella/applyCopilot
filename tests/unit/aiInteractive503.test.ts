@@ -222,7 +222,7 @@ describe("Interactive AI Routes — 503 Sanitization & 429 Precedence (APC-41)",
 
   describe("Profile AI routes (assertAiRateLimit + AIServiceUnavailableError)", () => {
     it("POST /api/profile/ai/generate-bullet returns 429 on rate limit and 503 sanitized on gateway outage", async () => {
-      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError());
+      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError("profile_generate_bullet", 50));
       const res429 = await profileGenerateBulletPOST(
         makeJsonRequest("http://localhost/api/profile/ai/generate-bullet", {
           entityType: "experience",
@@ -244,7 +244,7 @@ describe("Interactive AI Routes — 503 Sanitization & 429 Precedence (APC-41)",
     });
 
     it("POST /api/profile/ai/review-all returns 429 on rate limit and 503 sanitized on gateway outage", async () => {
-      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError());
+      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError("profile_review_all", 20));
       const res429 = await profileReviewAllPOST(
         makeJsonRequest("http://localhost/api/profile/ai/review-all", {
           entityType: "experience",
@@ -266,7 +266,7 @@ describe("Interactive AI Routes — 503 Sanitization & 429 Precedence (APC-41)",
     });
 
     it("POST /api/profile/ai/review-bullet returns 429 on rate limit and 503 sanitized on gateway outage", async () => {
-      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError());
+      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError("profile_review_bullet", 50));
       const res429 = await profileReviewBulletPOST(
         makeJsonRequest("http://localhost/api/profile/ai/review-bullet", {
           entityType: "experience",
@@ -290,7 +290,7 @@ describe("Interactive AI Routes — 503 Sanitization & 429 Precedence (APC-41)",
     });
 
     it("POST /api/profile/ai/accept-suggestion returns 429 on rate limit and 503 sanitized on AIServiceUnavailableError", async () => {
-      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError());
+      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError("profile_accept_suggestion", 50));
       const res429 = await profileAcceptSuggestionPOST(
         makeJsonRequest("http://localhost/api/profile/ai/accept-suggestion", {
           action: "generate",
@@ -320,7 +320,7 @@ describe("Interactive AI Routes — 503 Sanitization & 429 Precedence (APC-41)",
     const cvParams = { params: Promise.resolve({ cvId: VALID_CUID }) };
 
     it("POST /api/cv/[cvId]/ai/generate-bullet returns 429 on rate limit and 503 sanitized on gateway outage", async () => {
-      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError());
+      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError("cv_generate_bullet", 50));
       const res429 = await cvGenerateBulletPOST(
         makeJsonRequest("http://localhost/api/cv/1/ai/generate-bullet", {
           entityType: "experience",
@@ -344,7 +344,7 @@ describe("Interactive AI Routes — 503 Sanitization & 429 Precedence (APC-41)",
     });
 
     it("POST /api/cv/[cvId]/ai/review-all returns 429 on rate limit and 503 sanitized on gateway outage", async () => {
-      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError());
+      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError("cv_review_all", 20));
       const res429 = await cvReviewAllPOST(
         makeJsonRequest("http://localhost/api/cv/1/ai/review-all", {
           entityType: "experience",
@@ -368,7 +368,7 @@ describe("Interactive AI Routes — 503 Sanitization & 429 Precedence (APC-41)",
     });
 
     it("POST /api/cv/[cvId]/ai/review-bullet returns 429 on rate limit and 503 sanitized on gateway outage", async () => {
-      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError());
+      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError("cv_review_bullet", 50));
       const res429 = await cvReviewBulletPOST(
         makeJsonRequest("http://localhost/api/cv/1/ai/review-bullet", {
           entityType: "experience",
@@ -394,7 +394,7 @@ describe("Interactive AI Routes — 503 Sanitization & 429 Precedence (APC-41)",
     });
 
     it("POST /api/cv/[cvId]/ai/generate-summary returns 429 on rate limit and 503 sanitized on gateway outage", async () => {
-      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError());
+      mockAssertAiRateLimit.mockRejectedValueOnce(new AiRateLimitExceededError("cv_generate_summary", 20));
       const res429 = await cvGenerateSummaryPOST(
         makeJsonRequest("http://localhost/api/cv/1/ai/generate-summary", {}),
         cvParams,

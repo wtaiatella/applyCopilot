@@ -2,10 +2,6 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { generateJSON, AIServiceUnavailableError } from "@/lib/ai/aiClient";
-import {
-  isBlockingHttpStatus,
-  extractHttpStatus,
-} from "@/lib/ai/circuit-breaker";
 import { logger } from "@/lib/logging/logger";
 import { ProfileMergeService } from "@/lib/merge/profileMergeService";
 
@@ -175,19 +171,6 @@ Requirements:
     }
 
     logger.error("Failed to suggest skills", { error });
-
-    // Surface a clear, actionable message for a rate-limit/quota/auth failure instead of a
-    // generic 500 — withCircuitBreaker above already recorded the block for next time.
-    const statusCode = extractHttpStatus(error);
-    if (statusCode !== null && isBlockingHttpStatus(statusCode)) {
-      return NextResponse.json(
-        {
-          error:
-            "The AI provider is temporarily rate-limited or unavailable. Please try again in a few minutes.",
-        },
-        { status: 429 },
-      );
-    }
 
     return NextResponse.json(
       { error: "Failed to generate skills suggestions" },

@@ -20,7 +20,7 @@ export function isBlockingHttpStatus(statusCode: number): boolean {
 }
 
 /**
- * Legacy key generation helper for SystemConfig compatibility.
+ * Generates the SystemConfig key used to store a provider's cooldown timestamp.
  */
 export function getBlockedUntilKey(
   providerConfigKey: string,
@@ -30,7 +30,7 @@ export function getBlockedUntilKey(
 }
 
 /**
- * Legacy blockProvider helper.
+ * Marks a provider as BLOCKED in SystemConfig for the configured cooldown period.
  */
 export async function blockProvider(
   providerConfigKey: string,
@@ -44,108 +44,42 @@ export async function blockProvider(
     update: { value: blockedUntil },
     create: { key, value: blockedUntil },
   });
+  logger.warn(
+    `Circuit breaker: provider ${key} is now BLOCKED until ${blockedUntil} (cooldown: ${cooldownMs}ms)`,
+  );
 }
 
 /**
- * Legacy resetProviderBlock helper.
+ * Manually resets a BLOCKED provider cooldown in SystemConfig.
  */
 export async function resetProviderBlock(
   providerConfigKey: string,
   provider: string,
 ): Promise<void> {
+  const key = getBlockedUntilKey(providerConfigKey, provider);
   try {
-    const key = getBlockedUntilKey(providerConfigKey, provider);
     await prisma.systemConfig.delete({
       where: { key },
     });
-  } catch {}
-}
-
-/**
- * Checks whether the given model is currently blocked by the circuit breaker.
- */
-export async function isModelBlocked(modelId: string): Promise<boolean> {
-  try {
-    const model = await prisma.aIModel.findUnique({
-      where: { id: modelId },
-      select: { blockedUntil: true },
-    });
-
-    if (!model?.blockedUntil) {
-      return false;
-    }
-
-    const now = new Date();
-    const isBlocked = model.blockedUntil > now;
-
-    if (!isBlocked) {
-      // Cooldown expired, clear blockedUntil automatically
-      await prisma.aIModel.update({
-        where: { id: modelId },
-        data: { blockedUntil: null },
-      });
-      logger.info(`Circuit breaker: cooldown expired for model ${modelId}. Unblocked.`);
-    }
-
-    return isBlocked;
-  } catch (error) {
-    logger.error(`Circuit breaker: error checking block for model ${modelId}`, {
-      error,
-    });
-    return false;
+    logger.info(`Circuit breaker: provider ${key} has been manually unblocked.`);
+  } catch {
+    // Record may not exist; nothing to unblock
   }
 }
 
 /**
- * Marks an LLM model as BLOCKED for the configured cooldown period.
- */
-export async function blockModel(
-  modelId: string,
-  cooldownMs: number = DEFAULT_COOLDOWN_MS,
-): Promise<void> {
-  try {
-    const blockedUntil = new Date(Date.now() + cooldownMs);
-
-    await prisma.aIModel.update({
-      where: { id: modelId },
-      data: { blockedUntil },
-    });
-
-    logger.warn(
-      `Circuit breaker: model ${modelId} is now BLOCKED until ${blockedUntil.toISOString()} (cooldown: ${cooldownMs}ms)`,
-    );
-  } catch (error) {
-    logger.error(`Circuit breaker: failed to block model ${modelId}`, { error });
-  }
-}
-
-/**
- * Manually resets a BLOCKED LLM model.
- */
-export async function resetModelBlock(modelId: string): Promise<void> {
-  try {
-    await prisma.aIModel.update({
-      where: { id: modelId },
-      data: { blockedUntil: null },
-    });
-
-    logger.info(`Circuit breaker: model ${modelId} has been manually unblocked.`);
-  } catch (error) {
-    logger.error(`Circuit breaker: failed to unblock model ${modelId}`, { error });
-    throw error;
-  }
-}
-
-/**
- * Legacy compatibility helper for checking provider blocks via SystemConfig (e.g. embeddings).
+ * Checks whether a provider is currently blocked via SystemConfig cooldown.
  */
 export async function isProviderBlocked(
   providerConfigKey: string,
-  _provider?: string,
+  provider?: string,
 ): Promise<boolean> {
   try {
+    const key = provider
+      ? getBlockedUntilKey(providerConfigKey, provider)
+      : `${providerConfigKey}_BLOCKED_UNTIL`;
     const config = await prisma.systemConfig.findUnique({
-      where: { key: `${providerConfigKey}_BLOCKED_UNTIL` },
+      where: { key },
     });
 
     if (!config?.value) return false;
@@ -157,11 +91,11 @@ export async function isProviderBlocked(
 }
 
 /**
- * Wraps an LLM API call with circuit breaker protection for an AIModel.
+ * Wraps an AI call with SystemConfig-backed circuit breaker protection.
  */
 export async function withCircuitBreaker<T>(
-  modelIdOrKey: string,
-  _provider: string,
+  providerConfigKey: string,
+  provider: string,
   fn: () => Promise<T>,
   cooldownMs: number = DEFAULT_COOLDOWN_MS,
 ): Promise<T> {
@@ -179,19 +113,7 @@ export async function withCircuitBreaker<T>(
     const statusCode = extractHttpStatus(error);
 
     if (statusCode !== null && isBlockingHttpStatus(statusCode)) {
-      // Check if modelIdOrKey is an AIModel ID or legacy SystemConfig key
-      try {
-        await blockModel(modelIdOrKey, cooldownMs);
-      } catch {
-        // If not found in AIModel table, fallback to legacy SystemConfig
-        const blockedUntilKey = `${modelIdOrKey}_BLOCKED_UNTIL`;
-        const blockedUntil = new Date(Date.now() + cooldownMs).toISOString();
-        await prisma.systemConfig.upsert({
-          where: { key: blockedUntilKey },
-          update: { value: blockedUntil },
-          create: { key: blockedUntilKey, value: blockedUntil },
-        });
-      }
+      await blockProvider(providerConfigKey, provider, cooldownMs);
     }
 
     throw error;

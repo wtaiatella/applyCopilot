@@ -37,9 +37,13 @@ jest.mock("@/lib/auth/auth", () => ({
 // /api/profile/parse (imported below for the REM-5 rate-limit test) transitively pulls in
 // @google/genai, an ESM-only package Jest can't parse without transformation — mirrors the
 // same mock already used by ai.test.ts/profile-ai.test.ts for any route touching aiClient.ts.
-jest.mock("@/lib/ai/aiClient", () => ({
-  generateJSON: jest.fn(),
-}));
+jest.mock("@/lib/ai/aiClient", () => {
+  const actual = jest.requireActual("@/lib/ai/aiClient");
+  return {
+    ...actual,
+    generateJSON: jest.fn(),
+  };
+});
 
 describe("Profile Sub-resources CRUD & Reconciliation Integration Tests", () => {
   const mockAuth = auth as unknown as jest.Mock;

@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
 import DatabasePanel from "@/components/settings/DatabasePanel";
+import SkillMatchingPanel from "@/components/settings/SkillMatchingPanel";
 import Link from "next/link";
 import { Globe } from "lucide-react";
 
@@ -53,6 +54,7 @@ export default async function SettingsPage() {
         </div>
 
         <DatabasePanel />
+        <SkillMatchingPanel />
       </div>
     </div>
   );

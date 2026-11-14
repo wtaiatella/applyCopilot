@@ -10,6 +10,7 @@ import {
   canonicalizeProfileFacts,
 } from "@/services/profileSyncService";
 import { generateEmbedding } from "@/lib/ai/vector-service";
+import { AIServiceUnavailableError } from "@/lib/ai/aiClient";
 import { ProfileFactsSchema } from "@/lib/validation/profileFactsSchema";
 
 export async function POST(request: Request) {
@@ -47,6 +48,12 @@ export async function POST(request: Request) {
     try {
       rawProfileFacts = await extractProfileFacts(consolidatedText);
     } catch (error) {
+      if (error instanceof AIServiceUnavailableError) {
+        logger.warn("AI service unavailable during ProfileFacts extraction", {
+          userId,
+        });
+        return NextResponse.json({ error: error.message }, { status: 503 });
+      }
       logger.error("ProfileFacts extraction failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -80,11 +87,18 @@ export async function POST(request: Request) {
     }
     const profileFacts = parseResult.data;
 
-    // 7. Generate the skills-list embedding (FR-23: provider failure -> 502, no DB write)
+    // 7. Generate the skills-list embedding (provider unavailable -> 503, no DB write)
     let embeddingVector: number[];
     try {
       embeddingVector = await generateEmbedding(profileFacts.skills.join(" "));
     } catch (error) {
+      if (error instanceof AIServiceUnavailableError) {
+        logger.warn(
+          "AI service unavailable during ProfileFacts embedding generation. No DB write (prior data preserved).",
+          { userId },
+        );
+        return NextResponse.json({ error: error.message }, { status: 503 });
+      }
       logger.error(
         "Embedding generation failed for ProfileFacts. No DB write (prior data preserved).",
         {
@@ -117,6 +131,10 @@ export async function POST(request: Request) {
       profileFacts,
     });
   } catch (error) {
+    if (error instanceof AIServiceUnavailableError) {
+      logger.warn("AI service unavailable during profile sync");
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     logger.error("Error synchronizing profile with AI", {
       error: error instanceof Error ? error.message : String(error),
     });

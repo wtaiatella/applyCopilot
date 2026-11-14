@@ -1,150 +1,164 @@
 /**
  * @jest-environment node
  */
-// Mock external AI SDKs before importing the module under test. jest.mock() factories cannot
-// reference outer-scope consts (TDZ, since jest.mock is hoisted above them) — the jest.fn()s are
-// created inside each factory instead, then recovered below via the constructor mock's
-// `.mock.results`, since vector-service.ts instantiates one client per SDK at module load.
-jest.mock("@google/genai", () => ({
-  GoogleGenAI: jest.fn().mockImplementation(() => ({
-    models: {
-      embedContent: jest.fn(),
-    },
-  })),
-}));
 
-jest.mock("ollama", () => ({
-  Ollama: jest.fn().mockImplementation(() => ({
-    embed: jest.fn(),
-  })),
-}));
-
-jest.mock("@/lib/ai/aiClient", () => ({
-  resolveAIConfig: jest.fn(),
+jest.mock("@/lib/logging/logger", () => ({
+  logger: {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  },
 }));
 
 import {
-  generateEmbedding,
+  AIServiceUnavailableError,
+  AIWorkerBackoffError,
+} from "@/lib/ai/aiClient";
+import {
   EMBEDDING_DIMENSION,
+  generateEmbedding,
 } from "@/lib/ai/vector-service";
-import { resolveAIConfig } from "@/lib/ai/aiClient";
-import { GoogleGenAI } from "@google/genai";
-import { Ollama } from "ollama";
 
-const mockResolveAIConfig = resolveAIConfig as jest.Mock;
-const mockEmbedContent = (GoogleGenAI as unknown as jest.Mock).mock.results[0]
-  .value.models.embedContent as jest.Mock;
-const mockOllamaEmbed = (Ollama as unknown as jest.Mock).mock.results[0].value
-  .embed as jest.Mock;
+const mockFetch = jest.fn();
 
-describe("Provider-Routed Vector Generation Service", () => {
+describe("LiteLLM Vector Generation Service (1024d)", () => {
+  const originalEnv = process.env;
+  const originalFetch = global.fetch;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env = {
+      ...originalEnv,
+      LITELLM_API_KEY: "test-litellm-key",
+      LITELLM_BASE_URL: "http://127.0.0.1:4000/v1",
+      LITELLM_TIMEOUT_MS: "5000",
+    };
+    global.fetch = mockFetch as unknown as typeof fetch;
   });
 
-  it("exports EMBEDDING_DIMENSION as 768", () => {
-    expect(EMBEDDING_DIMENSION).toBe(768);
+  afterEach(() => {
+    process.env = originalEnv;
+    global.fetch = originalFetch;
   });
 
-  it("should return a zero-filled EMBEDDING_DIMENSION vector when input text is empty or whitespace, without calling any provider", async () => {
+  it("exports EMBEDDING_DIMENSION as 1024", () => {
+    expect(EMBEDDING_DIMENSION).toBe(1024);
+  });
+
+  it("returns a zero-filled 1024d vector when input text is empty or whitespace without calling fetch", async () => {
     const vectorFromEmpty = await generateEmbedding("");
-    expect(vectorFromEmpty.length).toBe(EMBEDDING_DIMENSION);
+    expect(vectorFromEmpty.length).toBe(1024);
     expect(vectorFromEmpty.every((val) => val === 0)).toBe(true);
 
     const vectorFromWhitespace = await generateEmbedding("    ");
-    expect(vectorFromWhitespace.length).toBe(EMBEDDING_DIMENSION);
+    expect(vectorFromWhitespace.length).toBe(1024);
     expect(vectorFromWhitespace.every((val) => val === 0)).toBe(true);
 
-    expect(mockResolveAIConfig).not.toHaveBeenCalled();
-    expect(mockOllamaEmbed).not.toHaveBeenCalled();
-    expect(mockEmbedContent).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("should route to Ollama's embed() when resolveAIConfig resolves the ollama provider", async () => {
-    mockResolveAIConfig.mockResolvedValue({
-      provider: "ollama",
-      model: "nomic-embed-text",
-    });
-    mockOllamaEmbed.mockResolvedValue({
-      embeddings: [new Array(EMBEDDING_DIMENSION).fill(0.2)],
+  it("calls POST ${LITELLM_BASE_URL}/embeddings with embedding-local model and Bearer auth", async () => {
+    const expectedVector = new Array(1024).fill(0.25);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [{ embedding: expectedVector }],
+      }),
     });
 
-    const vector = await generateEmbedding("Senior React Developer");
+    const vector = await generateEmbedding("Senior TypeScript Engineer");
 
-    expect(mockResolveAIConfig).toHaveBeenCalledWith("embedding");
-    expect(mockOllamaEmbed).toHaveBeenCalledWith({
-      model: "nomic-embed-text",
-      input: "Senior React Developer",
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://127.0.0.1:4000/v1/embeddings");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({
+      "Content-Type": "application/json",
+      Authorization: "Bearer test-litellm-key",
     });
-    expect(mockEmbedContent).not.toHaveBeenCalled();
-    expect(vector.length).toBe(EMBEDDING_DIMENSION);
-    expect(vector[0]).toBe(0.2);
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "embedding-local",
+      input: "Senior TypeScript Engineer",
+    });
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(vector).toEqual(expectedVector);
+    expect(vector.length).toBe(1024);
   });
 
-  it("should route to Gemini's embedContent() when resolveAIConfig resolves the gemini provider, constrained to EMBEDDING_DIMENSION", async () => {
-    mockResolveAIConfig.mockResolvedValue({
-      provider: "gemini",
-      model: "gemini-embedding-001",
-    });
-    mockEmbedContent.mockResolvedValue({
-      embeddings: [{ values: new Array(EMBEDDING_DIMENSION).fill(0.3) }],
-    });
+  it("throws AIServiceUnavailableError for interactive calls and AIWorkerBackoffError for worker calls when LITELLM_API_KEY is missing", async () => {
+    delete process.env.LITELLM_API_KEY;
 
-    const vector = await generateEmbedding("Node.js Backend Engineer");
-
-    expect(mockResolveAIConfig).toHaveBeenCalledWith("embedding");
-    expect(mockEmbedContent).toHaveBeenCalledWith({
-      model: "gemini-embedding-001",
-      contents: "Node.js Backend Engineer",
-      config: { outputDimensionality: EMBEDDING_DIMENSION },
-    });
-    expect(mockOllamaEmbed).not.toHaveBeenCalled();
-    expect(vector.length).toBe(EMBEDDING_DIMENSION);
-    expect(vector[0]).toBe(0.3);
-  });
-
-  it("should fall back to Ollama when resolveAIConfig resolves the claude provider (no embedding API)", async () => {
-    mockResolveAIConfig.mockResolvedValue({
-      provider: "claude",
-      model: "nomic-embed-text",
-    });
-    mockOllamaEmbed.mockResolvedValue({
-      embeddings: [new Array(EMBEDDING_DIMENSION).fill(0.4)],
-    });
-
-    const vector = await generateEmbedding("Python Data Engineer");
-
-    expect(mockOllamaEmbed).toHaveBeenCalledWith({
-      model: "nomic-embed-text",
-      input: "Python Data Engineer",
-    });
-    expect(mockEmbedContent).not.toHaveBeenCalled();
-    expect(vector.length).toBe(EMBEDDING_DIMENSION);
-  });
-
-  it("should throw if the provider returns a vector with length other than EMBEDDING_DIMENSION", async () => {
-    mockResolveAIConfig.mockResolvedValue({
-      provider: "ollama",
-      model: "nomic-embed-text",
-    });
-    mockOllamaEmbed.mockResolvedValue({
-      embeddings: [new Array(256).fill(0.5)],
-    });
-
-    await expect(generateEmbedding("Tailwind CSS")).rejects.toThrow(
-      `Expected embedding vector of size ${EMBEDDING_DIMENSION}, received 256`,
+    await expect(generateEmbedding("React")).rejects.toBeInstanceOf(
+      AIServiceUnavailableError,
     );
+    await expect(
+      generateEmbedding("React", { isWorker: true }),
+    ).rejects.toBeInstanceOf(AIWorkerBackoffError);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("should propagate provider errors (e.g. network/429) to the caller", async () => {
-    mockResolveAIConfig.mockResolvedValue({
-      provider: "ollama",
-      model: "nomic-embed-text",
+  it("throws with zero fallback on non-OK HTTP status, splitting interactive vs worker errors", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      headers: new Headers(),
     });
-    mockOllamaEmbed.mockRejectedValueOnce(new Error("Ollama unreachable"));
-
-    await expect(generateEmbedding("React Native")).rejects.toThrow(
-      "Ollama unreachable",
+    await expect(generateEmbedding("Node.js")).rejects.toBeInstanceOf(
+      AIServiceUnavailableError,
     );
+
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      headers: new Headers({ "retry-after": "30" }),
+    });
+    try {
+      await generateEmbedding("Node.js", { isWorker: true });
+      throw new Error("Expected AIWorkerBackoffError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AIWorkerBackoffError);
+      expect((error as AIWorkerBackoffError).exhaustionReason).toBe("MINUTE_QUOTA");
+      expect((error as AIWorkerBackoffError).retryAfterSeconds).toBe(30);
+    }
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws with zero fallback on network/timeout errors, splitting interactive vs worker errors", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("connect ECONNREFUSED 127.0.0.1:4000"));
+    await expect(generateEmbedding("PostgreSQL")).rejects.toBeInstanceOf(
+      AIServiceUnavailableError,
+    );
+
+    mockFetch.mockRejectedValueOnce(new DOMException("The operation was aborted", "TimeoutError"));
+    await expect(
+      generateEmbedding("PostgreSQL", { isWorker: true }),
+    ).rejects.toBeInstanceOf(AIWorkerBackoffError);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws on dimension mismatch (e.g. 768d instead of 1024d) for both interactive and worker callers", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [{ embedding: new Array(768).fill(0.5) }],
+      }),
+    });
+    await expect(generateEmbedding("Tailwind CSS")).rejects.toBeInstanceOf(
+      AIServiceUnavailableError,
+    );
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [{ embedding: new Array(256).fill(0.5) }],
+      }),
+    });
+    await expect(
+      generateEmbedding("Tailwind CSS", { isWorker: true }),
+    ).rejects.toBeInstanceOf(AIWorkerBackoffError);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });

@@ -33,7 +33,7 @@ describe("Vector Similarity Search Integration Tests (Stage 1, 768d, FR-12)", ()
       .$executeRawUnsafe("CREATE EXTENSION IF NOT EXISTS vector;")
       .catch(() => {});
 
-    // Helper to generate an EMBEDDING_DIMENSION (768) vector with a specific bias
+    // Helper to generate an EMBEDDING_DIMENSION (1024) vector with a specific bias
     const makeVector = (bias: number) => {
       const vec = new Array(EMBEDDING_DIMENSION).fill(0.1);
       vec[0] = bias; // Vary the first element to change similarity
@@ -188,7 +188,7 @@ describe("Vector Similarity Search Integration Tests (Stage 1, 768d, FR-12)", ()
   });
 
   it("guards vector length against EMBEDDING_DIMENSION — falls back to the no-embedding branch (null mustHaveSimilarity) when the profile vector is the wrong dimension", async () => {
-    // A 512-dimension vector (the pre-014 shape) is NOT EMBEDDING_DIMENSION (768), so the
+    // A 512-dimension vector is NOT EMBEDDING_DIMENSION (1024), so the
     // implementation must not attempt the pgvector `<=>` operator with a mismatched vector —
     // it falls back to the date-sorted branch, matching the null-embedding path exactly.
     const wrongDimensionEmbedding = new Array(512).fill(0.1);

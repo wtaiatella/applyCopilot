@@ -1,37 +1,60 @@
-import { GoogleGenAI } from "@google/genai";
-import { Ollama } from "ollama";
-import { resolveAIConfig } from "./aiClient";
+import {
+  AIServiceUnavailableError,
+  AIWorkerBackoffError,
+  getLiteLLMBaseUrl,
+  getLiteLLMTimeoutMs,
+  throwGatewayUnavailable,
+} from "./aiClient";
 import { logger } from "../logging/logger";
 
-const googleGenAI = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || "",
-});
-
-const ollamaClient = new Ollama({
-  host: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
-});
+const EMBEDDING_MODEL_ALIAS = "embedding-local";
 
 /**
- * Fixed dimension for every embedding vector produced by this service, regardless of
- * provider (Ollama `nomic-embed-text` is natively 768d; Gemini `gemini-embedding-001` is
- * constrained to 768d via `outputDimensionality`). Both `UserProfile.embedding` and
- * `JobListing.embedding` columns are `vector(768)` — see spectech Data Models.
+ * Fixed dimension for every embedding vector produced by this service
+ * (LiteLLM `embedding-local` -> Ollama `qwen3-embedding:0.6b`, 1024d).
+ * `UserProfile.embedding`, `JobListing.embedding`, and `SkillEmbedding.embedding`
+ * columns are `vector(1024)`.
  */
-export const EMBEDDING_DIMENSION = 768;
+export const EMBEDDING_DIMENSION = 1024;
+
+export interface GenerateEmbeddingOptions {
+  isWorker?: boolean;
+}
+
+interface EmbeddingResponse {
+  data?: Array<{
+    embedding?: number[];
+  }>;
+  error?: {
+    message?: string;
+    type?: string;
+    code?: string | number;
+  };
+}
+
+function parseRetryAfterSeconds(headerValue: string | null | undefined): number | null {
+  if (!headerValue) return null;
+  const parsed = Number(headerValue);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.ceil(parsed);
+  }
+  return null;
+}
 
 /**
- * Generates a fixed-dimension (768d) vector embedding for a given text via the configured
- * embedding provider (Ollama or Gemini, resolved by `resolveAIConfig("embedding")`).
- * Claude has no embedding API — if it is ever resolved for the "embedding" capability
- * (e.g. inherited from `AI_PROVIDER_DEFAULT`), this falls back to Ollama.
- *
- * Signature/import path is intentionally unchanged (FR-18) — `cvMatchScoreService.ts`
- * (Spec 007) imports this function directly and must require zero edits.
+ * Generates a fixed-dimension (1024d) vector embedding for a given text via the
+ * centralized LiteLLM gateway (`POST ${LITELLM_BASE_URL}/embeddings`, model `embedding-local`)
+ * with strict no-fallback behavior.
  *
  * @param text The input string to vectorize.
- * @returns Promise<number[]> Resolves to an array of `EMBEDDING_DIMENSION` decimal numbers.
+ * @param options Optional settings (`isWorker` switches unavailability error to `AIWorkerBackoffError`).
+ * @returns Promise<number[]> Resolves to an array of `EMBEDDING_DIMENSION` numbers.
  */
-export async function generateEmbedding(text: string): Promise<number[]> {
+export async function generateEmbedding(
+  text: string,
+  options?: GenerateEmbeddingOptions,
+): Promise<number[]> {
+  const isWorker = options?.isWorker ?? false;
   const trimmedText = text.trim();
   if (!trimmedText) {
     logger.warn(
@@ -40,47 +63,89 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     return new Array(EMBEDDING_DIMENSION).fill(0);
   }
 
+  const apiKey = process.env.LITELLM_API_KEY?.trim();
+  if (!apiKey) {
+    logger.error("[VectorService] LITELLM_API_KEY is not configured", {
+      modelAlias: EMBEDDING_MODEL_ALIAS,
+      isWorker,
+    });
+    throwGatewayUnavailable(isWorker, "ALL_MODELS_UNAVAILABLE", null);
+  }
+
+  const baseUrl = getLiteLLMBaseUrl();
+  const timeoutMs = getLiteLLMTimeoutMs();
+
+  logger.info("[VectorService] Dispatching LiteLLM embedding request", {
+    modelAlias: EMBEDDING_MODEL_ALIAS,
+    isWorker,
+  });
+
   try {
-    const { provider: resolvedProvider, model } =
-      await resolveAIConfig("embedding");
-    let provider: "ollama" | "gemini" | "claude" = resolvedProvider;
-
-    if (provider === "claude") {
-      logger.warn(
-        "Claude has no embedding API; falling back to Ollama for embedding generation.",
-        { resolvedModel: model },
-      );
-      provider = "ollama";
-    }
-
-    let vector: number[];
-
-    if (provider === "gemini") {
-      const response = await googleGenAI.models.embedContent({
-        model,
-        contents: trimmedText,
-        config: { outputDimensionality: EMBEDDING_DIMENSION },
-      });
-      vector = response.embeddings?.[0]?.values || [];
-    } else {
-      const response = await ollamaClient.embed({
-        model,
+    const response = await fetch(`${baseUrl}/embeddings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: EMBEDDING_MODEL_ALIAS,
         input: trimmedText,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (!response.ok) {
+      const statusCode = response.status;
+      logger.error("[VectorService] LiteLLM embedding gateway returned error status", {
+        modelAlias: EMBEDDING_MODEL_ALIAS,
+        statusCode,
+        isWorker,
       });
-      vector = response.embeddings?.[0] || [];
+
+      if (statusCode === 429) {
+        const retryAfterSeconds =
+          parseRetryAfterSeconds(response.headers?.get?.("retry-after")) ?? 60;
+        throwGatewayUnavailable(isWorker, "MINUTE_QUOTA", retryAfterSeconds);
+      }
+
+      throwGatewayUnavailable(isWorker, "ALL_MODELS_UNAVAILABLE", null);
     }
 
-    if (vector.length !== EMBEDDING_DIMENSION) {
-      throw new Error(
-        `Expected embedding vector of size ${EMBEDDING_DIMENSION}, received ${vector.length}`,
-      );
+    const payload = (await response.json()) as EmbeddingResponse;
+    if (payload.error) {
+      logger.error("[VectorService] LiteLLM embedding response contained error payload", {
+        modelAlias: EMBEDDING_MODEL_ALIAS,
+        isWorker,
+        errorCode: payload.error.code ?? null,
+      });
+      throwGatewayUnavailable(isWorker, "ALL_MODELS_UNAVAILABLE", null);
+    }
+
+    const vector = payload.data?.[0]?.embedding;
+    if (!Array.isArray(vector) || vector.length !== EMBEDDING_DIMENSION) {
+      logger.error("[VectorService] Invalid or mismatched embedding dimension", {
+        modelAlias: EMBEDDING_MODEL_ALIAS,
+        expectedDimension: EMBEDDING_DIMENSION,
+        receivedDimension: Array.isArray(vector) ? vector.length : null,
+        isWorker,
+      });
+      throwGatewayUnavailable(isWorker, "ALL_MODELS_UNAVAILABLE", null);
     }
 
     return vector;
   } catch (error) {
-    logger.error("Failed to generate vector embedding via embedding provider", {
-      error,
+    if (
+      error instanceof AIWorkerBackoffError ||
+      error instanceof AIServiceUnavailableError
+    ) {
+      throw error;
+    }
+
+    logger.error("[VectorService] Failed to generate vector embedding via LiteLLM", {
+      modelAlias: EMBEDDING_MODEL_ALIAS,
+      isWorker,
+      errorName: error instanceof Error ? error.name : "UnknownError",
     });
-    throw error;
+    throwGatewayUnavailable(isWorker, "ALL_MODELS_UNAVAILABLE", null);
   }
 }

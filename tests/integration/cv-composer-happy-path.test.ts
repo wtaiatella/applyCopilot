@@ -25,9 +25,9 @@ jest.mock("@/lib/auth/auth", () => ({
   auth: jest.fn(),
 }));
 
-// Avoid loading the real TensorFlow USE model for match-score (mirrors cv-match-score.test.ts).
+// Avoid loading the real embedding gateway for match-score (mirrors cv-match-score.test.ts).
 jest.mock("@/lib/ai/vector-service", () => ({
-  generateEmbedding: jest.fn().mockResolvedValue(new Array(512).fill(0.123)),
+  generateEmbedding: jest.fn().mockResolvedValue(new Array(1024).fill(0.123)),
 }));
 
 describe("CV Composer happy-path end-to-end (SC-1, SC-2, AC.11)", () => {

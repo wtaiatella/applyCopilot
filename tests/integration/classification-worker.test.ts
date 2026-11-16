@@ -24,29 +24,6 @@ jest.mock("@/lib/db/prisma", () => ({
   },
 }));
 
-// Mock Circuit Breaker
-jest.mock("@/lib/ai/circuit-breaker", () => {
-  const actual = jest.requireActual("@/lib/ai/circuit-breaker");
-  return {
-    ...actual,
-    isProviderBlocked: jest.fn(),
-    withCircuitBreaker: jest.fn(),
-  };
-});
-
-// Mock aiClient — resolveAIConfig is used to determine the provider passed into the
-// circuit breaker (per-capability-and-provider block scoping); a fixed "gemini" here keeps
-// the existing key-based mockImplementation assertions below stable.
-jest.mock("@/lib/ai/aiClient", () => {
-  const actual = jest.requireActual("@/lib/ai/aiClient");
-  return {
-    ...actual,
-    resolveAIConfig: jest
-      .fn()
-      .mockResolvedValue({ provider: "gemini", model: "test-model" }),
-  };
-});
-
 // Mock Classification Service
 jest.mock("@/services/jobClassificationService", () => ({
   classifyJobListing: jest.fn(),
@@ -70,10 +47,6 @@ jest.mock("@/lib/ai/vector-service", () => ({
 
 import { prisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logging/logger";
-import {
-  isProviderBlocked,
-  withCircuitBreaker,
-} from "@/lib/ai/circuit-breaker";
 import { AIWorkerBackoffError } from "@/lib/ai/aiClient";
 import {
   classifyJobListing,
@@ -86,14 +59,9 @@ const mockFindMany = prisma.jobListing.findMany as jest.Mock;
 const mockUpdate = prisma.jobListing.update as jest.Mock;
 const mockUpdateMany = prisma.jobListing.updateMany as jest.Mock;
 const mockExecuteRaw = prisma.$executeRaw as unknown as jest.Mock;
-const mockIsProviderBlocked = isProviderBlocked as jest.Mock;
-const mockWithCircuitBreaker = withCircuitBreaker as jest.Mock;
 const mockClassifyJobListing = classifyJobListing as jest.Mock;
 const mockCanonicalizeJobFacts = canonicalizeJobFacts as jest.Mock;
 const mockGenerateEmbedding = generateEmbedding as jest.Mock;
-
-const PARSING_PROVIDER_KEY = "AI_PROVIDER_PARSING";
-const EMBEDDING_PROVIDER_KEY = "AI_PROVIDER_EMBEDDING";
 
 // A reusable factory for mock job listings
 function makeMockJob(
@@ -144,14 +112,6 @@ describe("Classification Worker — runClassificationWorker", () => {
     // Default: no custom SystemConfig overrides
     mockSystemConfigFindUnique.mockResolvedValue(null);
 
-    // Default: provider is healthy
-    mockIsProviderBlocked.mockResolvedValue(false);
-
-    // Default: withCircuitBreaker passes through to the wrapped fn, regardless of key/provider
-    mockWithCircuitBreaker.mockImplementation(
-      (_key: string, _provider: string, fn: () => Promise<unknown>) => fn(),
-    );
-
     // Default: classification returns a valid jobFacts payload
     mockClassifyJobListing.mockResolvedValue({ jobFacts: makeValidJobFacts() });
 
@@ -162,27 +122,13 @@ describe("Classification Worker — runClassificationWorker", () => {
       Promise.resolve(jobFacts),
     );
 
-    // Default: embedding generation returns a vector
-    mockGenerateEmbedding.mockResolvedValue(new Array(768).fill(0.5));
+    // Default: embedding generation returns a 1024d vector
+    mockGenerateEmbedding.mockResolvedValue(new Array(1024).fill(0.5));
 
     // Default DB operations succeed
     mockUpdate.mockResolvedValue({});
     mockUpdateMany.mockResolvedValue({ count: 0 });
     mockExecuteRaw.mockResolvedValue(1);
-  });
-
-  // ──────────────────────────────────────────────────
-  // Scenario: Provider is BLOCKED
-  // ──────────────────────────────────────────────────
-
-  it("skips processing and returns skippedBlocked=true when provider is BLOCKED", async () => {
-    mockIsProviderBlocked.mockResolvedValue(true);
-
-    const result = await runClassificationWorker();
-
-    expect(result).toEqual({ processed: 0, failed: 0, skippedBlocked: true });
-    expect(mockFindMany).not.toHaveBeenCalled();
-    expect(mockClassifyJobListing).not.toHaveBeenCalled();
   });
 
   // ──────────────────────────────────────────────────
@@ -224,13 +170,7 @@ describe("Classification Worker — runClassificationWorker", () => {
       data: { classificationStatus: "RUNNING" },
     });
 
-    // Should call the classification service under the PARSING_PROVIDER_KEY breaker
-    expect(mockWithCircuitBreaker).toHaveBeenCalledWith(
-      PARSING_PROVIDER_KEY,
-      "gemini",
-      expect.any(Function),
-      expect.any(Number),
-    );
+    // Should call the classification service directly (parsing circuit breaker retired in favor of LiteLLM gateway)
     expect(mockClassifyJobListing).toHaveBeenCalledWith({
       id: job.id,
       title: job.title,
@@ -238,14 +178,14 @@ describe("Classification Worker — runClassificationWorker", () => {
       fullDescription: job.fullDescription,
     });
 
-    // Should generate the mustHave-skill-list embedding under the EMBEDDING_PROVIDER_KEY breaker
-    expect(mockWithCircuitBreaker).toHaveBeenCalledWith(
-      EMBEDDING_PROVIDER_KEY,
-      "gemini",
-      expect.any(Function),
-      expect.any(Number),
+    // Should canonicalize and generate the mustHave-skill-list embedding with { isWorker: true }
+    expect(mockCanonicalizeJobFacts).toHaveBeenCalledWith(
+      expect.any(Object),
+      { isWorker: true },
     );
-    expect(mockGenerateEmbedding).toHaveBeenCalledWith("React TypeScript");
+    expect(mockGenerateEmbedding).toHaveBeenCalledWith("React TypeScript", {
+      isWorker: true,
+    });
 
     // Should persist results via raw SQL
     expect(mockExecuteRaw).toHaveBeenCalledTimes(1);
@@ -533,12 +473,7 @@ describe("Classification Worker — runClassificationWorker", () => {
   it("resets job to PENDING and increments attempts on transient error (first attempt)", async () => {
     const job = makeMockJob({ classificationAttempts: 0 });
     mockFindMany.mockResolvedValue([job]);
-    mockWithCircuitBreaker.mockImplementation((key: string) => {
-      if (key === PARSING_PROVIDER_KEY) {
-        return Promise.reject(new Error("Gateway Timeout"));
-      }
-      return Promise.resolve(new Array(768).fill(0.5));
-    });
+    mockClassifyJobListing.mockRejectedValueOnce(new Error("Gateway Timeout"));
 
     const result = await runClassificationWorker();
 
@@ -559,7 +494,7 @@ describe("Classification Worker — runClassificationWorker", () => {
   it("resets job to PENDING on second attempt failure (attempts=1)", async () => {
     const job = makeMockJob({ classificationAttempts: 1 });
     mockFindMany.mockResolvedValue([job]);
-    mockWithCircuitBreaker.mockRejectedValue(new Error("Timeout"));
+    mockClassifyJobListing.mockRejectedValueOnce(new Error("Timeout"));
 
     const result = await runClassificationWorker();
 
@@ -578,7 +513,7 @@ describe("Classification Worker — runClassificationWorker", () => {
   it("marks job as FAILED after MAX_CLASSIFICATION_ATTEMPTS (3rd attempt)", async () => {
     const job = makeMockJob({ classificationAttempts: 2 }); // 3rd attempt will fail
     mockFindMany.mockResolvedValue([job]);
-    mockWithCircuitBreaker.mockRejectedValue(new Error("Repeated failure"));
+    mockClassifyJobListing.mockRejectedValueOnce(new Error("Repeated failure"));
 
     const result = await runClassificationWorker();
 
@@ -596,20 +531,15 @@ describe("Classification Worker — runClassificationWorker", () => {
   });
 
   // ──────────────────────────────────────────────────
-  // Scenario: Embedding-provider failure (separate circuit breaker, FR-23 & FR-9)
+  // Scenario: Embedding-provider failure & AIWorkerBackoffError (FR-4, AC.4)
   // ──────────────────────────────────────────────────
 
   it("stays PENDING and increments classificationAttempts when the embedding provider fails transiently (parsing succeeded)", async () => {
     const job = makeMockJob({ classificationAttempts: 0 });
     mockFindMany.mockResolvedValue([job]);
 
-    mockWithCircuitBreaker.mockImplementation(
-      (key: string, _provider: string, fn: () => Promise<unknown>) => {
-        if (key === EMBEDDING_PROVIDER_KEY) {
-          return Promise.reject(new Error("Embedding provider unavailable"));
-        }
-        return fn();
-      },
+    mockGenerateEmbedding.mockRejectedValueOnce(
+      new Error("Embedding provider unavailable"),
     );
 
     const result = await runClassificationWorker();
@@ -637,13 +567,8 @@ describe("Classification Worker — runClassificationWorker", () => {
     const job = makeMockJob({ classificationAttempts: 2 }); // Even on 3rd attempt, capacity 429 must NOT mark FAILED
     mockFindMany.mockResolvedValueOnce([job]);
 
-    mockWithCircuitBreaker.mockImplementation(
-      (key: string, _provider: string, fn: () => Promise<unknown>) => {
-        if (key === EMBEDDING_PROVIDER_KEY) {
-          return Promise.reject(new Error("Embedding provider BLOCKED (429)"));
-        }
-        return fn();
-      },
+    mockGenerateEmbedding.mockRejectedValueOnce(
+      new Error("Embedding provider BLOCKED (429)"),
     );
 
     const sleepFn = jest.fn().mockResolvedValue(undefined);
@@ -657,19 +582,52 @@ describe("Classification Worker — runClassificationWorker", () => {
     expect(result).toEqual({ processed: 0, failed: 0, skippedBlocked: true });
   });
 
+  it("pauses drain cleanly on AIWorkerBackoffError from generateEmbedding without incrementing classificationAttempts", async () => {
+    const job = makeMockJob({ classificationAttempts: 2 });
+    mockFindMany.mockResolvedValueOnce([job]);
+
+    mockGenerateEmbedding.mockRejectedValueOnce(
+      new AIWorkerBackoffError(
+        "Gateway offline",
+        "ALL_MODELS_UNAVAILABLE",
+        null,
+      ),
+    );
+
+    const result = await runClassificationWorker();
+
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: job.id },
+      data: { classificationStatus: "PENDING" },
+    });
+    expect(mockUpdate).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          classificationAttempts: expect.anything(),
+        }),
+      }),
+    );
+    expect(mockUpdate).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          classificationStatus: "FAILED",
+        }),
+      }),
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("AI capacity unavailable"),
+      expect.objectContaining({ exhaustionReason: "ALL_MODELS_UNAVAILABLE" }),
+    );
+    expect(mockExecuteRaw).not.toHaveBeenCalled();
+    expect(result).toEqual({ processed: 0, failed: 0, skippedBlocked: true });
+  });
+
   it("marks job FAILED after max attempts when the embedding provider fails with a non-capacity error on the 3rd attempt", async () => {
     const job = makeMockJob({ classificationAttempts: 2 }); // 3rd attempt
     mockFindMany.mockResolvedValue([job]);
 
-    mockWithCircuitBreaker.mockImplementation(
-      (key: string, _provider: string, fn: () => Promise<unknown>) => {
-        if (key === EMBEDDING_PROVIDER_KEY) {
-          return Promise.reject(
-            new Error("Embedding vector dimension mismatch"),
-          );
-        }
-        return fn();
-      },
+    mockGenerateEmbedding.mockRejectedValueOnce(
+      new Error("Embedding vector dimension mismatch"),
     );
 
     const result = await runClassificationWorker();
@@ -712,17 +670,13 @@ describe("Classification Worker — runClassificationWorker", () => {
     const badJob = makeMockJob({ id: "job-002", classificationAttempts: 2 }); // Will be FAILED after this attempt
     mockFindMany.mockResolvedValue([goodJob, badJob]);
 
-    // First job succeeds end-to-end, second job's parsing breaker rejects
-    let callCount = 0;
-    mockWithCircuitBreaker.mockImplementation(
-      (key: string, _provider: string, fn: () => Promise<unknown>) => {
-        if (key === PARSING_PROVIDER_KEY) {
-          callCount++;
-          if (callCount === 2) {
-            return Promise.reject(new Error("LLM error"));
-          }
+    // First job succeeds end-to-end, second job's classification rejects with a listing-specific error
+    mockClassifyJobListing.mockImplementation(
+      async ({ id }: { id: string }) => {
+        if (id === "job-002") {
+          throw new Error("LLM error");
         }
-        return fn();
+        return { jobFacts: makeValidJobFacts() };
       },
     );
 
@@ -811,9 +765,10 @@ describe("Classification Worker — runClassificationWorker", () => {
 
     const result = await runClassificationWorker();
 
-    // Canonicalization is called with the raw (pre-validation) extraction.
+    // Canonicalization is called with the raw (pre-validation) extraction and { isWorker: true }.
     expect(mockCanonicalizeJobFacts).toHaveBeenCalledWith(
       expect.objectContaining({ mustHave: ["Postgres", "TypeScript"] }),
+      { isWorker: true },
     );
 
     // The persisted jobFacts reflect the canonicalized result, not the raw extraction.

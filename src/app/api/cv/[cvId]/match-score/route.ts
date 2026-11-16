@@ -7,6 +7,7 @@ import {
   assertAiRateLimit,
   AiRateLimitExceededError,
 } from "@/lib/ai/aiRateLimit";
+import { AIServiceUnavailableError } from "@/lib/ai/aiClient";
 import type { CVSnapshotData } from "@/types/cv";
 
 interface Params {
@@ -54,6 +55,12 @@ export async function POST(_req: Request, props: Params) {
   } catch (error) {
     if (error instanceof AiRateLimitExceededError) {
       return NextResponse.json({ error: error.message }, { status: 429 });
+    }
+    if (error instanceof AIServiceUnavailableError) {
+      logger.warn("AI service unavailable during CV match score calculation", {
+        error: error.message,
+      });
+      return NextResponse.json({ error: error.message }, { status: 503 });
     }
     logger.error("Failed to calculate CV match score", { error });
     return NextResponse.json(

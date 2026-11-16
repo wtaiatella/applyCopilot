@@ -19,8 +19,7 @@
  * `@example.com` marker domain. Five files (`classification-worker.test.ts`,
  * `middleware-matcher.test.ts`, `vector-query.test.ts`,
  * `scraper/engine.test.ts`, `scraper/queue.test.ts`) create no user/email
- * fixtures at all, so there is nothing to mark. Three files
- * (`backfill-skill-vocabulary.test.ts`, `llm-config.test.ts`,
+ * for the marker/sweep convention. Two files (`backfill-skill-vocabulary.test.ts`,
  * `skill-threshold.test.ts`) reference a real address
  * (`wtaiatella@gmail.com`) inside a `jest.mock("@/lib/auth/auth", ...)`
  * mocked session object — this is an in-memory auth-mock literal, never

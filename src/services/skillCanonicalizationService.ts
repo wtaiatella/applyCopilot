@@ -1,23 +1,13 @@
 import { Prisma, type SkillKind } from "@prisma/client";
 import { prisma } from "../lib/db/prisma";
 import { generateEmbedding } from "../lib/ai/vector-service";
-import { generateJSON, resolveAIConfig } from "../lib/ai/aiClient";
-import { withCircuitBreaker } from "../lib/ai/circuit-breaker";
+import { generateJSON } from "../lib/ai/aiClient";
 import { logger } from "../lib/logging/logger";
 import {
   SkillAliasConfirmationSchema,
   SkillKeySchema,
   type SkillAliasConfirmation,
 } from "../lib/validation/skillEmbeddingSchema";
-
-/** Circuit-breaker/`SystemConfig` key for the alias-confirmation LLM call — isolated from
- * `parsing`/`profile` (spectech.md ADR "new ChatCapability value"). */
-const SKILLALIAS_PROVIDER_KEY = "AI_PROVIDER_SKILLALIAS";
-
-/** Circuit-breaker key for the embedding call in `resolveOne` — same key used by
- * `classification-worker.ts`'s embedding call, so a failing/blocked embedding provider is
- * isolated consistently across every call site (fast-follow, 015 QA §7.0 finding). */
-const EMBEDDING_PROVIDER_KEY = "AI_PROVIDER_EMBEDDING";
 
 /** `SystemConfig` key for the alias-confirmation similarity threshold (0-100 int, default 60). */
 const SIMILARITY_THRESHOLD_KEY = "SKILL_ALIAS_SIMILARITY_THRESHOLD";
@@ -218,6 +208,7 @@ async function resolveOne(
   originalDisplayName: string,
   kind: SkillKind,
   threshold: number,
+  isWorker: boolean,
 ): Promise<string> {
   // Step 1: exact lookup (SkillEmbedding.skill / SkillAlias.alias).
   const exactSkill = await prisma.skillEmbedding.findUnique({
@@ -237,16 +228,8 @@ async function resolveOne(
     return exactAlias.skillRef.displayName;
   }
 
-  // Step 2: embedding + pgvector top-1 cosine search, scoped to `kind`. Circuit-breaker wrapped
-  // (fast-follow, 015 QA §7.0 finding) — matches every other embedding call site in the codebase
-  // (e.g. classification-worker.ts), so a failing/blocked embedding provider is isolated the
-  // same way here instead of being hammered from this write path with no cooldown.
-  const { provider: embeddingProvider } = await resolveAIConfig("embedding");
-  const embedding = await withCircuitBreaker(
-    EMBEDDING_PROVIDER_KEY,
-    embeddingProvider,
-    () => generateEmbedding(normalized),
-  );
+  // Step 2: embedding + pgvector top-1 cosine search, scoped to `kind`.
+  const embedding = await generateEmbedding(normalized, { isWorker });
   const vectorStr = `[${embedding.join(",")}]`;
   const top1 = await findTop1Match(vectorStr, kind);
 
@@ -318,7 +301,9 @@ async function resolveOne(
 export async function resolveCanonicalSkills(
   texts: string[],
   kind: SkillKind,
+  options?: { isWorker?: boolean },
 ): Promise<Map<string, string>> {
+  const isWorker = options?.isWorker ?? false;
   const result = new Map<string, string>();
   if (texts.length === 0) return result;
 
@@ -345,6 +330,7 @@ export async function resolveCanonicalSkills(
       firstOriginalByNormalized.get(normalized) ?? normalized,
       kind,
       threshold,
+      isWorker,
     );
     canonicalByNormalized.set(normalized, displayName);
   }

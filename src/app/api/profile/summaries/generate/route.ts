@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
-import { generateJSON } from "@/lib/ai/aiClient";
+import { generateJSON, AIServiceUnavailableError } from "@/lib/ai/aiClient";
 import { logger } from "@/lib/logging/logger";
 
 export async function POST(req: Request) {
@@ -150,6 +150,9 @@ Return ONLY a valid JSON object matching the following structure (no other text,
 
     return NextResponse.json(generated);
   } catch (error) {
+    if (error instanceof AIServiceUnavailableError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     const err = error as Error;
     logger.error("Failed to generate AI summary", { error: err.message });
     return NextResponse.json(

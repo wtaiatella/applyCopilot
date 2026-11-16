@@ -1,12 +1,6 @@
 import { prisma } from "../db/prisma";
 import { logger } from "../logging/logger";
-import {
-  extractHttpStatus,
-  isBlockingHttpStatus,
-  isProviderBlocked,
-  withCircuitBreaker,
-} from "../ai/circuit-breaker";
-import { AIWorkerBackoffError, resolveAIConfig } from "../ai/aiClient";
+import { AIWorkerBackoffError } from "../ai/aiClient";
 import {
   classifyJobListing,
   canonicalizeJobFacts,
@@ -16,12 +10,6 @@ import {
   JobFactsSchema,
   describeUntrustedForLog,
 } from "../validation/jobFactsSchema";
-
-/** The SystemConfig key for the Parsing Provider capability */
-const PARSING_PROVIDER_KEY = "AI_PROVIDER_PARSING";
-
-/** The SystemConfig key for the Embedding Provider capability (FR-23, separate circuit breaker from parsing) */
-const EMBEDDING_PROVIDER_KEY = "AI_PROVIDER_EMBEDDING";
 
 /** Guard to prevent multiple bootstrap calls */
 let isClassifierRunning = false;
@@ -90,6 +78,23 @@ const DEFAULTS = {
 // ─────────────────────────────────────────────────────────────────────────────
 // Capacity Error Detection & Lifecycle Recovery
 // ─────────────────────────────────────────────────────────────────────────────
+
+function extractHttpStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+  const maybeStatus = (error as { status?: unknown }).status;
+  if (typeof maybeStatus === "number" && Number.isFinite(maybeStatus)) {
+    return maybeStatus;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  const match = message.match(/\b(401|402|429)\b/);
+  return match ? Number(match[1]) : null;
+}
+
+function isBlockingHttpStatus(statusCode: number): boolean {
+  return statusCode === 429 || statusCode === 401 || statusCode === 402;
+}
 
 /**
  * Determines whether an error represents AI capacity unavailability (rate limits,
@@ -276,7 +281,6 @@ export async function runClassificationWorker(
         ]);
 
       const concurrency = Math.min(10, Math.max(1, rawConcurrency));
-      const cooldownMs = cooldownMinutes * 60 * 1000;
 
       if (batchesProcessed === 0 && pausedForMinuteQuotaCount === 0) {
         logger.info(
@@ -290,30 +294,7 @@ export async function runClassificationWorker(
         );
       }
 
-      // Resolve the currently-configured provider for each capability
-      const { provider: parsingProvider } = await resolveAIConfig("parsing");
-      const { provider: embeddingProvider } =
-        await resolveAIConfig("embedding");
-
-      // Step 2: Check if the (parsing capability, currently-configured provider) pair is blocked
-      const blocked = await isProviderBlocked(
-        PARSING_PROVIDER_KEY,
-        parsingProvider,
-      );
-
-      if (blocked) {
-        logger.warn(
-          `[ClassificationWorker] Parsing provider (${PARSING_PROVIDER_KEY}/${parsingProvider}) is BLOCKED. Stopping drain cycle and returning to idle polling.`,
-          {
-            exhaustionReason: "PROVIDER_BLOCKED",
-            provider: parsingProvider,
-          },
-        );
-        skippedBlocked = true;
-        break;
-      }
-
-      // Step 3: Fetch next batch of eligible pending jobs ordered newest-first
+      // Step 2: Fetch next batch of eligible pending jobs ordered newest-first
       const fetchedJobs = await prisma.jobListing.findMany({
         where: {
           isFullDescriptionFetched: true,
@@ -385,22 +366,18 @@ export async function runClassificationWorker(
           });
 
           try {
-            // LLM extraction — circuit breaker uses the configured cooldown
-            const { jobFacts } = await withCircuitBreaker(
-              PARSING_PROVIDER_KEY,
-              parsingProvider,
-              () =>
-                classifyJobListing({
-                  id: job.id,
-                  title: job.title,
-                  company: job.company,
-                  fullDescription: job.fullDescription!,
-                }),
-              cooldownMs,
-            );
+            // LLM extraction — routed through LiteLLM gateway
+            const { jobFacts } = await classifyJobListing({
+              id: job.id,
+              title: job.title,
+              company: job.company,
+              fullDescription: job.fullDescription!,
+            });
 
             // Canonicalize mustHave/niceToHave/softSkills against the write-path vocabulary
-            const canonicalizedJobFacts = await canonicalizeJobFacts(jobFacts);
+            const canonicalizedJobFacts = await canonicalizeJobFacts(jobFacts, {
+              isWorker: true,
+            });
 
             // Validate the extracted JobFacts shape — schema validation failures follow
             // the unified 3-attempt listing-specific failure rule (FR-10, AC.6).
@@ -444,13 +421,10 @@ export async function runClassificationWorker(
               });
             }
 
-            // Generate the embedding vector for the must-have skill list, under a separate
-            // circuit breaker key from the parsing provider (FR-23).
-            const embeddingVector = await withCircuitBreaker(
-              EMBEDDING_PROVIDER_KEY,
-              embeddingProvider,
-              () => generateEmbedding(parseResult.data.mustHave.join(" ")),
-              cooldownMs,
+            // Generate the embedding vector for the must-have skill list via LiteLLM gateway
+            const embeddingVector = await generateEmbedding(
+              parseResult.data.mustHave.join(" "),
+              { isWorker: true },
             );
 
             // Persist via raw SQL (Prisma does not support pgvector in update())
@@ -570,7 +544,6 @@ export async function runClassificationWorker(
           "[ClassificationWorker] AI capacity unavailable. Stopping drain cycle and returning to idle polling.",
           {
             exhaustionReason,
-            provider: parsingProvider,
           },
         );
         skippedBlocked = true;

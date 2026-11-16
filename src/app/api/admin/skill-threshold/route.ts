@@ -75,7 +75,7 @@ export async function POST(req: Request) {
 
     // Persist the new threshold only — this endpoint intentionally has no reprocessing
     // side effect (FR-15): existing SkillEmbedding/SkillAlias rows are never touched here,
-    // unlike llm-config/route.ts's embedding-provider-change reset.
+    // unlike an embedding-provider-change reset.
     await prisma.systemConfig.upsert({
       where: { key: SIMILARITY_THRESHOLD_KEY },
       create: { key: SIMILARITY_THRESHOLD_KEY, value: String(threshold) },

@@ -21,18 +21,8 @@ jest.mock("@/lib/ai/vector-service", () => ({
   ...jest.requireActual("@/lib/ai/vector-service"),
   generateEmbedding: jest.fn(),
 }));
-jest.mock("@/lib/ai/circuit-breaker", () => ({
-  ...jest.requireActual("@/lib/ai/circuit-breaker"),
-  isProviderBlocked: jest.fn().mockResolvedValue(false),
-  withCircuitBreaker: jest.fn(
-    async (_key: string, _provider: string, fn: () => Promise<unknown>) => fn(),
-  ),
-}));
 jest.mock("@/lib/ai/aiClient", () => ({
   ...jest.requireActual("@/lib/ai/aiClient"),
-  resolveAIConfig: jest
-    .fn()
-    .mockResolvedValue({ provider: "gemini", model: "test-model" }),
 }));
 
 import { generateEmbedding } from "@/lib/ai/vector-service";
@@ -120,7 +110,7 @@ describe("salaryPeriod worker write -> /api/jobs read round trip (APC-44)", () =
     );
     (canonicalizeJobFacts as jest.Mock).mockImplementation(async (f: unknown) => f);
     (generateEmbedding as jest.Mock).mockResolvedValue(
-      Array.from({ length: 768 }, () => 0.01),
+      Array.from({ length: 1024 }, () => 0.01),
     );
 
     // Narrow the worker's candidate query to our rows only (first call), then drain.

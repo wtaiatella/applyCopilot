@@ -8,10 +8,8 @@ import { auth } from "@/lib/auth/auth";
 
 // Mock the AI client used by profileSyncService.extractProfileFacts (generateJSON, capability "profile")
 jest.mock("@/lib/ai/aiClient", () => ({
+  ...jest.requireActual("@/lib/ai/aiClient"),
   generateJSON: jest.fn(),
-  resolveAIConfig: jest
-    .fn()
-    .mockResolvedValue({ provider: "gemini", model: "test-model" }),
 }));
 
 // Mock the vector service to avoid loading a real embedding provider in integration tests.
@@ -144,8 +142,8 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     });
     // Default: extraction returns a valid ProfileFacts payload
     mockGenerateJSON.mockResolvedValue(makeValidProfileFacts());
-    // Default: embedding generation returns a 768-dimension vector
-    mockGenerateEmbedding.mockResolvedValue(new Array(768).fill(0.123));
+    // Default: embedding generation returns a 1024-dimension vector
+    mockGenerateEmbedding.mockResolvedValue(new Array(1024).fill(0.123));
   });
 
   function makeRequest(): Request {
@@ -154,7 +152,7 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     });
   }
 
-  it("should extract ProfileFacts via LLM, generate a 768d embedding, and update UserProfile", async () => {
+  it("should extract ProfileFacts via LLM, generate a 1024d embedding, and update UserProfile", async () => {
     const res = await syncProfileHandler(makeRequest());
     expect(res.status).toBe(200);
 
@@ -182,10 +180,10 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     const dbVectorStr = rawResult[0]?.embedding;
     expect(dbVectorStr).toBeDefined();
 
-    // Check that it is a 768-dimension vector array format e.g. "[0.123,0.123,...]"
+    // Check that it is a 1024-dimension vector array format e.g. "[0.123,0.123,...]"
     const parsedVector = JSON.parse(dbVectorStr);
     expect(parsedVector).toBeInstanceOf(Array);
-    expect(parsedVector.length).toBe(768);
+    expect(parsedVector.length).toBe(1024);
     expect(parsedVector[0]).toBeCloseTo(0.123);
   });
 
@@ -350,9 +348,9 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     // test here — deterministically driving the top-1-above-threshold alias-confirm branch for
     // the alternate spelling only, without disturbing any other test's exact-hit/new-canonical
     // assertions.
-    const isolatedDim = Number(uniqueTech.replace(/\D/g, "")) % 768;
+    const isolatedDim = Number(uniqueTech.replace(/\D/g, "")) % 1024;
     function pseudoVector(dim: number): number[] {
-      const v = new Array(768).fill(0);
+      const v = new Array(1024).fill(0);
       v[dim] = 1;
       return v;
     }
@@ -380,7 +378,7 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
         if (text === normalizedTech || text === normalizedAlt) {
           return Promise.resolve(pseudoVector(isolatedDim));
         }
-        return Promise.resolve(new Array(768).fill(0.123));
+        return Promise.resolve(new Array(1024).fill(0.123));
       });
 
       mockGenerateJSON.mockImplementation(

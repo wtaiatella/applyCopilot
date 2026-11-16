@@ -7,11 +7,11 @@ import { skillThresholdSchema } from "@/lib/validation/adminSchemas";
 export const dynamic = "force-dynamic";
 
 /** `SystemConfig` key for the matched/missing display-classification threshold (0-100 int,
- * default 72, FR-17) — mirrors `skillVectorLookupService.ts`'s `MATCH_DISPLAY_THRESHOLD_KEY`.
+ * default 83, FR-17 / APC-45) — mirrors `skillVectorLookupService.ts`'s `MATCH_DISPLAY_THRESHOLD_KEY`.
  * Deliberately a separate key/route from `skill-threshold` (`SKILL_ALIAS_SIMILARITY_THRESHOLD`,
  * default 60) — see that service's module doc for why the two gates need different values. */
 const MATCH_DISPLAY_THRESHOLD_KEY = "SKILL_MATCH_DISPLAY_THRESHOLD";
-const DEFAULT_MATCH_DISPLAY_THRESHOLD = "72";
+const DEFAULT_MATCH_DISPLAY_THRESHOLD = "83";
 
 export async function GET() {
   try {

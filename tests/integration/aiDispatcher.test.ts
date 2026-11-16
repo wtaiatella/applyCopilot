@@ -7,7 +7,6 @@ import {
   AIServiceUnavailableError,
   AIWorkerBackoffError,
 } from "../../src/lib/ai/aiClient";
-import { withCircuitBreaker } from "../../src/lib/ai/circuit-breaker";
 import { prisma } from "../../src/lib/db/prisma";
 
 function makeGatewayResponse(
@@ -141,35 +140,5 @@ describe("AI Dispatcher Integration Tests (LiteLLM Gateway)", () => {
     expect(caughtError).toBeInstanceOf(AIWorkerBackoffError);
     expect(caughtError?.exhaustionReason).toBe("MINUTE_QUOTA");
     expect(caughtError?.retryAfterSeconds).toBe(45);
-  });
-
-  it("does not write a legacy SystemConfig block when withCircuitBreaker catches AIWorkerBackoffError", async () => {
-    const testKey = "AI_PROVIDER_PARSING_TEST_BACKOFF";
-    await prisma.systemConfig.deleteMany({
-      where: {
-        key: {
-          in: [`${testKey}_BLOCKED_UNTIL`, `${testKey}_LITELLM_BLOCKED_UNTIL`],
-        },
-      },
-    });
-
-    fetchMock.mockResolvedValue(
-      makeGatewayResponse({}, { status: 429, headers: { "Retry-After": "15" } }),
-    );
-
-    await expect(
-      withCircuitBreaker(testKey, "litellm", async () => {
-        return await generateJSON("Test prompt", "jobs.classification");
-      }),
-    ).rejects.toThrow(AIWorkerBackoffError);
-
-    const blockedRow = await prisma.systemConfig.findFirst({
-      where: {
-        key: {
-          in: [`${testKey}_BLOCKED_UNTIL`, `${testKey}_LITELLM_BLOCKED_UNTIL`],
-        },
-      },
-    });
-    expect(blockedRow).toBeNull();
   });
 });

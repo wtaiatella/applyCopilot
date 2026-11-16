@@ -96,6 +96,7 @@ export async function classifyJobListing(
  */
 export async function canonicalizeJobFacts(
   jobFacts: JobFacts,
+  options?: { isWorker?: boolean },
 ): Promise<JobFacts> {
   const withinLength = (s: unknown): s is string =>
     typeof s === "string" && SkillKeySchema.safeParse(s).success;
@@ -113,12 +114,14 @@ export async function canonicalizeJobFacts(
             .slice(0, MAX_SKILLS_PER_FIELD),
         ],
         "HARD",
+        options,
       )
     : null;
   const softMap = Array.isArray(jobFacts.softSkills)
     ? await resolveCanonicalSkills(
         jobFacts.softSkills.filter(withinLength).slice(0, MAX_SKILLS_PER_FIELD),
         "SOFT",
+        options,
       )
     : null;
 

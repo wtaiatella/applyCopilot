@@ -25,23 +25,6 @@ jest.mock("@/lib/logging/logger", () => ({
   },
 }));
 
-jest.mock("@/lib/ai/circuit-breaker", () => {
-  const actual = jest.requireActual("@/lib/ai/circuit-breaker");
-  return {
-    ...actual,
-    isProviderBlocked: jest.fn().mockResolvedValue(false),
-    withCircuitBreaker: jest.fn((_key, _provider, fn) => fn()),
-  };
-});
-
-jest.mock("@/lib/ai/aiClient", () => {
-  const actual = jest.requireActual("@/lib/ai/aiClient");
-  return {
-    ...actual,
-    resolveAIConfig: jest.fn().mockResolvedValue({ provider: "gemini" }),
-  };
-});
-
 jest.mock("@/services/jobClassificationService", () => ({
   classifyJobListing: jest.fn().mockResolvedValue({
     jobFacts: {

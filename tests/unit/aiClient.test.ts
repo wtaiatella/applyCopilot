@@ -16,7 +16,9 @@ import {
   AIWorkerBackoffError,
   generateJSON,
   generateText,
-  resolveAIConfig,
+  getLiteLLMBaseUrl,
+  getLiteLLMTimeoutMs,
+  throwGatewayUnavailable,
 } from "@/lib/ai/aiClient";
 
 function makeJsonResponse(
@@ -53,7 +55,6 @@ describe("aiClient (LiteLLM Gateway)", () => {
       LITELLM_TIMEOUT_MS: "15000",
     };
     delete process.env.LITELLM_LOCAL_ROUTES;
-    delete process.env.GEMINI_EMBEDDING_MODEL;
 
     fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -338,22 +339,34 @@ describe("aiClient (LiteLLM Gateway)", () => {
     });
   });
 
-  describe("resolveAIConfig('embedding')", () => {
-    it("returns default gemini embedding config", async () => {
-      const config = await resolveAIConfig("embedding");
-      expect(config).toEqual({
-        provider: "gemini",
-        model: "gemini-embedding-001",
-      });
+  describe("Exported gateway helpers", () => {
+    it("getLiteLLMBaseUrl trims whitespace and trailing slashes with default fallback", () => {
+      delete process.env.LITELLM_BASE_URL;
+      expect(getLiteLLMBaseUrl()).toBe("http://127.0.0.1:4000/v1");
+
+      process.env.LITELLM_BASE_URL = "  http://gateway.internal:4000/v1/// ";
+      expect(getLiteLLMBaseUrl()).toBe("http://gateway.internal:4000/v1");
     });
 
-    it("uses GEMINI_EMBEDDING_MODEL env var when configured", async () => {
-      process.env.GEMINI_EMBEDDING_MODEL = "text-embedding-004";
-      const config = await resolveAIConfig("embedding");
-      expect(config).toEqual({
-        provider: "gemini",
-        model: "text-embedding-004",
-      });
+    it("getLiteLLMTimeoutMs parses positive numbers and falls back to 60000ms", () => {
+      delete process.env.LITELLM_TIMEOUT_MS;
+      expect(getLiteLLMTimeoutMs()).toBe(60000);
+
+      process.env.LITELLM_TIMEOUT_MS = "0";
+      expect(getLiteLLMTimeoutMs()).toBe(60000);
+
+      process.env.LITELLM_TIMEOUT_MS = "invalid";
+      expect(getLiteLLMTimeoutMs()).toBe(60000);
+
+      process.env.LITELLM_TIMEOUT_MS = "25000";
+      expect(getLiteLLMTimeoutMs()).toBe(25000);
+    });
+
+    it("throwGatewayUnavailable throws AIWorkerBackoffError for workers and AIServiceUnavailableError otherwise", () => {
+      expect(() => throwGatewayUnavailable(false)).toThrow(AIServiceUnavailableError);
+      expect(() => throwGatewayUnavailable(true, "MINUTE_QUOTA", 90)).toThrow(
+        AIWorkerBackoffError,
+      );
     });
   });
 });

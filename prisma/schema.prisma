@@ -67,8 +67,8 @@ model UserProfile {
   // Replaces aiCleanedText's role as the embedding-generation input.
   profileFacts    Json?
 
-  // pgvector embedding field (stored as PostgreSQL vector) — 768d (was 512d TensorFlow.js)
-  embedding       Unsupported("vector(768)")?
+  // pgvector embedding field (stored as PostgreSQL vector) — 1024d (qwen3-embedding:0.6b)
+  embedding       Unsupported("vector(1024)")?
 
   // Sync tracking
   embeddingSyncedAt DateTime?
@@ -404,8 +404,8 @@ model JobListing {
   // Replaces cleanedSummary's role as the embedding-generation input.
   jobFacts                 Json?
 
-  // 768-dimension vector, provider-routed (was 512d TensorFlow.js) (pgvector)
-  embedding                Unsupported("vector(768)")?
+  // 1024-dimension vector (qwen3-embedding:0.6b via LiteLLM) (pgvector)
+  embedding                Unsupported("vector(1024)")?
 
   // Classification State Tracking
   classificationStatus     ClassificationStatus @default(PENDING)
@@ -562,7 +562,7 @@ model SkillEmbedding {
   skill       String    @id @db.VarChar(100)          // lowercase lookup key, e.g. "postgresql"
   displayName String                                  // commercial capitalization, e.g. "PostgreSQL"
   kind        SkillKind
-  embedding   Unsupported("vector(768)")
+  embedding   Unsupported("vector(1024)")
   createdAt   DateTime  @default(now())
 
   aliases     SkillAlias[]

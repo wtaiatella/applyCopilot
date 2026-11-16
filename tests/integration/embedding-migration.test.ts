@@ -1,75 +1,71 @@
 /**
  * @jest-environment node
  *
- * Migration verification (T008, spec 011-audit-remediation, REM-1/REM-2 — AC.1, AC.2):
- * Runs the repo's single squashed baseline migration
- * (`prisma/migrations/<timestamp>_init/migration.sql`, generated from `schema.prisma` — see the
- * 011 migration-history-squash follow-up) unmodified against an isolated scratch schema (a
- * dedicated Postgres schema inside the same database, scoped via `search_path` — the DB user has
- * no CREATEDB privilege, so a true separate database is not available), proving the pgvector
- * columns and HNSW indexes this ticket's REM-1/REM-2 fixes established are present and correct in
- * the now-single migration history.
- *
- * Updated for the migration-history squash: previously this test hand-built minimal
- * `UserProfile`/`JobListing` tables and ran only the narrow `fix_pgvector_embedding_columns`
- * migration file (which no longer exists as a standalone file — its effect is folded into the
- * baseline). The baseline migration creates the full schema from scratch, including `User` (an
- * FK target of `UserProfile.userId`), so this test now seeds a `User` row before inserting
- * `UserProfile` instead of pre-creating a narrower table shape.
+ * Migration verification (T015, APC-45 — AC.2, AC.3):
+ * Applies the Prisma migration chain up to `20261113120000_embeddings_1024d` inside an isolated
+ * PostgreSQL scratch schema (scoped via `search_path`), seeding pre-migration 768d vectors and
+ * non-vector records before applying `20261113120000_embeddings_1024d` and subsequent migrations.
  *
  * Asserts:
- *   (a) the migration file applies cleanly with no error, producing `vector(512)` columns on both
- *       tables (the actual migration-applies-cleanly proof REM-1/REM-2's spectech.md Testing
- *       Strategy calls for),
- *   (b) a 512-dim embedding write succeeds on both `UserProfile.embedding` and
- *       `JobListing.embedding` with no "column does not exist" / dimension error,
- *   (c) the exact cosine-distance ranking query `getJobsWithSimilarity`
- *       (src/lib/db/job-query.ts) runs and returns a `matchScore`, and the exact raw-SQL write
- *       pattern the classification worker (src/lib/workers/classification-worker.ts) uses to
- *       persist an embedding succeeds — proving AC.2's "classification worker doesn't fail on a
- *       clean-migrated DB" without invoking the worker's LLM-dependent plumbing, which is outside
- *       REM-1/REM-2's schema-correctness scope and covered by its own unit/integration tests.
- *
- * Both query strings below are intentionally kept byte-identical to their production source
- * (job-query.ts / classification-worker.ts) rather than imported directly, because those modules
- * import the shared `prisma` singleton (bound to the real "public" schema's connection, not this
- * test's scratch schema) — if either query changes in production, this test's copy must be
- * updated too (flagged here so a future refactor doesn't silently let them drift).
+ *   (a) `UserProfile.embedding`, `JobListing.embedding`, and `SkillEmbedding.embedding` are
+ *       migrated to `vector(1024)`.
+ *   (b) All 4 HNSW cosine indexes (`user_profile_embedding_hnsw_idx`,
+ *       `job_listing_embedding_hnsw_idx`, `skill_embedding_hard_hnsw_idx`,
+ *       `skill_embedding_soft_hnsw_idx`) exist.
+ *   (c) `SkillEmbedding` and `SkillAlias` are cleared (cascade delete), `UserProfile.embedding`
+ *       and `UserProfile.embeddingSyncedAt` are nulled, `JobListing.embedding` is nulled, and
+ *       `JobListing.classificationStatus` remains `'COMPLETED'`.
+ *   (d) Non-vector data (`profileFacts`, `jobFacts`, `Application`, `UserPreferences`) is 100%
+ *       preserved.
+ *   (e) 1024-dim embedding writes succeed on all three tables and `getJobsWithSimilarity`'s cosine
+ *       ranking query executes cleanly.
  */
 import "dotenv/config";
 import fs from "fs";
 import path from "path";
 import { Pool, type PoolClient } from "pg";
+import { EMBEDDING_DIMENSION } from "@/lib/ai/vector-service";
+import { makeTestEmail, safeCleanup } from "./helpers/test-fixtures";
 
-// Resolves the single baseline migration folder dynamically (its timestamp prefix changes
-// whenever the baseline is regenerated) rather than hardcoding a name.
 const MIGRATIONS_DIR = path.join(process.cwd(), "prisma/migrations");
-const BASELINE_MIGRATION_DIR = fs
+const TARGET_MIGRATION = "20261113120000_embeddings_1024d";
+
+const migrationDirs = fs
   .readdirSync(MIGRATIONS_DIR)
-  .find((name) => name.endsWith("_init"));
-if (!BASELINE_MIGRATION_DIR) {
+  .filter((name) =>
+    fs.existsSync(path.join(MIGRATIONS_DIR, name, "migration.sql")),
+  )
+  .sort();
+
+const targetIdx = migrationDirs.indexOf(TARGET_MIGRATION);
+if (targetIdx === -1) {
   throw new Error(
-    `Could not find a single baseline "*_init" migration folder under ${MIGRATIONS_DIR}`,
+    `Could not find ${TARGET_MIGRATION} under ${MIGRATIONS_DIR}`,
   );
 }
-const MIGRATION_SQL_PATH = path.join(
-  MIGRATIONS_DIR,
-  BASELINE_MIGRATION_DIR,
-  "migration.sql",
-);
 
-function embeddingLiteral(seed: number): string {
-  return `[${Array.from({ length: 512 }, (_, i) => ((i + seed) % 7) / 7).join(",")}]`;
+const PRE_1024_MIGRATIONS = migrationDirs.slice(0, targetIdx);
+const POST_AND_TARGET_MIGRATIONS = migrationDirs.slice(targetIdx);
+
+function embeddingLiteral(dim: number, seed: number): string {
+  return `[${Array.from({ length: dim }, (_, i) => ((i + seed) % 7) / 7).join(",")}]`;
 }
 
-describe("Embedding pgvector schema migration proof (T008, REM-1/REM-2)", () => {
+describe("Embedding pgvector 1024d schema migration proof (T015, APC-45)", () => {
   const schemaName = `embedding_migration_test_${Date.now()}`;
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   let client: PoolClient;
 
+  const expectedProfileFacts = {
+    skills: ["TypeScript", "PostgreSQL"],
+    seniority: "senior",
+  };
+  const expectedJobFacts = {
+    mustHave: ["TypeScript", "PostgreSQL"],
+    niceToHave: ["Docker"],
+  };
+
   beforeAll(async () => {
-    // Safety guard: refuse to run against a DATABASE_URL that doesn't obviously point at a
-    // local/test database — mirrors job-analysis-migration.test.ts's own guard exactly.
     const dbUrl = process.env.DATABASE_URL ?? "";
     const isTestDb = /test|localhost|127\.0\.0\.1/i.test(dbUrl);
     if (!isTestDb) {
@@ -83,126 +79,220 @@ describe("Embedding pgvector schema migration proof (T008, REM-1/REM-2)", () => 
     client = await pool.connect();
 
     await client.query(`CREATE SCHEMA "${schemaName}"`);
-    // Local schema first in search_path so the migration file's unqualified table/type names
-    // resolve inside our isolated scratch schema, not "public" — the migration file itself runs
-    // unmodified, exactly as it runs in production (see module doc comment).
     await client.query(`SET search_path TO "${schemaName}", public`);
 
-    // The baseline migration creates the full schema from scratch (it is the single migration
-    // history now) — no pre-migration table shape to hand-build here.
-    const sql = fs.readFileSync(MIGRATION_SQL_PATH, "utf-8");
-    await expect(client.query(sql)).resolves.toBeDefined();
+    // 1. Apply all migrations prior to 20261113120000_embeddings_1024d (768d schema).
+    for (const dir of PRE_1024_MIGRATIONS) {
+      const sql = fs.readFileSync(
+        path.join(MIGRATIONS_DIR, dir, "migration.sql"),
+        "utf-8",
+      );
+      await client.query(sql);
+    }
 
-    // Seed rows: one User (FK target of UserProfile.userId), one UserProfile, one JobListing.
-    await client.query(`
-      INSERT INTO "User" (id, email, password) VALUES ('t008-user-1', 't008@example.com', 'x')
-    `);
-    await client.query(`
-      INSERT INTO "UserProfile" (id, "userId", "updatedAt") VALUES ('t008-profile-1', 't008-user-1', now())
-    `);
-    await client.query(`
-      INSERT INTO "JobListing" (
+    // 2. Seed pre-migration 768d vectors and non-vector records.
+    const vec768 = embeddingLiteral(768, 1);
+    const testEmail = makeTestEmail("mig-1024d");
+
+    await client.query(
+      `INSERT INTO "User" (id, email, password) VALUES ('mig-user-1', $1, 'x')`,
+      [testEmail],
+    );
+    await client.query(
+      `INSERT INTO "UserProfile" (id, "userId", "profileFacts", "embedding", "embeddingSyncedAt", "updatedAt")
+       VALUES ('mig-profile-1', 'mig-user-1', $1::jsonb, $2::vector, now(), now())`,
+      [JSON.stringify(expectedProfileFacts), vec768],
+    );
+    await client.query(
+      `INSERT INTO "UserPreferences" (id, "profileId", seniority, "salaryMin", "updatedAt")
+       VALUES ('mig-prefs-1', 'mig-profile-1', 'senior', 120000, now())`,
+    );
+    await client.query(
+      `INSERT INTO "JobListing" (
         id, "portalId", "externalJobId", title, company, url,
-        "classificationStatus", "createdAt", "updatedAt"
+        "jobFacts", "embedding", "classificationStatus", "createdAt", "updatedAt"
       )
       VALUES (
-        't008-job-1', 'portal-1', 'ext-1', 'Senior Engineer', 'Acme Inc', 'https://example.com/job/1',
-        'COMPLETED', now(), now()
-      )
-    `);
+        'mig-job-1', 'portal-1', 'ext-1', 'Senior Engineer', 'Acme Inc', 'https://example.com/job/1',
+        $1::jsonb, $2::vector, 'COMPLETED', now(), now()
+      )`,
+      [JSON.stringify(expectedJobFacts), vec768],
+    );
+    await client.query(
+      `INSERT INTO "CV" (id, "profileId", "jobListingId", name, "snapshotData", "updatedAt")
+       VALUES ('mig-cv-1', 'mig-profile-1', 'mig-job-1', 'Tailored CV', '{}'::jsonb, now())`,
+    );
+    await client.query(
+      `INSERT INTO "Application" (id, "cvId", "profileId", "jobListingId", stage, "updatedAt")
+       VALUES ('mig-app-1', 'mig-cv-1', 'mig-profile-1', 'mig-job-1', 'APPLIED', now())`,
+    );
+    await client.query(
+      `INSERT INTO "SkillEmbedding" (skill, "displayName", kind, embedding)
+       VALUES ('typescript', 'TypeScript', 'HARD', $1::vector)`,
+      [vec768],
+    );
+    await client.query(
+      `INSERT INTO "SkillAlias" (alias, skill) VALUES ('ts', 'typescript')`,
+    );
+
+    // 3. Apply 20261113120000_embeddings_1024d and any subsequent migrations.
+    for (const dir of POST_AND_TARGET_MIGRATIONS) {
+      const sql = fs.readFileSync(
+        path.join(MIGRATIONS_DIR, dir, "migration.sql"),
+        "utf-8",
+      );
+      await expect(client.query(sql)).resolves.toBeDefined();
+    }
   });
 
   afterAll(async () => {
-    await client.query(`DROP SCHEMA "${schemaName}" CASCADE`);
-    client.release();
-    await pool.end();
+    await safeCleanup("embedding-migration.test.ts schema drop", async () => {
+      if (client) {
+        await client.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+        client.release();
+      }
+      await pool.end();
+    });
   });
 
-  it("(a) applies the migration file without error, producing vector(512) columns on both tables", async () => {
-    // beforeAll already asserts the migration.query() call resolves; assert the resulting column
-    // shape directly here too.
-    const cols = await client.query(
-      `SELECT column_name, udt_name FROM information_schema.columns
-       WHERE table_schema = $1 AND table_name = 'UserProfile' AND column_name = 'embedding'`,
-      [schemaName],
-    );
-    expect(cols.rows).toEqual([
-      { column_name: "embedding", udt_name: "vector" },
-    ]);
-
-    const jlCols = await client.query(
-      `SELECT column_name, udt_name FROM information_schema.columns
-       WHERE table_schema = $1 AND table_name = 'JobListing' AND column_name = 'embedding'`,
-      [schemaName],
-    );
-    expect(jlCols.rows).toEqual([
-      { column_name: "embedding", udt_name: "vector" },
-    ]);
-  });
-
-  it("(b) writes a 512-dim embedding to UserProfile.embedding with no dimension error (AC.1)", async () => {
-    const vectorStr = embeddingLiteral(1);
-    await expect(
-      client.query(
-        `UPDATE "UserProfile" SET "embedding" = $1::vector WHERE "id" = 't008-profile-1'`,
-        [vectorStr],
-      ),
-    ).resolves.toBeDefined();
-
-    const readBack = await client.query(
-      `SELECT "embedding" IS NOT NULL AS has_embedding FROM "UserProfile" WHERE "id" = 't008-profile-1'`,
-    );
-    expect(readBack.rows[0].has_embedding).toBe(true);
-  });
-
-  it("(b) writes a 512-dim embedding to JobListing.embedding via the classification worker's exact raw-SQL pattern, with no column-does-not-exist error (AC.2)", async () => {
-    const vectorString = embeddingLiteral(2);
-
-    // Byte-identical to classification-worker.ts's persistence query (see module doc comment).
-    await expect(
-      client.query(
-        `
-        UPDATE "JobListing"
-        SET
-          "cleanedSummary" = $1,
-          "embedding" = $2::vector,
-          "classificationStatus" = 'COMPLETED',
-          "classificationError" = NULL,
-          "classificationAttempts" = $3,
-          "updatedAt" = NOW()
-        WHERE "id" = $4
+  it("(a) migrates UserProfile, JobListing, and SkillEmbedding columns to vector(1024)", async () => {
+    const res = await client.query<{
+      table_name: string;
+      column_type: string;
+    }>(
+      `
+      SELECT
+        c.relname AS table_name,
+        format_type(a.atttypid, a.atttypmod) AS column_type
+      FROM pg_attribute a
+      JOIN pg_class c ON a.attrelid = c.oid
+      JOIN pg_namespace n ON c.relnamespace = n.oid
+      WHERE n.nspname = $1
+        AND c.relname IN ('UserProfile', 'JobListing', 'SkillEmbedding')
+        AND a.attname = 'embedding'
+        AND NOT a.attisdropped
+      ORDER BY c.relname
       `,
-        ["Cleaned summary text", vectorString, 1, "t008-job-1"],
+      [schemaName],
+    );
+
+    expect(res.rows).toEqual([
+      { table_name: "JobListing", column_type: "vector(1024)" },
+      { table_name: "SkillEmbedding", column_type: "vector(1024)" },
+      { table_name: "UserProfile", column_type: "vector(1024)" },
+    ]);
+  });
+
+  it("(b) rebuilds all 4 HNSW cosine similarity indexes for 1024d", async () => {
+    const idxCheck = await client.query<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes WHERE schemaname = $1 AND indexname IN (
+         'user_profile_embedding_hnsw_idx',
+         'job_listing_embedding_hnsw_idx',
+         'skill_embedding_hard_hnsw_idx',
+         'skill_embedding_soft_hnsw_idx'
+       )`,
+      [schemaName],
+    );
+
+    expect(idxCheck.rows.map((r) => r.indexname).sort()).toEqual([
+      "job_listing_embedding_hnsw_idx",
+      "skill_embedding_hard_hnsw_idx",
+      "skill_embedding_soft_hnsw_idx",
+      "user_profile_embedding_hnsw_idx",
+    ]);
+  });
+
+  it("(c) clears SkillEmbedding (cascading SkillAlias), nulls UserProfile.embeddingSyncedAt and vectors, and keeps JobListing COMPLETED", async () => {
+    const skillCount = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM "SkillEmbedding"`,
+    );
+    const aliasCount = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM "SkillAlias"`,
+    );
+    expect(Number(skillCount.rows[0].count)).toBe(0);
+    expect(Number(aliasCount.rows[0].count)).toBe(0);
+
+    const profileRow = await client.query<{
+      has_embedding: boolean;
+      embeddingSyncedAt: Date | null;
+    }>(
+      `SELECT "embedding" IS NOT NULL AS has_embedding, "embeddingSyncedAt"
+       FROM "UserProfile" WHERE id = 'mig-profile-1'`,
+    );
+    expect(profileRow.rows[0].has_embedding).toBe(false);
+    expect(profileRow.rows[0].embeddingSyncedAt).toBeNull();
+
+    const jobRow = await client.query<{
+      has_embedding: boolean;
+      classificationStatus: string;
+    }>(
+      `SELECT "embedding" IS NOT NULL AS has_embedding, "classificationStatus"
+       FROM "JobListing" WHERE id = 'mig-job-1'`,
+    );
+    expect(jobRow.rows[0].has_embedding).toBe(false);
+    expect(jobRow.rows[0].classificationStatus).toBe("COMPLETED");
+  });
+
+  it("(d) preserves 100% of non-vector data (profileFacts, jobFacts, Application, UserPreferences)", async () => {
+    const profileRow = await client.query<{ profileFacts: unknown }>(
+      `SELECT "profileFacts" FROM "UserProfile" WHERE id = 'mig-profile-1'`,
+    );
+    expect(profileRow.rows[0].profileFacts).toEqual(expectedProfileFacts);
+
+    const jobRow = await client.query<{ jobFacts: unknown }>(
+      `SELECT "jobFacts" FROM "JobListing" WHERE id = 'mig-job-1'`,
+    );
+    expect(jobRow.rows[0].jobFacts).toEqual(expectedJobFacts);
+
+    const appRow = await client.query<{ stage: string; cvId: string }>(
+      `SELECT stage, "cvId" FROM "Application" WHERE id = 'mig-app-1'`,
+    );
+    expect(appRow.rows[0]).toEqual({ stage: "APPLIED", cvId: "mig-cv-1" });
+
+    const prefsRow = await client.query<{
+      seniority: string;
+      salaryMin: number;
+    }>(
+      `SELECT seniority, "salaryMin" FROM "UserPreferences" WHERE id = 'mig-prefs-1'`,
+    );
+    expect(prefsRow.rows[0]).toEqual({ seniority: "senior", salaryMin: 120000 });
+  });
+
+  it("(e) writes 1024-dim embeddings to UserProfile, JobListing, and SkillEmbedding and executes cosine similarity ranking", async () => {
+    expect(EMBEDDING_DIMENSION).toBe(1024);
+
+    const profileVec = embeddingLiteral(EMBEDDING_DIMENSION, 1);
+    const jobVec = embeddingLiteral(EMBEDDING_DIMENSION, 2);
+    const skillVec = embeddingLiteral(EMBEDDING_DIMENSION, 3);
+
+    await expect(
+      client.query(
+        `UPDATE "UserProfile" SET "embedding" = $1::vector WHERE "id" = 'mig-profile-1'`,
+        [profileVec],
       ),
     ).resolves.toBeDefined();
 
-    const readBack = await client.query(
-      `SELECT "embedding" IS NOT NULL AS has_embedding, "classificationStatus" FROM "JobListing" WHERE "id" = 't008-job-1'`,
-    );
-    expect(readBack.rows[0].has_embedding).toBe(true);
-    expect(readBack.rows[0].classificationStatus).toBe("COMPLETED");
-  });
+    await expect(
+      client.query(
+        `UPDATE "JobListing"
+         SET "embedding" = $1::vector, "updatedAt" = NOW()
+         WHERE "id" = 'mig-job-1'`,
+        [jobVec],
+      ),
+    ).resolves.toBeDefined();
 
-  it("(c) getJobsWithSimilarity's exact cosine-distance ranking query runs and returns a matchScore (AC.1, AC.2, SC-1)", async () => {
-    const profileVectorStr = embeddingLiteral(1);
+    await expect(
+      client.query(
+        `INSERT INTO "SkillEmbedding" (skill, "displayName", kind, embedding)
+         VALUES ('postgresql', 'PostgreSQL', 'HARD', $1::vector)`,
+        [skillVec],
+      ),
+    ).resolves.toBeDefined();
 
-    // Byte-identical to job-query.ts's getJobsWithSimilarity (profileEmbedding branch, see
-    // module doc comment).
-    const result = await client.query(
+    const result = await client.query<{ id: string; matchScore: number }>(
       `
       SELECT
         id,
-        "portalId",
-        "externalJobId",
-        title,
-        company,
-        location,
-        url,
-        "postedAt",
-        "createdAt",
-        "classificationStatus",
-        "isFullDescriptionFetched",
-        "fullDescription",
         ((1 - (embedding <=> $1::vector)) * 100) as "matchScore"
       FROM "JobListing"
       WHERE "classificationStatus" = 'COMPLETED'
@@ -210,34 +300,11 @@ describe("Embedding pgvector schema migration proof (T008, REM-1/REM-2)", () => 
       ORDER BY "matchScore" DESC
       LIMIT $3;
       `,
-      [profileVectorStr, 15, 50],
+      [profileVec, 15, 50],
     );
 
     expect(result.rows).toHaveLength(1);
-    expect(result.rows[0].id).toBe("t008-job-1");
+    expect(result.rows[0].id).toBe("mig-job-1");
     expect(typeof result.rows[0].matchScore).toBe("number");
-  });
-
-  it("(c) both HNSW indexes (recreated by this ticket's migration) exist and are used by the similarity ORDER BY", async () => {
-    const idxCheck = await client.query(
-      `SELECT indexname FROM pg_indexes WHERE schemaname = $1 AND indexname IN
-         ('user_profile_embedding_hnsw_idx', 'job_listing_embedding_hnsw_idx')`,
-      [schemaName],
-    );
-    expect(idxCheck.rows.map((r) => r.indexname).sort()).toEqual([
-      "job_listing_embedding_hnsw_idx",
-      "user_profile_embedding_hnsw_idx",
-    ]);
-
-    const profileVectorStr = embeddingLiteral(1);
-    const explain = await client.query(
-      `EXPLAIN SELECT id FROM "JobListing" ORDER BY embedding <=> $1::vector LIMIT 5`,
-      [profileVectorStr],
-    );
-    const plan = explain.rows.map((r) => r["QUERY PLAN"]).join("\n");
-    // On a single-row scratch table the planner may legitimately prefer a Seq Scan (cost-based,
-    // expected for tiny tables) — what matters is the index object exists and is a valid plan
-    // candidate, asserted via pg_indexes above; this EXPLAIN call itself must simply not error.
-    expect(typeof plan).toBe("string");
   });
 });

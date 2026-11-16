@@ -121,19 +121,19 @@ function resolveModelAlias(routeId: AIRouteId): LiteLLMModelAlias {
   return getLocalRoutesSet().has(routeId) ? "local-only" : "chat-free";
 }
 
-function getLiteLLMBaseUrl(): string {
+export function getLiteLLMBaseUrl(): string {
   const raw = process.env.LITELLM_BASE_URL?.trim() || DEFAULT_LITELLM_BASE_URL;
   return raw.replace(/\/+$/, "");
 }
 
-function getLiteLLMTimeoutMs(): number {
+export function getLiteLLMTimeoutMs(): number {
   const parsed = Number(process.env.LITELLM_TIMEOUT_MS);
   return Number.isFinite(parsed) && parsed > 0
     ? parsed
     : DEFAULT_LITELLM_TIMEOUT_MS;
 }
 
-function throwGatewayUnavailable(
+export function throwGatewayUnavailable(
   isWorker: boolean,
   reason: PoolExhaustionReason = "ALL_MODELS_UNAVAILABLE",
   retryAfterSeconds: number | null = null,
@@ -164,31 +164,6 @@ function stripMarkdownFences(rawText: string): string {
     cleaned = cleaned.substring(0, cleaned.length - 3);
   }
   return cleaned.trim();
-}
-
-/**
- * Legacy compatibility resolver (preserved for 768d embeddings until APC-45).
- */
-export async function resolveAIConfig(
-  capability: "embedding",
-): Promise<{ provider: "ollama" | "gemini" | "claude"; model: string }>;
-export async function resolveAIConfig(
-  capability: ChatCapability,
-): Promise<{ provider: "ollama" | "gemini" | "claude" | "gemma-26b" | "gemma-31b"; model: string }>;
-export async function resolveAIConfig(
-  capability: ChatCapability | "embedding",
-): Promise<{ provider: "ollama" | "gemini" | "claude" | "gemma-26b" | "gemma-31b"; model: string }> {
-  if (capability === "embedding") {
-    return {
-      provider: "gemini",
-      model: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
-    };
-  }
-
-  return {
-    provider: "gemini",
-    model: "gemini-3.1-flash-lite",
-  };
 }
 
 async function callLiteLLM(

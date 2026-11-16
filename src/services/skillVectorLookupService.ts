@@ -7,20 +7,17 @@ import { logger } from "../lib/logging/logger";
  * That threshold is recall-oriented on purpose: a false-positive top-1 candidate there only costs
  * one extra LLM call, which then makes the real yes/no decision. This threshold has no LLM
  * backstop — it directly decides what the user sees as "matched" vs "missing" — so it needs a
- * higher bar. Calibrated empirically (2026-08-24, real `gemini-embedding-001` vectors already in
- * this system's `SkillEmbedding` table) against known-should-not-match pairs (e.g. `java`↔
- * `javascript` 67.1%, `php`↔`python` 68.1%, `mysql`↔`postgresql` 70.4% — all short skill-name
- * embeddings sitting inside the anisotropy floor described in the 015 findings doc) vs.
- * known-should-match pairs (`next.js`↔`react.js` 73.8%). No single threshold cleanly separates
- * every case in this space (`rest apis`↔`restful api` — literally the same concept, worded
- * differently — measured only 68.2%, below several of the false-positive pairs above; that gap is
- * a write-path alias-merge miss, not something this read-path threshold can fix), so 72 is a
- * pragmatic default clearing the worst false positives while keeping the one strong true-positive
- * pair in the calibration set — not a value with a provably-correct margin. Tune via the admin
- * panel against real production data as it accumulates.
+ * higher bar. Calibrated empirically (APC-45, `qwen3-embedding:0.6b` 1024d vectors via LiteLLM)
+ * against near-name false-positive pairs (`go`<->`rust` 57.45%, `php`<->`python` 70.61%,
+ * `java`<->`javascript` 73.37%, `docker`<->`kubernetes` 78.53%, `react`<->`angular` 79.97%,
+ * `c`<->`c++` 81.71%) vs. true-positive pairs (`react.js`<->`react` 83.37%, `rest apis`<->
+ * `restful api` 88.03%, `amazon web services`<->`aws` 88.59%, `kubernetes`<->`k8s` 97.08%,
+ * `next.js`<->`nextjs` 97.31%, `postgresql`<->`postgres` 97.60%). Setting 83 clears those
+ * false positives while keeping `react.js`<->`react` and stronger true-positive pairs matched.
+ * Tune via the admin panel (`/settings`) against production data as it accumulates.
  */
 const MATCH_DISPLAY_THRESHOLD_KEY = "SKILL_MATCH_DISPLAY_THRESHOLD";
-const DEFAULT_MATCH_DISPLAY_THRESHOLD = 72;
+const DEFAULT_MATCH_DISPLAY_THRESHOLD = 83;
 
 /**
  * Reads the matched/missing display-classification threshold (FR-17) from `SystemConfig`.

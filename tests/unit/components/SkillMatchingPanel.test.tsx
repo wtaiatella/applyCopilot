@@ -190,6 +190,7 @@ describe("SkillMatchingPanel", () => {
           skillsCleared: 10,
           jobsReindexed: 5,
           jobsSkipped: 0,
+          skillsReindexed: 12,
         }),
     } as unknown as Response);
 

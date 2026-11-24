@@ -121,9 +121,13 @@ describe("Backfill Skill Vocabulary Integration Tests (T015, APC-45)", () => {
       skills: ["TypeScript", "PostgreSQL"],
       seniority: "senior",
     };
+    const uniqueSoftSkill = `BackfillSoftSkill-${Date.now()}`;
+    const uniqueSoftSkillKey = uniqueSoftSkill.toLowerCase();
+    createdSkillKeys.push(uniqueSoftSkillKey);
     const expectedJobFacts = {
       mustHave: ["TypeScript", "PostgreSQL"],
       niceToHave: ["Docker"],
+      softSkills: [uniqueSoftSkill],
     };
 
     const user = await prisma.user.create({
@@ -240,13 +244,19 @@ describe("Backfill Skill Vocabulary Integration Tests (T015, APC-45)", () => {
     expect(data.skillsCleared).toBeGreaterThanOrEqual(1);
     expect(data.jobsReindexed).toBeGreaterThanOrEqual(1);
     expect(data.jobsSkipped).toBeGreaterThanOrEqual(1);
+    expect(data.skillsReindexed).toBeGreaterThanOrEqual(5);
 
     // Zero LLM calls during embedding-only backfill
     expect(mockGenerateText).not.toHaveBeenCalled();
     expect(mockGenerateJSON).not.toHaveBeenCalled();
     expect(mockGenerateEmbedding).toHaveBeenCalledWith("TypeScript PostgreSQL");
+    expect(mockGenerateEmbedding).toHaveBeenCalledWith("typescript");
+    expect(mockGenerateEmbedding).toHaveBeenCalledWith("postgresql");
+    expect(mockGenerateEmbedding).toHaveBeenCalledWith("docker");
+    expect(mockGenerateEmbedding).toHaveBeenCalledWith("graphql");
+    expect(mockGenerateEmbedding).toHaveBeenCalledWith(uniqueSoftSkillKey);
 
-    // SkillEmbedding & SkillAlias cleared via cascade
+    // Prior SkillEmbedding & SkillAlias cleared via cascade
     const remainingSkill = await prisma.skillEmbedding.findUnique({
       where: { skill: skillKey },
     });
@@ -255,6 +265,21 @@ describe("Backfill Skill Vocabulary Integration Tests (T015, APC-45)", () => {
     });
     expect(remainingSkill).toBeNull();
     expect(remainingAlias).toBeNull();
+
+    // Per-skill semantic vectors rebuilt in SkillEmbedding for COMPLETED job facts
+    const rebuiltSkills = await prisma.$queryRaw<
+      Array<{ skill: string; displayName: string; kind: string; has_embedding: boolean }>
+    >`
+      SELECT skill, "displayName", kind::text AS kind, ("embedding" IS NOT NULL) AS has_embedding
+      FROM "SkillEmbedding"
+      WHERE skill IN ('typescript', 'postgresql', 'docker', 'graphql', ${uniqueSoftSkillKey})
+    `;
+    const byKey = new Map(rebuiltSkills.map((row) => [row.skill, row]));
+    expect(byKey.get("typescript")).toMatchObject({ kind: "HARD", has_embedding: true });
+    expect(byKey.get("postgresql")).toMatchObject({ kind: "HARD", has_embedding: true });
+    expect(byKey.get("docker")).toMatchObject({ kind: "HARD", has_embedding: true });
+    expect(byKey.get("graphql")).toMatchObject({ kind: "HARD", has_embedding: true });
+    expect(byKey.get(uniqueSoftSkillKey)).toMatchObject({ kind: "SOFT", has_embedding: true });
 
     // UserProfile embedding & embeddingSyncedAt nulled; profileFacts preserved
     const profileAfter = await prisma.$queryRaw<

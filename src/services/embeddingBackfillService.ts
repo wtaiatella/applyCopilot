@@ -1,7 +1,9 @@
 import type { PoolClient } from "pg";
+import { SkillKind } from "@prisma/client";
 import { pool, prisma } from "@/lib/db/prisma";
 import { generateEmbedding } from "@/lib/ai/vector-service";
 import { logger } from "@/lib/logging/logger";
+import { SkillKeySchema } from "@/lib/validation/skillEmbeddingSchema";
 
 const BACKFILL_ADVISORY_LOCK_KEY = 4501024;
 const BACKFILL_CONCURRENCY = 5;
@@ -13,6 +15,7 @@ export interface EmbeddingBackfillResult {
   skillsCleared: number;
   jobsReindexed: number;
   jobsSkipped: number;
+  skillsReindexed: number;
 }
 
 /**
@@ -30,25 +33,83 @@ export class BackfillInProgressError extends Error {
   }
 }
 
-function extractMustHaveSkills(jobFacts: unknown): string[] {
+function extractSkillField(
+  jobFacts: unknown,
+  field: "mustHave" | "niceToHave" | "softSkills",
+): string[] {
   if (!jobFacts || typeof jobFacts !== "object") {
     return [];
   }
 
-  const rawMustHave = (jobFacts as { mustHave?: unknown }).mustHave;
-  if (!Array.isArray(rawMustHave)) {
+  const rawList = (jobFacts as Record<string, unknown>)[field];
+  if (!Array.isArray(rawList)) {
     return [];
   }
 
-  return rawMustHave
+  return rawList
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
 }
 
+interface DistinctSkillEntry {
+  skill: string;
+  displayName: string;
+  kind: SkillKind;
+}
+
+/**
+ * Collects distinct canonical skill keys from persisted `COMPLETED` job facts.
+ * Deduplicates case-insensitively and skips entries exceeding the `VarChar(100)`
+ * column bound (`SkillKeySchema`). When the same key appears in both hard and
+ * soft skill lists across different jobs, assigns the majority `kind` (ties
+ * prefer `HARD`), since `SkillEmbedding.skill` is the sole primary key.
+ */
+function collectDistinctJobSkills(
+  completedJobs: Array<{ jobFacts: unknown }>,
+): DistinctSkillEntry[] {
+  const counts = new Map<
+    string,
+    { displayName: string; hardCount: number; softCount: number }
+  >();
+
+  const register = (raw: string, kind: SkillKind): void => {
+    if (!SkillKeySchema.safeParse(raw).success) return;
+    const normalized = raw.toLowerCase();
+    let entry = counts.get(normalized);
+    if (!entry) {
+      entry = { displayName: raw, hardCount: 0, softCount: 0 };
+      counts.set(normalized, entry);
+    }
+    if (kind === SkillKind.HARD) {
+      entry.hardCount++;
+    } else {
+      entry.softCount++;
+    }
+  };
+
+  for (const job of completedJobs) {
+    for (const s of extractSkillField(job.jobFacts, "mustHave")) {
+      register(s, SkillKind.HARD);
+    }
+    for (const s of extractSkillField(job.jobFacts, "niceToHave")) {
+      register(s, SkillKind.HARD);
+    }
+    for (const s of extractSkillField(job.jobFacts, "softSkills")) {
+      register(s, SkillKind.SOFT);
+    }
+  }
+
+  return Array.from(counts.entries()).map(([skill, entry]) => ({
+    skill,
+    displayName: entry.displayName,
+    kind: entry.softCount > entry.hardCount ? SkillKind.SOFT : SkillKind.HARD,
+  }));
+}
+
 /**
  * Runs an embedding-only backfill across `SkillEmbedding`, `UserProfile`, and
- * `COMPLETED` `JobListing` rows (reusing persisted `jobFacts.mustHave` without
+ * `COMPLETED` `JobListing` rows (reusing persisted `jobFacts` without
  * re-queuing to `PENDING` or invoking LLMs). Guarded by an in-process mutex and
  * a PostgreSQL session advisory lock.
  */
@@ -104,7 +165,7 @@ export async function runEmbeddingBackfill(
     const processNextJob = async (): Promise<void> => {
       while (!aborted && cursor < completedJobs.length) {
         const job = completedJobs[cursor++];
-        const mustHave = extractMustHaveSkills(job.jobFacts);
+        const mustHave = extractSkillField(job.jobFacts, "mustHave");
 
         if (mustHave.length === 0) {
           jobsSkipped++;
@@ -137,11 +198,50 @@ export async function runEmbeddingBackfill(
       }
     }
 
+    // Rebuild per-skill semantic vectors in `SkillEmbedding` from persisted
+    // `COMPLETED` job facts (mustHave + niceToHave as HARD, softSkills as SOFT)
+    // without invoking any LLM — restores Stage-2 max-cosine matching immediately.
+    const distinctSkills = collectDistinctJobSkills(completedJobs);
+    let skillCursor = 0;
+    let skillsReindexed = 0;
+    let skillAborted = false;
+
+    const processNextSkill = async (): Promise<void> => {
+      while (!skillAborted && skillCursor < distinctSkills.length) {
+        const entry = distinctSkills[skillCursor++];
+        const embeddingVector = await generateEmbedding(entry.skill);
+        const vectorString = `[${embeddingVector.join(",")}]`;
+
+        await prisma.$executeRaw`
+          INSERT INTO "SkillEmbedding" (skill, "displayName", kind, embedding)
+          VALUES (${entry.skill}, ${entry.displayName}, ${entry.kind}::"SkillKind", ${vectorString}::vector)
+          ON CONFLICT (skill) DO NOTHING
+        `;
+        skillsReindexed++;
+      }
+    };
+
+    const skillWorkerCount = Math.min(
+      BACKFILL_CONCURRENCY,
+      distinctSkills.length,
+    );
+    if (skillWorkerCount > 0) {
+      try {
+        await Promise.all(
+          Array.from({ length: skillWorkerCount }, () => processNextSkill()),
+        );
+      } catch (error) {
+        skillAborted = true;
+        throw error;
+      }
+    }
+
     const result: EmbeddingBackfillResult = {
       profilesReset,
       skillsCleared,
       jobsReindexed,
       jobsSkipped,
+      skillsReindexed,
     };
 
     logger.warn("embedding_backfill_completed", {

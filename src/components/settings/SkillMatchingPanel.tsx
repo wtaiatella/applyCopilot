@@ -23,6 +23,7 @@ interface BackfillResponse {
   skillsCleared?: number;
   jobsReindexed?: number;
   jobsSkipped?: number;
+  skillsReindexed?: number;
   error?: string;
 }
 
@@ -240,7 +241,7 @@ export default function SkillMatchingPanel() {
       }
 
       message.success(
-        `Backfill complete: ${data.jobsReindexed ?? 0} jobs reindexed, ${data.jobsSkipped ?? 0} skipped, ${data.skillsCleared ?? 0} skills cleared, ${data.profilesReset ?? 0} profiles reset.`,
+        `Backfill complete: ${data.jobsReindexed ?? 0} jobs reindexed, ${data.jobsSkipped ?? 0} skipped, ${data.skillsReindexed ?? 0} skill embeddings rebuilt, ${data.skillsCleared ?? 0} skills cleared, ${data.profilesReset ?? 0} profiles reset.`,
         6,
       );
     } catch (err: unknown) {

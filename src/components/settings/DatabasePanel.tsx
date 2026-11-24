@@ -8,13 +8,18 @@ export default function DatabasePanel() {
   const { message } = App.useApp();
   const [wiping, setWiping] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [wipingTracker, setWipingTracker] = useState(false);
+  const [trackerModalOpen, setTrackerModalOpen] = useState(false);
 
-  const handleWipeConfirm = async () => {
-    setModalOpen(false);
-    setWiping(true);
+  const executeWipe = async (
+    endpoint: string,
+    setLoading: (loading: boolean) => void,
+    successPrefix: string
+  ) => {
+    setLoading(true);
 
     try {
-      const res = await fetch("/api/admin/database/wipe-profile", {
+      const res = await fetch(endpoint, {
         method: "POST",
       });
 
@@ -30,15 +35,33 @@ export default function DatabasePanel() {
         .join(", ");
 
       message.success(
-        `✅ Profile data wiped successfully. ${totals || "Nothing to delete."}`,
+        `✅ ${successPrefix} ${totals || "Nothing to delete."}`,
         6
       );
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : "Unknown error";
       message.error(`❌ Wipe failed: ${errMsg}`);
     } finally {
-      setWiping(false);
+      setLoading(false);
     }
+  };
+
+  const handleWipeConfirm = async () => {
+    setModalOpen(false);
+    await executeWipe(
+      "/api/admin/database/wipe-profile",
+      setWiping,
+      "Profile data wiped successfully."
+    );
+  };
+
+  const handleWipeTrackerConfirm = async () => {
+    setTrackerModalOpen(false);
+    await executeWipe(
+      "/api/admin/database/wipe-application-tracker",
+      setWipingTracker,
+      "Application Tracker wiped successfully."
+    );
   };
 
   const collapseItems = [
@@ -74,12 +97,46 @@ export default function DatabasePanel() {
               type="primary"
               icon={<DeleteOutlined />}
               loading={wiping}
+              disabled={wipingTracker}
               onClick={() => setModalOpen(true)}
               className="mt-4 font-semibold"
               size="middle"
               id="btn-wipe-profile-data"
             >
               {wiping ? "Wiping..." : "Wipe Profile Data"}
+            </Button>
+          </div>
+
+          <div className="rounded-lg border border-red-900/50 bg-red-950/30 p-4">
+            <div className="flex items-start gap-3">
+              <WarningOutlined className="text-red-400 text-lg mt-0.5 shrink-0" />
+              <div>
+                <p className="text-red-300 font-semibold text-sm mb-1">
+                  Wipe Application Tracker
+                </p>
+                <p className="text-zinc-400 text-xs leading-relaxed">
+                  Unlinks all jobs from your Application Tracker — deletes
+                  applications, events, generated CVs, job favorites, and deep
+                  analyses, and releases all bullets, skills, and summaries
+                  marked as in-use. Your profile data, archived items, and base
+                  job listings are{" "}
+                  <strong className="text-zinc-300">preserved</strong>.
+                </p>
+              </div>
+            </div>
+
+            <Button
+              danger
+              type="primary"
+              icon={<DeleteOutlined />}
+              loading={wipingTracker}
+              disabled={wiping}
+              onClick={() => setTrackerModalOpen(true)}
+              className="mt-4 font-semibold"
+              size="middle"
+              id="btn-wipe-application-tracker"
+            >
+              {wipingTracker ? "Wiping..." : "Wipe Application Tracker"}
             </Button>
           </div>
         </div>
@@ -126,6 +183,40 @@ export default function DatabasePanel() {
         </ul>
         <p className="text-zinc-300 mt-3 font-medium">
           Your login credentials will <strong>not</strong> be affected.
+        </p>
+        <p className="text-red-400 text-sm mt-2">
+          ⚠️ This action is irreversible.
+        </p>
+      </Modal>
+
+      {/* Application Tracker wipe confirmation modal */}
+      <Modal
+        open={trackerModalOpen}
+        onOk={handleWipeTrackerConfirm}
+        onCancel={() => setTrackerModalOpen(false)}
+        okText="Yes, wipe tracker"
+        cancelText="Cancel"
+        okButtonProps={{ danger: true, id: "btn-wipe-tracker-confirm-yes" }}
+        cancelButtonProps={{ id: "btn-wipe-tracker-confirm-cancel" }}
+        title={
+          <span className="flex items-center gap-2 text-red-400">
+            <WarningOutlined />
+            Confirm Application Tracker Wipe
+          </span>
+        }
+        centered
+      >
+        <p className="text-zinc-300 mt-2">
+          This will permanently unlink all jobs from your Application Tracker:
+        </p>
+        <ul className="list-disc list-inside text-zinc-400 text-sm mt-2 space-y-1">
+          <li>Applications and timeline events</li>
+          <li>Generated CVs (releasing all bullets, skills, and summaries in use)</li>
+          <li>Job favorites and deep AI analyses</li>
+        </ul>
+        <p className="text-zinc-300 mt-3 font-medium">
+          Your profile data, archived bullets, and base job listings will{" "}
+          <strong>not</strong> be affected.
         </p>
         <p className="text-red-400 text-sm mt-2">
           ⚠️ This action is irreversible.

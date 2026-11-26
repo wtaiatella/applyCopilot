@@ -257,9 +257,10 @@ export interface MatchScoreResult {
  * `softSkillsScore` is computed the same way but isolated from the hard-skill vector space via
  * `SkillKind` (FR-03, FR-11) — the caller fetches `SOFT`-kind vectors separately.
  *
- * `skillMatchThreshold` (0-100) is `SystemConfig.SKILL_ALIAS_SIMILARITY_THRESHOLD` (FR-13),
- * read by the caller and passed in — FR-17 reuses this exact same threshold (not a second,
- * independent value) for the `matchedSkills`/`missingSkills`/`niceToHaveMatched` classification.
+ * `skillMatchThreshold` (0-100) is `SystemConfig.SKILL_MATCH_DISPLAY_THRESHOLD` (historical
+ * key name), read once per request by the caller and passed in — reused for both below-threshold
+ * zeroing in `scoreMaxCosine` and `matchedSkills`/`missingSkills`/`niceToHaveMatched`/
+ * `softSkillsMatched` classification (distinct from `SKILL_ALIAS_SIMILARITY_THRESHOLD`).
  */
 export function computeMatchScore(
   job: {

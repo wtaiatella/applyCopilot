@@ -2,11 +2,13 @@ import { type SkillKind } from "@prisma/client";
 import { prisma } from "../lib/db/prisma";
 import { logger } from "../lib/logging/logger";
 
-/** `SystemConfig` key for the matched/missing display-classification threshold — separate from
- * `skillCanonicalizationService.getSimilarityThreshold()`'s alias-confirmation gate (default 60).
+/** `SystemConfig` key for the skill match threshold (Matched/Missing classification and composite
+ * dimension scoring) — separate from `skillCanonicalizationService.getSimilarityThreshold()`'s
+ * alias-confirmation gate (`SKILL_ALIAS_SIMILARITY_THRESHOLD`, default 60).
  * That threshold is recall-oriented on purpose: a false-positive top-1 candidate there only costs
  * one extra LLM call, which then makes the real yes/no decision. This threshold has no LLM
- * backstop — it directly decides what the user sees as "matched" vs "missing" — so it needs a
+ * backstop — it directly decides both what the user sees as "matched" vs "missing" and whether a
+ * skill contributes its similarity score or `0` to the composite match score — so it needs a
  * higher bar. Calibrated empirically (APC-45, `qwen3-embedding:0.6b` 1024d vectors via LiteLLM)
  * against near-name false-positive pairs (`go`<->`rust` 57.45%, `php`<->`python` 70.61%,
  * `java`<->`javascript` 73.37%, `docker`<->`kubernetes` 78.53%, `react`<->`angular` 79.97%,
@@ -20,11 +22,13 @@ const MATCH_DISPLAY_THRESHOLD_KEY = "SKILL_MATCH_DISPLAY_THRESHOLD";
 const DEFAULT_MATCH_DISPLAY_THRESHOLD = 83;
 
 /**
- * Reads the matched/missing display-classification threshold (FR-17) from `SystemConfig`.
- * Consumed by the caller (`GET /api/jobs/route.ts`) and passed into
- * `matchScorer.computeMatchScore`'s `skillMatchThreshold` param — kept separate from
- * `skillCanonicalizationService.getSimilarityThreshold()` (see the module-level doc above for
- * why these must not be the same value).
+ * Reads the skill match threshold (`SKILL_MATCH_DISPLAY_THRESHOLD`) from `SystemConfig`.
+ * Consumed by the caller (`GET /api/jobs/route.ts`) and passed into both `scoreMaxCosine`'s
+ * `matchThreshold` param (to zero below-threshold skills in composite dimension averages) and
+ * `matchScorer.computeMatchScore`'s `skillMatchThreshold` param (for Matched/Missing
+ * classification) — kept strictly separate from
+ * `skillCanonicalizationService.getSimilarityThreshold()` (`SKILL_ALIAS_SIMILARITY_THRESHOLD`;
+ * see the module-level doc above for why these must not be the same value).
  */
 export async function getMatchDisplayThreshold(): Promise<number> {
   try {
@@ -102,28 +106,41 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 export interface MaxCosineResult {
-  /** Average max-cosine across all targets (0-100) — the sub-score composite dimension value. */
+  /** Average max-cosine across all targets (0-100) — the sub-score composite dimension value.
+   * When `matchThreshold > 0`, targets with `itemScore < matchThreshold` contribute `0` to this
+   * average while retaining their raw similarity in `itemScores`. */
   score: number;
-  /** Per-target max-cosine (0-100), keyed by the original (as-passed, non-lowercased) target
-   * string — consumed by `matchScorer.computeMatchScore` for FR-17's threshold-based
-   * matched/missing classification. */
+  /** Raw per-target max-cosine (0-100), keyed by the original (as-passed, non-lowercased) target
+   * string — consumed by `matchScorer.computeMatchScore` for threshold-based matched/missing
+   * classification. */
   itemScores: Record<string, number>;
 }
 
 /**
  * Pure, synchronous, in-memory `max-cosine` scoring — no I/O — given an already-fetched
- * `vectors` map (from `fetchSkillVectors`). For each target, the best (highest) cosine
- * similarity against any profile skill vector, then averaged across targets.
+ * `vectors` map (from `fetchSkillVectors`). For each target, computes the best (highest) cosine
+ * similarity against any profile skill vector rounded to an integer `0–100` (`itemScores[target]`),
+ * then averages across targets to produce the composite dimension `score`.
+ *
+ * When `matchThreshold` is supplied (default `0`, preserving raw averaging when omitted), any
+ * target whose already-rounded integer `itemScore < matchThreshold` contributes `0` to the
+ * dimension `score` average while `itemScores[target]` retains the raw `0–100` similarity for
+ * Matched/Missing classification (`itemScore >= matchThreshold`). Evaluating the threshold on
+ * the already-rounded integer guarantees averaging and classification never diverge on rounding
+ * boundaries.
  *
  * Returns `{ score: 100, itemScores: {} }` when `targets` is empty (mirrors `computeOverlap`'s
- * former empty-target convention — nothing was requested, so there's nothing to be missing). A
- * target or profile skill with no cached vector (not-yet-backfilled, spectech.md Migration &
- * Rollback) degrades to `max-cosine = 0` for that item rather than erroring.
+ * former empty-target convention — nothing was requested, so there's nothing to be missing).
+ * When all targets are `< matchThreshold` (or lack cached vectors), the dimension `score`
+ * averages to `0`. A target or profile skill with no cached vector (not-yet-backfilled,
+ * spectech.md Migration & Rollback) degrades to `max-cosine = 0` for that item rather than
+ * erroring.
  */
 export function scoreMaxCosine(
   targets: string[],
   profileVectorKeys: string[],
   vectors: Map<string, number[]>,
+  matchThreshold = 0,
 ): MaxCosineResult {
   if (targets.length === 0) return { score: 100, itemScores: {} };
 
@@ -151,7 +168,7 @@ export function scoreMaxCosine(
       itemScore = Math.round(Math.max(0, best) * 100);
     } // else: not-yet-backfilled skill — graceful degrade, itemScore stays 0
     itemScores[target] = itemScore;
-    return itemScore;
+    return itemScore >= matchThreshold ? itemScore : 0;
   });
 
   const average =
@@ -161,15 +178,18 @@ export function scoreMaxCosine(
 
 /**
  * Convenience one-shot wrapper: fetches vectors for exactly `targets` + `profileVectorKeys`
- * (one batched query) and scores them. Suitable for a single ad-hoc call site; a caller scoring
- * many jobs in one request (e.g. the Stage-1 pool in `jobs/route.ts`) should call
- * `fetchSkillVectors` once for the pool's full vocabulary and `scoreMaxCosine` per job instead,
- * to keep the whole request at one batched query total.
+ * (one batched query) and scores them via `scoreMaxCosine`, forwarding the optional
+ * `matchThreshold` (default `0`) so below-threshold targets contribute `0` to the composite
+ * dimension `score` while keeping raw `itemScores` for Matched/Missing classification. Suitable
+ * for a single ad-hoc call site; a caller scoring many jobs in one request (e.g. the Stage-1
+ * pool in `jobs/route.ts`) should call `fetchSkillVectors` once for the pool's full vocabulary
+ * and `scoreMaxCosine` per job instead, to keep the whole request at one batched query total.
  */
 export async function getMaxCosineScores(
   targets: string[],
   profileVectorKeys: string[],
   kind: SkillKind,
+  matchThreshold = 0,
 ): Promise<MaxCosineResult> {
   if (targets.length === 0) return { score: 100, itemScores: {} };
 
@@ -177,5 +197,5 @@ export async function getMaxCosineScores(
     [...targets, ...profileVectorKeys],
     kind,
   );
-  return scoreMaxCosine(targets, profileVectorKeys, vectors);
+  return scoreMaxCosine(targets, profileVectorKeys, vectors, matchThreshold);
 }

@@ -850,6 +850,191 @@ describe("computeMatchScore", () => {
       ),
     ).toBe(50);
   });
+
+  it("APC-50: classifies niceToHave items at threshold as niceToHaveMatched and threshold - 1 as niceToHaveMissing", () => {
+    const threshold = 83;
+    const result = computeMatchScore(
+      {
+        jobFacts: makeJobFacts({
+          mustHave: [],
+          niceToHave: ["GraphQL", "Docker", "Terraform"],
+          softSkills: [],
+        }),
+        mustHaveScore: 100,
+        mustHaveItemScores: {},
+        niceToHaveScore: 28,
+        niceToHaveItemScores: {
+          GraphQL: threshold, // exact boundary -> matched (>=)
+          Docker: threshold - 1, // one point below -> missing (<)
+          // Terraform omitted -> defaults to 0 -> missing
+        },
+        softSkillsScore: 100,
+        softSkillsItemScores: {},
+      },
+      { profileFacts: makeProfileFacts({ skills: [] }) },
+      makePrefs(),
+      threshold,
+    );
+
+    expect(result.niceToHaveMatched).toEqual(["GraphQL"]);
+    expect(result.niceToHaveMissing).toEqual(["Docker", "Terraform"]);
+  });
+
+  it("APC-50: classifies softSkills items at threshold as softSkillsMatched and threshold - 1 as softSkillsMissing", () => {
+    const threshold = 83;
+    const result = computeMatchScore(
+      {
+        jobFacts: makeJobFacts({
+          mustHave: [],
+          niceToHave: [],
+          softSkills: ["Communication", "Leadership", "Mentorship"],
+        }),
+        mustHaveScore: 100,
+        mustHaveItemScores: {},
+        niceToHaveScore: 100,
+        niceToHaveItemScores: {},
+        softSkillsScore: 28,
+        softSkillsItemScores: {
+          Communication: threshold, // exact boundary -> matched (>=)
+          Leadership: threshold - 1, // one point below -> missing (<)
+          // Mentorship omitted -> defaults to 0 -> missing
+        },
+      },
+      { profileFacts: makeProfileFacts({ softSkills: [] }) },
+      makePrefs(),
+      threshold,
+    );
+
+    expect(result.softSkillsMatched).toEqual(["Communication"]);
+    expect(result.softSkillsMissing).toEqual(["Leadership", "Mentorship"]);
+  });
+
+  it("APC-50: preserves 0.45/0.15/0.15/0.15/0.10 composite weights with threshold-penalized skill sub-scores", () => {
+    const threshold = 83;
+    // mustHaveScore=50 (100 & 0), niceToHaveScore=0 (all below threshold), softSkillsScore=45 (90 & 0),
+    // seniority exact match=100, preferences remote accepted + unstated salary=round((100+75)/2)=88
+    const result = computeMatchScore(
+      {
+        jobFacts: makeJobFacts({
+          mustHave: ["React", "Go"],
+          niceToHave: ["GraphQL"],
+          softSkills: ["Communication", "Leadership"],
+          seniority: "mid",
+          yearsExperienceMin: null,
+          workMode: "remote",
+          salaryMin: null,
+        }),
+        mustHaveScore: 50,
+        mustHaveItemScores: { React: 100, Go: 71 },
+        niceToHaveScore: 0,
+        niceToHaveItemScores: { GraphQL: threshold - 1 },
+        softSkillsScore: 45,
+        softSkillsItemScores: { Communication: 90, Leadership: 70 },
+      },
+      {
+        profileFacts: makeProfileFacts({
+          skills: ["React"],
+          softSkills: ["Communication"],
+        }),
+      },
+      makePrefs({ seniority: "mid", acceptsRemote: true }),
+      threshold,
+    );
+
+    // 50*0.45 + 0*0.15 + 45*0.15 + 100*0.15 + 88*0.10 = 22.5 + 0 + 6.75 + 15 + 8.8 = 53.05 -> 53
+    expect(result.score).toBe(53);
+    expect(result.disqualified).toBe(false);
+    expect(result.matchedSkills).toEqual(["React"]);
+    expect(result.missingSkills).toEqual(["Go"]);
+    expect(result.niceToHaveMatched).toEqual([]);
+    expect(result.niceToHaveMissing).toEqual(["GraphQL"]);
+    expect(result.softSkillsMatched).toEqual(["Communication"]);
+    expect(result.softSkillsMissing).toEqual(["Leadership"]);
+  });
+
+  it("APC-50: keeps disqualification, seniority fit, and preferences fit invariant across skillMatchThreshold values", () => {
+    const thresholds = [0, 83, 100];
+
+    // Disqualification short-circuit remains identical regardless of skillMatchThreshold
+    for (const threshold of thresholds) {
+      const disqualified = computeMatchScore(
+        {
+          jobFacts: makeJobFacts({
+            requiresUsWorkAuth: true,
+            mustHave: ["React"],
+            niceToHave: ["GraphQL"],
+            softSkills: ["Communication"],
+          }),
+          mustHaveScore: 100,
+          mustHaveItemScores: { React: 100 },
+          niceToHaveScore: 100,
+          niceToHaveItemScores: { GraphQL: 100 },
+          softSkillsScore: 100,
+          softSkillsItemScores: { Communication: 100 },
+        },
+        { profileFacts: makeProfileFacts() },
+        makePrefs({ hasUsWorkAuth: false }),
+        threshold,
+      );
+      expect(disqualified).toEqual({
+        score: 0,
+        matchedSkills: [],
+        missingSkills: [],
+        niceToHaveMatched: [],
+        niceToHaveMissing: [],
+        softSkillsMatched: [],
+        softSkillsMissing: [],
+        disqualified: true,
+        disqualifyReason: "Requires US work authorization, which you do not have",
+      });
+    }
+
+    // Non-skill components (seniority 0.15 + preferences 0.10) remain invariant across thresholds
+    const jobFacts = makeJobFacts({
+      mustHave: [],
+      niceToHave: [],
+      softSkills: [],
+      seniority: "senior",
+      yearsExperienceMin: 4,
+      isWorldwide: true,
+      workMode: "hybrid",
+      salaryMin: 120_000,
+      currency: "USD",
+    });
+    const prefs = makePrefs({
+      seniority: "mid",
+      totalYearsExperience: 2,
+      onlyWorldwide: true,
+      acceptsHybrid: true,
+      salaryMin: 100_000,
+      salaryCurrency: "USD",
+    });
+
+    // Seniority: ordinal(-1)=50, years(2/4 * 90)=45 -> round((50+45)/2) = 48
+    expect(computeSeniorityFit("senior", "mid", 4, 2)).toBe(48);
+    // Preferences: worldwide(100), hybrid(80), salary(100) -> round((100+80+100)/3) = 93
+    expect(computePreferencesFit(jobFacts, prefs)).toBe(93);
+
+    // With all skill sub-scores at 0, composite = 48*0.15 + 93*0.10 = 7.2 + 9.3 = 16.5 -> 17
+    for (const threshold of thresholds) {
+      const result = computeMatchScore(
+        {
+          jobFacts,
+          mustHaveScore: 0,
+          mustHaveItemScores: {},
+          niceToHaveScore: 0,
+          niceToHaveItemScores: {},
+          softSkillsScore: 0,
+          softSkillsItemScores: {},
+        },
+        { profileFacts: makeProfileFacts() },
+        prefs,
+        threshold,
+      );
+      expect(result.disqualified).toBe(false);
+      expect(result.score).toBe(17);
+    }
+  });
 });
 
 // --- SC-01: 100-fixture matrix, ≥60 percentage-point score spread ---------------------------

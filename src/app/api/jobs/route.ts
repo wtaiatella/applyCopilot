@@ -173,7 +173,7 @@ export async function GET(request: Request) {
     // so a skill string canonicalized under one kind can never be silently reused for the other.
     let hardSkillVectors = new Map<string, number[]>();
     let softSkillVectors = new Map<string, number[]>();
-    let skillMatchThreshold = 83; // FR-17 display-classification default; overwritten below
+    let skillMatchThreshold = 83; // Default skill match threshold (scoring + classification); overwritten below
     if (canScore && profileFacts) {
       skillMatchThreshold = await getMatchDisplayThreshold();
       const distinctHardSkillTargets = new Set<string>(profileFacts.skills);
@@ -232,22 +232,34 @@ export async function GET(request: Request) {
       }
     };
 
+    // Aggregated PII-free skill-match scoring diagnostics (APC-50): counts only non-disqualified
+    // scored jobs (consistent with `salaryCounters`).
+    const skillScoringCounters = {
+      scoredJobs: 0,
+      penalizedMustHave: 0,
+      penalizedNiceToHave: 0,
+      penalizedSoftSkills: 0,
+    };
+
     let scoredJobs: ScoredJob[] = stage1Jobs.map((job) => {
       if (canScore && job.jobFacts && job.mustHaveSimilarity !== null) {
         const mustHave = scoreMaxCosine(
           job.jobFacts.mustHave,
           (profileFacts as ProfileFacts).skills,
           hardSkillVectors,
+          skillMatchThreshold,
         );
         const niceToHave = scoreMaxCosine(
           job.jobFacts.niceToHave,
           (profileFacts as ProfileFacts).skills,
           hardSkillVectors,
+          skillMatchThreshold,
         );
         const softSkills = scoreMaxCosine(
           job.jobFacts.softSkills,
           (profileFacts as ProfileFacts).softSkills,
           softSkillVectors,
+          skillMatchThreshold,
         );
         const result = computeMatchScore(
           {
@@ -264,6 +276,14 @@ export async function GET(request: Request) {
           skillMatchThreshold,
           collectSalaryFit,
         );
+        if (!result.disqualified) {
+          skillScoringCounters.scoredJobs++;
+          skillScoringCounters.penalizedMustHave += result.missingSkills.length;
+          skillScoringCounters.penalizedNiceToHave +=
+            result.niceToHaveMissing.length;
+          skillScoringCounters.penalizedSoftSkills +=
+            result.softSkillsMissing.length;
+        }
         return {
           ...job,
           matchScore: result.score,
@@ -295,6 +315,10 @@ export async function GET(request: Request) {
     });
 
     logger.debug("Salary comparison summary", { ...salaryCounters });
+    logger.debug("Skill match scoring summary", {
+      threshold: skillMatchThreshold,
+      ...skillScoringCounters,
+    });
 
     // Sort: disqualified jobs demoted to the end, then by composite score DESC, then jobs with
     // no score at all last within their group (spectech.md Architecture — Stage 2 sort

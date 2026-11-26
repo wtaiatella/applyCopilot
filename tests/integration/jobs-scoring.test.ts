@@ -38,6 +38,10 @@ interface JobsApiResponseItem {
   matchScore: number | null;
   matchedSkills: string[];
   missingSkills: string[];
+  niceToHaveMatched: string[];
+  niceToHaveMissing: string[];
+  softSkillsMatched: string[];
+  softSkillsMissing: string[];
   disqualified: boolean;
   disqualifyReason: string | null;
 }
@@ -608,6 +612,451 @@ describe("GET /api/jobs — multi-period salary scoring and summary counters (AP
     expect(counters.inferred).toBe(0);
     expect(counters.compared).toBe(5 - 0); // Monthly, Legacy x2, Explicit Yearly x2
     expect(sum(counters)).toBe(jobs.filter((j) => !j.disqualified).length);
+  });
+});
+
+// Unit vector in R^EMBEDDING_DIMENSION with exact cosine `cosTheta` against e0 = [1, 0, ..., 0]:
+// v(c) = [c, sqrt(1 - c^2), 0, ..., 0] has ||v|| = 1 and dot(e0, v(c)) = c.
+function makeUnitVectorWithCosine(cosTheta: number): string {
+  const vec = new Array(EMBEDDING_DIMENSION).fill(0);
+  vec[0] = cosTheta;
+  vec[1] = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+  return `[${vec.join(",")}]`;
+}
+
+async function seedSkillEmbeddingWithVector(
+  skill: string,
+  displayName: string,
+  kind: "HARD" | "SOFT",
+  vectorLiteral: string,
+): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "SkillEmbedding" (skill, "displayName", kind, embedding)
+     VALUES ($1, $2, $3::"SkillKind", $4::vector)
+     ON CONFLICT (skill) DO UPDATE
+       SET "displayName" = EXCLUDED."displayName",
+           kind = EXCLUDED.kind,
+           embedding = EXCLUDED.embedding`,
+    skill,
+    displayName,
+    kind,
+    vectorLiteral,
+  );
+}
+
+describe("GET /api/jobs — below-threshold skill penalty, live threshold refresh & debug summary (APC-50, T006)", () => {
+  const THRESHOLD_KEY = "SKILL_MATCH_DISPLAY_THRESHOLD";
+  const mockAuth = auth as unknown as jest.Mock;
+  const testEmail = `jobs-apc50-${Date.now()}@example.com`;
+  let userId: string;
+  let profileId: string;
+  const jobIds: string[] = [];
+  let priorThresholdValue: string | null = null;
+
+  const SKILL_KEYS = {
+    profileHard: "APC50-Profile-Hard-TestFixture",
+    hardHigh: "APC50-Hard-High-TestFixture", // cosine 0.90 -> 90
+    hardPartial: "APC50-Hard-Partial-TestFixture", // cosine 0.72 -> 72
+    profileSoft: "APC50-Profile-Soft-TestFixture",
+    softHigh: "APC50-Soft-High-TestFixture", // cosine 0.90 -> 90
+    softPartial: "APC50-Soft-Partial-TestFixture", // cosine 0.72 -> 72
+  };
+
+  const allSeededSkillKeys = Object.values(SKILL_KEYS).map((s) =>
+    s.toLowerCase(),
+  );
+
+  const profileFacts = {
+    skills: [SKILL_KEYS.profileHard],
+    softSkills: [SKILL_KEYS.profileSoft],
+    seniority: "mid",
+    totalYearsExperience: 4,
+    domains: [],
+  };
+
+  // Fixed non-skill sub-scores for every non-disqualified job:
+  //   seniorityScore = 100 (mid vs mid, 4 >= 3)
+  //   preferencesScore = round((100 [workAuth] + 100 [remote] + 75 [no salary]) / 3) = 92
+  //   non-skill contribution = 100 * 0.15 + 92 * 0.10 = 24.2
+  const baseJobFacts = {
+    employmentType: "permanent",
+    workMode: "remote",
+    isWorldwide: null,
+    requiresUsWorkAuth: false,
+    providesRelocationVisa: null,
+    location: null,
+    seniority: "mid",
+    yearsExperienceMin: 3,
+    salaryMin: null,
+    salaryMax: null,
+    currency: null,
+  };
+
+  const jobDefs: Array<{ title: string; facts: Record<string, unknown> }> = [
+    {
+      // Mixed 90 & 72 across all three skill dimensions:
+      //   threshold 83 -> each dim avg(90, 0) = 45 -> round(45*0.75 + 24.2) = 58
+      //   threshold 70 -> each dim avg(90, 72) = 81 -> round(81*0.75 + 24.2) = 85
+      title: "APC-50 Mixed Partial Skills",
+      facts: {
+        mustHave: [SKILL_KEYS.hardHigh, SKILL_KEYS.hardPartial],
+        niceToHave: [SKILL_KEYS.hardHigh, SKILL_KEYS.hardPartial],
+        softSkills: [SKILL_KEYS.softHigh, SKILL_KEYS.softPartial],
+      },
+    },
+    {
+      // All skills below threshold 83 (raw 72):
+      //   threshold 83 -> each dim scores 0 (not 100) -> round(0 + 24.2) = 24
+      //   threshold 70 -> each dim scores 72 -> round(72*0.75 + 24.2) = 78
+      title: "APC-50 All Below Threshold",
+      facts: {
+        mustHave: [SKILL_KEYS.hardPartial],
+        niceToHave: [SKILL_KEYS.hardPartial],
+        softSkills: [SKILL_KEYS.softPartial],
+      },
+    },
+    {
+      // Empty skill dimensions retain neutral 100 under any threshold:
+      //   round(100*0.75 + 24.2) = 99
+      title: "APC-50 Empty Skill Dimensions",
+      facts: {
+        mustHave: [],
+        niceToHave: [],
+        softSkills: [],
+      },
+    },
+    {
+      // Disqualified job must score 0 and be excluded from Skill match scoring summary counters.
+      title: "APC-50 Disqualified Job",
+      facts: {
+        mustHave: [SKILL_KEYS.hardPartial],
+        niceToHave: [SKILL_KEYS.hardPartial],
+        softSkills: [SKILL_KEYS.softPartial],
+        requiresUsWorkAuth: true,
+      },
+    },
+  ];
+
+  async function setThreshold(value: number): Promise<void> {
+    await prisma.systemConfig.upsert({
+      where: { key: THRESHOLD_KEY },
+      update: { value: String(value) },
+      create: { key: THRESHOLD_KEY, value: String(value) },
+    });
+  }
+
+  async function restoreThreshold(): Promise<void> {
+    if (priorThresholdValue !== null) {
+      await prisma.systemConfig.upsert({
+        where: { key: THRESHOLD_KEY },
+        update: { value: priorThresholdValue },
+        create: { key: THRESHOLD_KEY, value: priorThresholdValue },
+      });
+    } else {
+      await prisma.systemConfig.deleteMany({
+        where: { key: THRESHOLD_KEY },
+      });
+    }
+  }
+
+  async function fetchJobsWithDebugSummary(): Promise<{
+    jobs: JobsApiResponseItem[];
+    summary: Record<string, unknown>;
+  }> {
+    const spy = jest.spyOn(logger, "debug") as unknown as jest.SpyInstance<
+      unknown,
+      unknown[]
+    >;
+    try {
+      const res = await getJobsHandler(
+        new Request("http://localhost:3000/api/jobs?days=3650&limit=100"),
+      );
+      expect(res.status).toBe(200);
+      const jobs = (await res.json()) as JobsApiResponseItem[];
+      const calls = spy.mock.calls.filter(
+        (c) => c[0] === "Skill match scoring summary",
+      );
+      expect(calls).toHaveLength(1);
+      return {
+        jobs,
+        summary: calls[0][1] as Record<string, unknown>,
+      };
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  beforeAll(async () => {
+    const existingConfig = await prisma.systemConfig.findUnique({
+      where: { key: THRESHOLD_KEY },
+    });
+    priorThresholdValue = existingConfig?.value ?? null;
+
+    await Promise.all([
+      seedSkillEmbeddingWithVector(
+        SKILL_KEYS.profileHard.toLowerCase(),
+        SKILL_KEYS.profileHard,
+        "HARD",
+        makeUnitVectorWithCosine(1.0),
+      ),
+      seedSkillEmbeddingWithVector(
+        SKILL_KEYS.hardHigh.toLowerCase(),
+        SKILL_KEYS.hardHigh,
+        "HARD",
+        makeUnitVectorWithCosine(0.9),
+      ),
+      seedSkillEmbeddingWithVector(
+        SKILL_KEYS.hardPartial.toLowerCase(),
+        SKILL_KEYS.hardPartial,
+        "HARD",
+        makeUnitVectorWithCosine(0.72),
+      ),
+      seedSkillEmbeddingWithVector(
+        SKILL_KEYS.profileSoft.toLowerCase(),
+        SKILL_KEYS.profileSoft,
+        "SOFT",
+        makeUnitVectorWithCosine(1.0),
+      ),
+      seedSkillEmbeddingWithVector(
+        SKILL_KEYS.softHigh.toLowerCase(),
+        SKILL_KEYS.softHigh,
+        "SOFT",
+        makeUnitVectorWithCosine(0.9),
+      ),
+      seedSkillEmbeddingWithVector(
+        SKILL_KEYS.softPartial.toLowerCase(),
+        SKILL_KEYS.softPartial,
+        "SOFT",
+        makeUnitVectorWithCosine(0.72),
+      ),
+    ]);
+
+    const user = await prisma.user.create({
+      data: {
+        email: testEmail,
+        password: "hashedpassword123",
+        profile: { create: { firstName: "Threshold", lastName: "Tester" } },
+      },
+    });
+    userId = user.id;
+    profileId = (
+      await prisma.userProfile.findUniqueOrThrow({ where: { userId } })
+    ).id;
+
+    await prisma.$executeRawUnsafe(
+      `UPDATE "UserProfile" SET embedding = $1::vector, "profileFacts" = $2::jsonb WHERE id = $3`,
+      makeVector(0.9),
+      JSON.stringify(profileFacts),
+      profileId,
+    );
+
+    await prisma.userPreferences.create({
+      data: {
+        profileId,
+        hasUsWorkAuth: false,
+        seniority: "mid",
+        totalYearsExperience: 4,
+      },
+    });
+
+    for (const def of jobDefs) {
+      const job = await prisma.jobListing.create({
+        data: {
+          portalId: "test-portal",
+          externalJobId: `jobs-apc50-${Date.now()}-${Math.random()}`,
+          title: def.title,
+          company: "Test Co",
+          url: `https://example.com/apc50/${encodeURIComponent(def.title)}`,
+          isFullDescriptionFetched: true,
+          classificationStatus: "COMPLETED",
+          postedAt: new Date(),
+        },
+      });
+      jobIds.push(job.id);
+      await prisma.$executeRawUnsafe(
+        `UPDATE "JobListing" SET embedding = $1::vector, "jobFacts" = $2::jsonb WHERE id = $3`,
+        makeVector(0.9),
+        JSON.stringify({ ...baseJobFacts, ...def.facts }),
+        job.id,
+      );
+    }
+
+    stage1Restriction.ids = jobIds;
+  });
+
+  afterAll(async () => {
+    stage1Restriction.ids = null;
+    await safeCleanup(
+      "jobs-scoring.test.ts apc50 restore SystemConfig",
+      async () => {
+        await restoreThreshold();
+      },
+    );
+    await safeCleanup(
+      "jobs-scoring.test.ts apc50 userPreferences",
+      async () => {
+        await prisma.userPreferences.deleteMany({ where: { profileId } });
+      },
+    );
+    await safeCleanup("jobs-scoring.test.ts apc50 jobListing", async () => {
+      await prisma.jobListing.deleteMany({ where: { id: { in: jobIds } } });
+    });
+    await safeCleanup("jobs-scoring.test.ts apc50 user", async () => {
+      await prisma.user.delete({ where: { id: userId } });
+    });
+    await safeCleanup(
+      "jobs-scoring.test.ts apc50 skillEmbedding",
+      async () => {
+        await prisma.skillEmbedding.deleteMany({
+          where: { skill: { in: allSeededSkillKeys } },
+        });
+      },
+    );
+  });
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue({
+      user: { id: userId, email: testEmail, role: "USER" },
+      expires: "any",
+    });
+  });
+
+  it("penalizes below-threshold HARD and SOFT skills as 0 while preserving empty-dimension 100 and emitting PII-free debug summary", async () => {
+    try {
+      await setThreshold(83);
+      const { jobs, summary } = await fetchJobsWithDebugSummary();
+      const byTitle = (t: string) => jobs.find((j) => j.title === t)!;
+
+      expect(jobs).toHaveLength(jobDefs.length);
+
+      // Mixed job: 90 is Matched, 72 is Missing and penalized as 0 -> 45 per dim -> composite 58
+      const mixed = byTitle("APC-50 Mixed Partial Skills");
+      expect(mixed.matchedSkills).toEqual([SKILL_KEYS.hardHigh]);
+      expect(mixed.missingSkills).toEqual([SKILL_KEYS.hardPartial]);
+      expect(mixed.niceToHaveMatched).toEqual([SKILL_KEYS.hardHigh]);
+      expect(mixed.niceToHaveMissing).toEqual([SKILL_KEYS.hardPartial]);
+      expect(mixed.softSkillsMatched).toEqual([SKILL_KEYS.softHigh]);
+      expect(mixed.softSkillsMissing).toEqual([SKILL_KEYS.softPartial]);
+      expect(mixed.matchScore).toBe(58);
+
+      // All-below-threshold job: all 3 dimensions score 0 (never 100) -> composite 24
+      const allBelow = byTitle("APC-50 All Below Threshold");
+      expect(allBelow.matchedSkills).toEqual([]);
+      expect(allBelow.missingSkills).toEqual([SKILL_KEYS.hardPartial]);
+      expect(allBelow.niceToHaveMatched).toEqual([]);
+      expect(allBelow.niceToHaveMissing).toEqual([SKILL_KEYS.hardPartial]);
+      expect(allBelow.softSkillsMatched).toEqual([]);
+      expect(allBelow.softSkillsMissing).toEqual([SKILL_KEYS.softPartial]);
+      expect(allBelow.matchScore).toBe(24);
+
+      // Empty skill dimensions retain neutral 100 -> composite 99
+      const empty = byTitle("APC-50 Empty Skill Dimensions");
+      expect(empty.matchedSkills).toEqual([]);
+      expect(empty.missingSkills).toEqual([]);
+      expect(empty.niceToHaveMatched).toEqual([]);
+      expect(empty.niceToHaveMissing).toEqual([]);
+      expect(empty.softSkillsMatched).toEqual([]);
+      expect(empty.softSkillsMissing).toEqual([]);
+      expect(empty.matchScore).toBe(99);
+
+      // Disqualified job stays 0 and is excluded from scoredJobs counter
+      const disqualified = byTitle("APC-50 Disqualified Job");
+      expect(disqualified.disqualified).toBe(true);
+      expect(disqualified.matchScore).toBe(0);
+
+      // Debug summary contains exact aggregate integer counters and zero PII or skill names
+      expect(summary).toEqual({
+        threshold: 83,
+        scoredJobs: 3,
+        penalizedMustHave: 2,
+        penalizedNiceToHave: 2,
+        penalizedSoftSkills: 2,
+      });
+      const serialized = JSON.stringify(summary);
+      expect(serialized).not.toContain(testEmail);
+      expect(serialized).not.toContain(userId);
+      expect(serialized).not.toContain(profileId);
+      expect(serialized).not.toContain("TestFixture");
+    } finally {
+      await restoreThreshold();
+    }
+  });
+
+  it("immediately reflects live SystemConfig.SKILL_MATCH_DISPLAY_THRESHOLD updates on GET /api/jobs refresh", async () => {
+    try {
+      await setThreshold(83);
+      const firstRun = await fetchJobsWithDebugSummary();
+      const mixedBefore = firstRun.jobs.find(
+        (j) => j.title === "APC-50 Mixed Partial Skills",
+      )!;
+      const allBelowBefore = firstRun.jobs.find(
+        (j) => j.title === "APC-50 All Below Threshold",
+      )!;
+
+      expect(mixedBefore.missingSkills).toEqual([SKILL_KEYS.hardPartial]);
+      expect(mixedBefore.matchScore).toBe(58);
+      expect(allBelowBefore.matchScore).toBe(24);
+      expect(firstRun.summary).toEqual({
+        threshold: 83,
+        scoredJobs: 3,
+        penalizedMustHave: 2,
+        penalizedNiceToHave: 2,
+        penalizedSoftSkills: 2,
+      });
+
+      // Lower threshold from 83 -> 70 so 72-similarity skills flip from Missing (0) to Matched (72)
+      await setThreshold(70);
+      const secondRun = await fetchJobsWithDebugSummary();
+      const mixedAfter = secondRun.jobs.find(
+        (j) => j.title === "APC-50 Mixed Partial Skills",
+      )!;
+      const allBelowAfter = secondRun.jobs.find(
+        (j) => j.title === "APC-50 All Below Threshold",
+      )!;
+      const emptyAfter = secondRun.jobs.find(
+        (j) => j.title === "APC-50 Empty Skill Dimensions",
+      )!;
+
+      expect(mixedAfter.matchedSkills).toEqual([
+        SKILL_KEYS.hardHigh,
+        SKILL_KEYS.hardPartial,
+      ]);
+      expect(mixedAfter.missingSkills).toEqual([]);
+      expect(mixedAfter.niceToHaveMatched).toEqual([
+        SKILL_KEYS.hardHigh,
+        SKILL_KEYS.hardPartial,
+      ]);
+      expect(mixedAfter.niceToHaveMissing).toEqual([]);
+      expect(mixedAfter.softSkillsMatched).toEqual([
+        SKILL_KEYS.softHigh,
+        SKILL_KEYS.softPartial,
+      ]);
+      expect(mixedAfter.softSkillsMissing).toEqual([]);
+      expect(mixedAfter.matchScore).toBe(85);
+      expect(mixedAfter.matchScore!).toBeGreaterThan(mixedBefore.matchScore!);
+
+      expect(allBelowAfter.matchedSkills).toEqual([SKILL_KEYS.hardPartial]);
+      expect(allBelowAfter.missingSkills).toEqual([]);
+      expect(allBelowAfter.niceToHaveMatched).toEqual([SKILL_KEYS.hardPartial]);
+      expect(allBelowAfter.niceToHaveMissing).toEqual([]);
+      expect(allBelowAfter.softSkillsMatched).toEqual([SKILL_KEYS.softPartial]);
+      expect(allBelowAfter.softSkillsMissing).toEqual([]);
+      expect(allBelowAfter.matchScore).toBe(78);
+      expect(allBelowAfter.matchScore!).toBeGreaterThan(
+        allBelowBefore.matchScore!,
+      );
+
+      expect(emptyAfter.matchScore).toBe(99);
+      expect(secondRun.summary).toEqual({
+        threshold: 70,
+        scoredJobs: 3,
+        penalizedMustHave: 0,
+        penalizedNiceToHave: 0,
+        penalizedSoftSkills: 0,
+      });
+    } finally {
+      await restoreThreshold();
+    }
   });
 });
 

@@ -38,6 +38,11 @@ const ORTHOGONAL = [0, 1];
 const OPPOSITE = [-1, 0];
 const FORTY_FIVE = [1, 1];
 
+// 2D unit vector with exact cosine similarity `cos` against PROFILE_A ([1, 0]).
+function vectorWithCosine(cos: number): number[] {
+  return [cos, Math.sqrt(Math.max(0, 1 - cos * cos))];
+}
+
 function mockVectorRows(
   rows: Array<{ skill: string; embedding: number[] }>,
 ): void {
@@ -202,6 +207,117 @@ describe("scoreMaxCosine", () => {
       itemScores: { React: 0, TypeScript: 0 },
     });
   });
+
+  it("retains itemScore at the exact matchThreshold boundary (itemScore === matchThreshold)", () => {
+    const vectors = new Map([
+      ["profile-skill", PROFILE_A],
+      ["exact-boundary", vectorWithCosine(0.83)],
+      ["rounded-boundary", vectorWithCosine(0.826)], // rounds to 83 before threshold check
+    ]);
+
+    const exact = scoreMaxCosine(["Exact-Boundary"], ["Profile-Skill"], vectors, 83);
+    expect(exact).toEqual({
+      score: 83,
+      itemScores: { "Exact-Boundary": 83 },
+    });
+
+    const rounded = scoreMaxCosine(["Rounded-Boundary"], ["Profile-Skill"], vectors, 83);
+    expect(rounded).toEqual({
+      score: 83,
+      itemScores: { "Rounded-Boundary": 83 },
+    });
+  });
+
+  it("zeros itemScore in the dimension average when itemScore === matchThreshold - 1 while preserving raw itemScores", () => {
+    const vectors = new Map([
+      ["profile-skill", PROFILE_A],
+      ["just-below", vectorWithCosine(0.82)],
+    ]);
+
+    const result = scoreMaxCosine(["Just-Below"], ["Profile-Skill"], vectors, 83);
+    expect(result).toEqual({
+      score: 0,
+      itemScores: { "Just-Below": 82 },
+    });
+  });
+
+  it("averages matched targets with zeroed below-threshold misses in mixed dimensions", () => {
+    const vectors = new Map([
+      ["profile-skill", PROFILE_A],
+      ["ninety", vectorWithCosine(0.9)],
+      ["seventy", vectorWithCosine(0.7)],
+      ["identical", IDENTICAL],
+      ["forty-five", FORTY_FIVE],
+    ]);
+
+    // 90 (>= 83) and 70 (< 83 -> 0) => (90 + 0) / 2 = 45
+    const ninetyAndSeventy = scoreMaxCosine(
+      ["Ninety", "Seventy"],
+      ["Profile-Skill"],
+      vectors,
+      83,
+    );
+    expect(ninetyAndSeventy).toEqual({
+      score: 45,
+      itemScores: { Ninety: 90, Seventy: 70 },
+    });
+
+    // 100 (>= 83) and 71 (< 83 -> 0) => (100 + 0) / 2 = 50
+    const hundredAndSeventyOne = scoreMaxCosine(
+      ["Identical", "Forty-Five"],
+      ["Profile-Skill"],
+      vectors,
+      83,
+    );
+    expect(hundredAndSeventyOne).toEqual({
+      score: 50,
+      itemScores: { Identical: 100, "Forty-Five": 71 },
+    });
+  });
+
+  it("returns score 0 (never 100) when all targets fall below matchThreshold while preserving raw itemScores", () => {
+    const vectors = new Map([
+      ["profile-skill", PROFILE_A],
+      ["just-below", vectorWithCosine(0.82)],
+      ["forty-five", FORTY_FIVE],
+    ]);
+
+    const result = scoreMaxCosine(
+      ["Just-Below", "Forty-Five"],
+      ["Profile-Skill"],
+      vectors,
+      83,
+    );
+    expect(result).toEqual({
+      score: 0,
+      itemScores: { "Just-Below": 82, "Forty-Five": 71 },
+    });
+  });
+
+  it("returns 100 and empty itemScores for empty targets even when matchThreshold is provided", () => {
+    const vectors = new Map([["react", PROFILE_A]]);
+    const result = scoreMaxCosine([], ["React"], vectors, 83);
+    expect(result).toEqual({ score: 100, itemScores: {} });
+  });
+
+  it("preserves the raw cosine average when matchThreshold is omitted (defaults to 0)", () => {
+    const vectors = new Map([
+      ["profile-skill", PROFILE_A],
+      ["identical", IDENTICAL],
+      ["forty-five", FORTY_FIVE],
+    ]);
+
+    // (100 + 71) / 2 = 85.5 -> 86 when matchThreshold is omitted
+    const result = scoreMaxCosine(
+      ["Identical", "Forty-Five"],
+      ["Profile-Skill"],
+      vectors,
+    );
+    expect(result).toEqual({
+      score: 86,
+      itemScores: { Identical: 100, "Forty-Five": 71 },
+    });
+  });
 });
 
 // --- getMaxCosineScores (one-shot fetch + score wrapper) ----------------------------------
@@ -237,5 +353,26 @@ describe("getMaxCosineScores", () => {
 
     const [, ...params] = mockQueryRawUnsafe.mock.calls[0];
     expect(params[params.length - 1]).toBe(SkillKind.SOFT);
+  });
+
+  it("forwards optional matchThreshold to scoreMaxCosine", async () => {
+    mockVectorRows([
+      { skill: "react", embedding: PROFILE_A },
+      { skill: "typescript", embedding: IDENTICAL },
+      { skill: "go", embedding: FORTY_FIVE },
+    ]);
+
+    const result = await getMaxCosineScores(
+      ["TypeScript", "Go"],
+      ["React"],
+      SkillKind.HARD,
+      83,
+    );
+
+    expect(mockQueryRawUnsafe).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      score: 50,
+      itemScores: { TypeScript: 100, Go: 71 },
+    });
   });
 });

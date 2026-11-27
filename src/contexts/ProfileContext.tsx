@@ -68,6 +68,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   // Track pending save operations
   const activeSavesRef = useRef<Set<string>>(new Set());
   const timeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const pendingSaveFnsRef = useRef<Map<string, () => Promise<void>>>(new Map());
   const pendingBasicDataChangesRef = useRef<
     Partial<BasicDataDTO> & { summaries?: SummaryDTO[] }
   >({});
@@ -77,6 +78,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     return () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       timeoutsRef.current.forEach((t) => clearTimeout(t));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      pendingSaveFnsRef.current.clear();
     };
   }, []);
 
@@ -117,26 +120,64 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
     setSaveStatus("saving");
     activeSavesRef.current.add(key);
+    pendingSaveFnsRef.current.set(key, saveFn);
     setIsSyncOutOfDate(true);
 
     // 2. Set new timeout for 1.5 seconds
     const timeout = setTimeout(async () => {
+      const fn = pendingSaveFnsRef.current.get(key);
+      pendingSaveFnsRef.current.delete(key);
+      timeoutsRef.current.delete(key);
+      if (!fn) return;
+
       try {
-        await saveFn();
+        await fn();
         activeSavesRef.current.delete(key);
         if (activeSavesRef.current.size === 0) {
           setSaveStatus("saved");
         }
       } catch (err) {
+        activeSavesRef.current.delete(key);
         console.error(`Save failed for ${key}:`, err);
         setSaveStatus("error");
         setError("Background save failed.");
-      } finally {
-        timeoutsRef.current.delete(key);
       }
     }, 1500);
 
     timeoutsRef.current.set(key, timeout);
+  };
+
+  // Immediately flushes all pending debounced save runners before operations like AI Sync
+  const flushPendingSaves = async () => {
+    const entries = Array.from(pendingSaveFnsRef.current.entries());
+    if (entries.length === 0) return;
+
+    for (const [key] of entries) {
+      const existingTimeout = timeoutsRef.current.get(key);
+      if (existingTimeout) {
+        clearTimeout(existingTimeout);
+        timeoutsRef.current.delete(key);
+      }
+      pendingSaveFnsRef.current.delete(key);
+    }
+
+    try {
+      await Promise.all(
+        entries.map(async ([key, fn]) => {
+          try {
+            await fn();
+          } finally {
+            activeSavesRef.current.delete(key);
+          }
+        }),
+      );
+    } catch (err) {
+      setSaveStatus("error");
+      setError(
+        err instanceof Error ? err.message : "Background save failed.",
+      );
+      throw err;
+    }
   };
 
   // 1. Basic Data Autosave
@@ -533,6 +574,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (!profile) return;
     try {
       setSaveStatus("saving");
+      await flushPendingSaves();
       await ProfileService.syncProfile();
       await refreshProfile();
       setIsSyncOutOfDate(false);

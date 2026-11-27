@@ -178,6 +178,47 @@ describe("aiClient (LiteLLM Gateway)", () => {
         SyntaxError,
       );
     });
+
+    it("forwards options.temperature (including 0) when provided and omits temperature when undefined", async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          makeJsonResponse({
+            choices: [{ message: { content: '{"ok":true}' } }],
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeJsonResponse({
+            choices: [{ message: { content: '{"ok":true}' } }],
+          }),
+        );
+
+      await generateJSON<{ ok: boolean }>(
+        "extract profile",
+        "profile.syncFacts",
+        "System prompt.",
+        { temperature: 0 },
+      );
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        model: "chat-free",
+        temperature: 0,
+        messages: [
+          {
+            role: "system",
+            content:
+              "System prompt.\nReturn ONLY valid JSON. Do not include markdown wraps or extra commentary.",
+          },
+          { role: "user", content: "extract profile" },
+        ],
+      });
+
+      await generateJSON<{ ok: boolean }>(
+        "extract default",
+        "profile.syncFacts",
+        "System prompt.",
+      );
+      const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+      expect(secondBody).not.toHaveProperty("temperature");
+    });
   });
 
   describe("Error mapping", () => {

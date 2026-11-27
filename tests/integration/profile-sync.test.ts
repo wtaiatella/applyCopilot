@@ -92,7 +92,7 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
     await prisma.skill.create({
       data: {
         profileId: testProfileId,
-        name: "React",
+        name: "React-TestFixture",
         proficiency: "ADVANCED",
       },
     });
@@ -436,6 +436,246 @@ describe("UserProfile AI Synchronization Endpoint Integration Tests", () => {
         where: { skill: normalizedTech },
       });
       expect(embeddingCountForTech).toBe(1);
+    });
+  });
+
+  // ──────────────────────────────────────────────────
+  // APC-51: Explicit active user skills union (AC-2) & softSkills narrative stabilization (AC-3)
+  // ──────────────────────────────────────────────────
+
+  describe("APC-51 — explicit user skills preservation & softSkills stabilization", () => {
+    const apc51Email = `apc51-sync-${Date.now()}@example.com`;
+    let apc51UserId: string;
+    let apc51ProfileId: string;
+
+    const fixtureSkillsToClean = [
+      "claudecode-testfixture",
+      "cursor-testfixture",
+      "inactivetool-testfixture",
+      "playwright-testfixture",
+      "problemsolving-testfixture",
+      "crossfunctionalcollab-testfixture",
+      "teamwork-testfixture",
+      "executivepresence-testfixture",
+    ];
+
+    beforeAll(async () => {
+      const user = await prisma.user.create({
+        data: {
+          email: apc51Email,
+          password: "hashedpassword123",
+          profile: {
+            create: {
+              firstName: "Alex",
+              lastName: "Rivera",
+              title: "Staff Software Engineer",
+              summary: "Builds distributed systems and AI developer tooling.",
+            },
+          },
+        },
+        include: { profile: true },
+      });
+
+      apc51UserId = user.id;
+      apc51ProfileId = user.profile!.id;
+
+      await prisma.experience.create({
+        data: {
+          profileId: apc51ProfileId,
+          company: "Acme Cloud",
+          position: "Staff Engineer",
+          startDate: new Date("2021-06-01"),
+          current: true,
+        },
+      });
+
+      await prisma.skill.createMany({
+        data: [
+          {
+            profileId: apc51ProfileId,
+            name: "ClaudeCode-TestFixture",
+            proficiency: "EXPERT",
+            isActive: true,
+            isArchived: false,
+          },
+          {
+            profileId: apc51ProfileId,
+            name: "Cursor-TestFixture",
+            proficiency: "ADVANCED",
+            isActive: true,
+            isArchived: false,
+          },
+          {
+            profileId: apc51ProfileId,
+            name: "InactiveTool-TestFixture",
+            proficiency: "BEGINNER",
+            isActive: false,
+            isArchived: false,
+          },
+        ],
+      });
+    });
+
+    afterAll(async () => {
+      if (apc51UserId) {
+        await safeCleanup("profile-sync.test.ts apc51 user cleanup", async () => {
+          await prisma.user.delete({ where: { id: apc51UserId } });
+        });
+      }
+      await safeCleanup(
+        "profile-sync.test.ts apc51 skillAlias cleanup",
+        async () => {
+          await prisma.skillAlias.deleteMany({
+            where: {
+              OR: [
+                { alias: { in: fixtureSkillsToClean } },
+                { skill: { in: fixtureSkillsToClean } },
+              ],
+            },
+          });
+        },
+      );
+      await safeCleanup(
+        "profile-sync.test.ts apc51 skillEmbedding cleanup",
+        async () => {
+          await prisma.skillEmbedding.deleteMany({
+            where: { skill: { in: fixtureSkillsToClean } },
+          });
+        },
+      );
+    });
+
+    it("AC-2 & AC-3: retains explicit active skills omitted by LLM, stabilizes softSkills across skill-only edits, and updates softSkills when narrative changes", async () => {
+      mockAuth.mockResolvedValue({
+        user: { id: apc51UserId, email: apc51Email, role: "USER" },
+        expires: "any",
+      });
+
+      // Step 1 (Initial Sync): LLM omits ClaudeCode-TestFixture & Cursor-TestFixture from skills,
+      // and extracts initial softSkills.
+      mockGenerateJSON.mockImplementation(
+        (_prompt: string, capability: string) => {
+          if (capability === "skillAlias" || capability === "profile.skillAlias") {
+            return Promise.resolve({ sameTechnology: false });
+          }
+          return Promise.resolve(
+            makeValidProfileFacts({
+              skills: ["React-TestFixture", "Node.js-TestFixture"],
+              softSkills: [
+                "ProblemSolving-TestFixture",
+                "CrossFunctionalCollab-TestFixture",
+              ],
+            }),
+          );
+        },
+      );
+
+      const sync1 = await syncProfileHandler(makeRequest());
+      expect(sync1.status).toBe(200);
+      const data1 = await sync1.json();
+
+      // Explicit active skills must be retained & prioritized ahead of LLM-extracted skills;
+      // inactive skill must be excluded.
+      expect(data1.profileFacts.skills).toEqual([
+        "ClaudeCode-TestFixture",
+        "Cursor-TestFixture",
+        "React-TestFixture",
+        "Node.js-TestFixture",
+      ]);
+      expect(data1.profileFacts.skills).not.toContain(
+        "InactiveTool-TestFixture",
+      );
+      expect(data1.profileFacts.softSkills).toEqual([
+        "ProblemSolving-TestFixture",
+        "CrossFunctionalCollab-TestFixture",
+      ]);
+
+      const dbAfter1 = await prisma.userProfile.findUnique({
+        where: { id: apc51ProfileId },
+      });
+      expect(dbAfter1?.aiCleanedText).toContain("Staff Software Engineer");
+      expect(dbAfter1?.aiCleanedText).not.toContain("ClaudeCode-TestFixture");
+
+      // Step 2 (Skill-only edit — narrative unchanged): add Playwright-TestFixture while LLM
+      // attempts to drift softSkills to "Teamwork-TestFixture".
+      await prisma.skill.create({
+        data: {
+          profileId: apc51ProfileId,
+          name: "Playwright-TestFixture",
+          proficiency: "ADVANCED",
+          isActive: true,
+          isArchived: false,
+        },
+      });
+
+      mockGenerateJSON.mockImplementation(
+        (_prompt: string, capability: string) => {
+          if (capability === "skillAlias" || capability === "profile.skillAlias") {
+            return Promise.resolve({ sameTechnology: false });
+          }
+          return Promise.resolve(
+            makeValidProfileFacts({
+              skills: ["React-TestFixture"],
+              softSkills: ["Teamwork-TestFixture"],
+            }),
+          );
+        },
+      );
+
+      const sync2 = await syncProfileHandler(makeRequest());
+      expect(sync2.status).toBe(200);
+      const data2 = await sync2.json();
+
+      expect(data2.profileFacts.skills).toContain("Playwright-TestFixture");
+      expect(data2.profileFacts.skills).toContain("ClaudeCode-TestFixture");
+      expect(data2.profileFacts.skills).toContain("Cursor-TestFixture");
+      // Narrative did NOT change -> prior validated softSkills MUST be preserved!
+      expect(data2.profileFacts.softSkills).toEqual([
+        "ProblemSolving-TestFixture",
+        "CrossFunctionalCollab-TestFixture",
+      ]);
+
+      // Step 3 (Narrative edit — summary updated): softSkills SHOULD now refresh from LLM.
+      await prisma.userProfile.update({
+        where: { id: apc51ProfileId },
+        data: {
+          summary:
+            "Executive engineering leader driving cross-org platform architecture.",
+        },
+      });
+
+      mockGenerateJSON.mockImplementation(
+        (_prompt: string, capability: string) => {
+          if (capability === "skillAlias" || capability === "profile.skillAlias") {
+            return Promise.resolve({ sameTechnology: false });
+          }
+          return Promise.resolve(
+            makeValidProfileFacts({
+              skills: ["React-TestFixture"],
+              softSkills: [
+                "Teamwork-TestFixture",
+                "ExecutivePresence-TestFixture",
+              ],
+            }),
+          );
+        },
+      );
+
+      const sync3 = await syncProfileHandler(makeRequest());
+      expect(sync3.status).toBe(200);
+      const data3 = await sync3.json();
+
+      expect(data3.profileFacts.softSkills).toEqual([
+        "Teamwork-TestFixture",
+        "ExecutivePresence-TestFixture",
+      ]);
+
+      const dbAfter3 = await prisma.userProfile.findUnique({
+        where: { id: apc51ProfileId },
+      });
+      expect(dbAfter3?.aiCleanedText).toContain(
+        "Executive engineering leader driving cross-org platform architecture.",
+      );
     });
   });
 });

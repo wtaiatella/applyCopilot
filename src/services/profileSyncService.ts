@@ -46,6 +46,8 @@ export interface ProfileData {
     proficiency: string;
     yearsExperience: number | null;
   }>;
+  aiCleanedText?: string | null;
+  profileFacts?: unknown;
 }
 
 /**
@@ -72,7 +74,7 @@ export async function fetchUserProfileData(
           bullets: true,
         },
       },
-      skills: { where: { isArchived: false } },
+      skills: { where: { isArchived: false, isActive: true } },
     },
   });
 
@@ -91,17 +93,17 @@ export function isProfileEmpty(profile: ProfileData): boolean {
   return !hasExperience && !hasEducation && !hasSkills && !hasProjects;
 }
 
-/**
- * Consolidates user profile information into a structured text document.
- */
-export function consolidateProfileToText(profile: ProfileData): string {
+function formatProfileSections(
+  profile: ProfileData,
+  options: { includeSkills: boolean },
+): string {
   const parts: string[] = [];
 
   if (profile.title) parts.push(`Professional Title: ${profile.title}`);
   if (profile.summary) parts.push(`Professional Summary: ${profile.summary}`);
 
   // Skills
-  if (profile.skills.length > 0) {
+  if (options.includeSkills && profile.skills.length > 0) {
     parts.push("\nCore Skills & Technologies:");
     profile.skills.forEach((s) => {
       const exp = s.yearsExperience ? ` (${s.yearsExperience} years exp)` : "";
@@ -185,6 +187,25 @@ export function consolidateProfileToText(profile: ProfileData): string {
 }
 
 /**
+ * Consolidates user profile information into a structured text document.
+ */
+export function consolidateProfileToText(profile: ProfileData): string {
+  return formatProfileSections(profile, { includeSkills: true });
+}
+
+/**
+ * Consolidates only the narrative sections of a user profile (Professional Title,
+ * Professional Summary, Professional Experience, Education & Training, Key Projects),
+ * excluding `Core Skills & Technologies` so callers can detect whether prose sections
+ * changed independently of explicit `Skill` edits.
+ */
+export function consolidateNarrativeProfileToText(
+  profile: ProfileData,
+): string {
+  return formatProfileSections(profile, { includeSkills: false });
+}
+
+/**
  * Sends consolidated profile data to the LLM (capability "profile", generic
  * DB->AI_PROVIDER_DEFAULT->env fallback chain via `resolveAIConfig`) and returns a
  * structured `ProfileFacts` extraction optimized for deterministic scoring (Stage 2)
@@ -210,6 +231,7 @@ export async function extractProfileFacts(
       consolidatedText,
       "profile.syncFacts",
       systemPrompt,
+      { temperature: 0 },
     );
     return profileFacts;
   } catch (error) {
@@ -242,44 +264,101 @@ export async function extractProfileFacts(
  * @param profileFacts The raw (not yet schema-validated) extraction from `extractProfileFacts`.
  * @returns `profileFacts` with `skills`/`softSkills` rewritten to canonical display names.
  */
+export interface CanonicalizeProfileFactsOptions {
+  explicitSkills?: string[];
+  preserveSoftSkills?: string[];
+}
+
+function dedupeCaseInsensitive(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    const trimmed = item.trim();
+    const key = trimmed.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(trimmed);
+    }
+  }
+  return out;
+}
+
 export async function canonicalizeProfileFacts(
   profileFacts: ProfileFacts,
+  options?: CanonicalizeProfileFactsOptions,
 ): Promise<ProfileFacts> {
   const withinLength = (s: unknown): s is string =>
-    typeof s === "string" && SkillKeySchema.safeParse(s).success;
+    typeof s === "string" &&
+    s.trim().length > 0 &&
+    SkillKeySchema.safeParse(s.trim()).success;
 
-  const skillsMap = Array.isArray(profileFacts.skills)
-    ? await resolveCanonicalSkills(
-        profileFacts.skills.filter(withinLength).slice(0, MAX_SKILLS_PER_FIELD),
-        "HARD",
-      )
-    : null;
-  const softSkillsMap = Array.isArray(profileFacts.softSkills)
-    ? await resolveCanonicalSkills(
-        profileFacts.softSkills
-          .filter(withinLength)
-          .slice(0, MAX_SKILLS_PER_FIELD),
+  let nextSkills: ProfileFacts["skills"] = profileFacts.skills;
+  if (Array.isArray(profileFacts.skills)) {
+    const validExplicit = (options?.explicitSkills ?? []).filter(withinLength);
+    const validExtracted = profileFacts.skills.filter(withinLength);
+    const invalidRawSkills = profileFacts.skills.filter(
+      (s) => !withinLength(s),
+    );
+
+    const prioritizedHardCandidates = dedupeCaseInsensitive([
+      ...validExplicit,
+      ...validExtracted,
+    ]).slice(0, MAX_SKILLS_PER_FIELD);
+
+    const skillsMap = await resolveCanonicalSkills(
+      prioritizedHardCandidates,
+      "HARD",
+    );
+
+    const canonicalHard = Array.from(
+      new Set(prioritizedHardCandidates.map((s) => skillsMap.get(s) ?? s)),
+    ).slice(0, MAX_SKILLS_PER_FIELD);
+
+    nextSkills =
+      invalidRawSkills.length > 0
+        ? [...canonicalHard, ...invalidRawSkills]
+        : canonicalHard;
+  }
+
+  let nextSoftSkills: ProfileFacts["softSkills"] = profileFacts.softSkills;
+  if (Array.isArray(profileFacts.softSkills)) {
+    const preservedSoft = Array.from(
+      new Set((options?.preserveSoftSkills ?? []).filter(withinLength)),
+    ).slice(0, MAX_SKILLS_PER_FIELD);
+
+    if (preservedSoft.length > 0) {
+      nextSoftSkills = preservedSoft;
+    } else {
+      const validSoft = profileFacts.softSkills.filter(withinLength);
+      const invalidRawSoft = profileFacts.softSkills.filter(
+        (s) => !withinLength(s),
+      );
+      const softCandidates = dedupeCaseInsensitive(validSoft).slice(
+        0,
+        MAX_SKILLS_PER_FIELD,
+      );
+      const softSkillsMap = await resolveCanonicalSkills(
+        softCandidates,
         "SOFT",
-      )
-    : null;
+      );
+      const canonicalSoft = Array.from(
+        new Set(softCandidates.map((s) => softSkillsMap.get(s) ?? s)),
+      ).slice(0, MAX_SKILLS_PER_FIELD);
+
+      nextSoftSkills =
+        invalidRawSoft.length > 0
+          ? [...canonicalSoft, ...invalidRawSoft]
+          : canonicalSoft;
+    }
+  }
 
   return {
     ...profileFacts,
-    // Dedupe after canonicalization (not before) — see jobClassificationService.ts's
-    // canonicalizeJobFacts for why order matters (two raw spellings only collapse to the same
-    // string once mapped through skillsMap/softSkillsMap).
-    skills: skillsMap
-      ? Array.from(
-          new Set(profileFacts.skills.map((s) => skillsMap.get(s) ?? s)),
-        )
-      : profileFacts.skills,
-    softSkills: softSkillsMap
-      ? Array.from(
-          new Set(
-            profileFacts.softSkills.map((s) => softSkillsMap.get(s) ?? s),
-          ),
-        )
-      : profileFacts.softSkills,
+    // Dedupe after canonicalization too — two differently-spelled raw candidates
+    // (e.g. "Postgres" and "PostgreSQL") collapse to one displayName once mapped
+    // through skillsMap/softSkillsMap, with explicit user skills prioritized first.
+    skills: nextSkills,
+    softSkills: nextSoftSkills,
   };
 }
 

@@ -28,6 +28,7 @@ jest.mock("@/services/profileSyncService", () => ({
   fetchUserProfileData: jest.fn(),
   isProfileEmpty: jest.fn(),
   consolidateProfileToText: jest.fn(),
+  consolidateNarrativeProfileToText: jest.fn(),
   extractProfileFacts: jest.fn(),
   canonicalizeProfileFacts: jest.fn(),
 }));
@@ -56,6 +57,7 @@ import {
   fetchUserProfileData,
   isProfileEmpty,
   consolidateProfileToText,
+  consolidateNarrativeProfileToText,
   extractProfileFacts,
   canonicalizeProfileFacts,
 } from "@/services/profileSyncService";
@@ -69,6 +71,8 @@ const mockCvFindUnique = prisma.cV.findUnique as jest.Mock;
 const mockFetchUserProfileData = fetchUserProfileData as jest.Mock;
 const mockIsProfileEmpty = isProfileEmpty as jest.Mock;
 const mockConsolidateProfileToText = consolidateProfileToText as jest.Mock;
+const mockConsolidateNarrativeProfileToText =
+  consolidateNarrativeProfileToText as jest.Mock;
 const mockExtractProfileFacts = extractProfileFacts as jest.Mock;
 const mockCanonicalizeProfileFacts = canonicalizeProfileFacts as jest.Mock;
 const mockGenerateEmbedding = generateEmbedding as jest.Mock;
@@ -89,6 +93,7 @@ describe("Interactive AI 503 unavailability handling (APC-45)", () => {
     mockFetchUserProfileData.mockResolvedValue({ id: "profile-1", userId: "user-1" });
     mockIsProfileEmpty.mockReturnValue(false);
     mockConsolidateProfileToText.mockReturnValue("TypeScript React 5 years");
+    mockConsolidateNarrativeProfileToText.mockReturnValue("5 years");
     mockExtractProfileFacts.mockResolvedValue(VALID_PROFILE_FACTS);
     mockCanonicalizeProfileFacts.mockResolvedValue(VALID_PROFILE_FACTS);
     mockCvFindUnique.mockResolvedValue({

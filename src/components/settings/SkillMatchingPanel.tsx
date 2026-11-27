@@ -308,11 +308,12 @@ export default function SkillMatchingPanel() {
                     htmlFor="skill-match-threshold-input"
                     className="block text-sm font-medium text-zinc-200 mb-1"
                   >
-                    Skill Match Display Threshold (%)
+                    Skill Match Threshold (%)
                   </label>
                   <p className="text-xs text-zinc-400 mb-2">
                     Minimum cosine similarity (0–100%) to classify a job skill
-                    as matched in the UI.
+                    as Matched. Skills below this threshold are classified as
+                    Missing and contribute 0 to the composite match score.
                   </p>
                   <Form.Item
                     name="matchThreshold"
@@ -323,7 +324,7 @@ export default function SkillMatchingPanel() {
                   >
                     <ThresholdSliderInput
                       inputId="skill-match-threshold-input"
-                      ariaLabel="Skill Match Display Threshold (%)"
+                      ariaLabel="Skill Match Threshold (%)"
                       disabled={saving}
                     />
                   </Form.Item>

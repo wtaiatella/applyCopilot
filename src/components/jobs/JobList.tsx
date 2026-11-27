@@ -87,12 +87,12 @@ export default function JobList() {
       const data = (await response.json()) as Job[];
       setJobs(data);
 
-      // Select the first job by default if jobs are returned and the previously selected job is no longer in the list
+      // Refresh selectedJob with the latest object from data, falling back to data[0] (or null if empty)
       if (data.length > 0) {
-        setSelectedJob((prev) => {
-          const stillExists = prev ? data.some((j) => j.id === prev.id) : false;
-          return stillExists ? prev : data[0];
-        });
+        setSelectedJob(
+          (prev) =>
+            (prev ? data.find((j) => j.id === prev.id) : undefined) ?? data[0],
+        );
       } else {
         setSelectedJob(null);
       }

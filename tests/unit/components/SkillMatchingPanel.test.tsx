@@ -110,7 +110,7 @@ describe("SkillMatchingPanel", () => {
       "Skill Alias Similarity Threshold (%)",
     ) as HTMLInputElement;
     const matchInput = screen.getByLabelText(
-      "Skill Match Display Threshold (%)",
+      "Skill Match Threshold (%)",
     ) as HTMLInputElement;
 
     const sliders = screen.getAllByRole("slider");
@@ -140,6 +140,32 @@ describe("SkillMatchingPanel", () => {
         }),
       );
     });
+  });
+
+  it("displays Skill Match Threshold copy covering Matched/Missing classification and composite score zeroing while keeping Skill Alias Similarity Threshold distinct", async () => {
+    const fetchMock = createFetchMock();
+    await renderAndExpandPanel(fetchMock);
+
+    expect(
+      screen.getByLabelText("Skill Match Threshold (%)"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Skill Match Display Threshold (%)"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /classify a job skill as Matched\. Skills below this threshold are classified as Missing and contribute 0 to the composite match score\./i,
+      ),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByLabelText("Skill Alias Similarity Threshold (%)"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /propose canonical skill aliases during ingestion\./i,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("opens confirmation modal explaining SkillAlias reset and disables button while backfill is running", async () => {

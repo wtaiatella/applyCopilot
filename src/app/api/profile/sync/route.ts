@@ -6,6 +6,7 @@ import {
   fetchUserProfileData,
   isProfileEmpty,
   consolidateProfileToText,
+  consolidateNarrativeProfileToText,
   extractProfileFacts,
   canonicalizeProfileFacts,
 } from "@/services/profileSyncService";
@@ -14,6 +15,7 @@ import { AIServiceUnavailableError } from "@/lib/ai/aiClient";
 import { ProfileFactsSchema } from "@/lib/validation/profileFactsSchema";
 
 export async function POST(request: Request) {
+  void request;
   try {
     // 1. Authenticate user
     const session = await auth();
@@ -40,8 +42,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4. Consolidate profile details to string
+    // 4. Consolidate profile details to string (plus narrative-only snapshot for softSkills stabilization)
     const consolidatedText = consolidateProfileToText(profile);
+    const narrativeText = consolidateNarrativeProfileToText(profile);
 
     // 5. Extract structured ProfileFacts via the configured "profile" LLM capability
     let rawProfileFacts;
@@ -63,10 +66,33 @@ export async function POST(request: Request) {
       );
     }
 
-    // 5b. Canonicalize skills/softSkills against the write-path vocabulary (T007, FR-08) —
-    // before validation, so persisted ProfileFacts always carry canonical displayName values.
-    const canonicalizedProfileFacts =
-      await canonicalizeProfileFacts(rawProfileFacts);
+    // 5b. Canonicalize skills/softSkills against the write-path vocabulary (T007, FR-08, APC-51) —
+    // deterministically unioning explicit active user skills and preserving prior validated
+    // softSkills when narrative prose sections have not changed since the last sync.
+    const priorFactsParsed =
+      profile.profileFacts !== null && profile.profileFacts !== undefined
+        ? ProfileFactsSchema.safeParse(profile.profileFacts)
+        : null;
+    const preserveSoftSkills =
+      profile.aiCleanedText !== null &&
+      profile.aiCleanedText !== undefined &&
+      profile.aiCleanedText === narrativeText &&
+      priorFactsParsed?.success &&
+      priorFactsParsed.data.softSkills.length > 0
+        ? priorFactsParsed.data.softSkills
+        : undefined;
+
+    const explicitSkills = (profile.skills ?? [])
+      .map((s) => s.name.trim())
+      .filter(Boolean);
+
+    const canonicalizedProfileFacts = await canonicalizeProfileFacts(
+      rawProfileFacts,
+      {
+        explicitSkills,
+        preserveSoftSkills,
+      },
+    );
 
     // 6. Validate the extracted shape (FR-22: invalid -> 400, no DB write, prior data preserved)
     const parseResult = ProfileFactsSchema.safeParse(canonicalizedProfileFacts);
@@ -111,11 +137,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // 8. Save profileFacts and embedding vector to the DB via raw SQL due to Prisma unsupported column limitations
+    // 8. Save narrative snapshot, profileFacts, and embedding vector to the DB via raw SQL due to Prisma unsupported column limitations
     const vectorString = `[${embeddingVector.join(",")}]`;
     await prisma.$executeRaw`
       UPDATE "UserProfile"
       SET
+        "aiCleanedText" = ${narrativeText},
         "profileFacts" = ${JSON.stringify(profileFacts)}::jsonb,
         "embedding" = ${vectorString}::vector,
         "embeddingSyncedAt" = NOW()

@@ -166,10 +166,15 @@ function stripMarkdownFences(rawText: string): string {
   return cleaned.trim();
 }
 
+export interface GenerateJSONOptions {
+  temperature?: number;
+}
+
 async function callLiteLLM(
   routeId: AIRouteId,
   prompt: string,
   systemPrompt?: string,
+  options?: GenerateJSONOptions,
 ): Promise<string> {
   const modelAlias = resolveModelAlias(routeId);
   const isWorker = WORKER_ROUTES.has(routeId);
@@ -209,6 +214,9 @@ async function callLiteLLM(
       body: JSON.stringify({
         model: modelAlias,
         messages,
+        ...(options?.temperature !== undefined
+          ? { temperature: options.temperature }
+          : {}),
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -280,13 +288,19 @@ export async function generateJSON<T>(
   prompt: string,
   routeOrCap: AIRouteOrCapability = "default",
   systemPrompt?: string,
+  options?: GenerateJSONOptions,
 ): Promise<T> {
   const routeId = normalizeToRouteId(routeOrCap);
   const jsonSystemPrompt = systemPrompt
     ? `${systemPrompt}\nReturn ONLY valid JSON. Do not include markdown wraps or extra commentary.`
     : "Return ONLY valid JSON. Do not include markdown wraps or extra commentary.";
 
-  const responseText = await callLiteLLM(routeId, prompt, jsonSystemPrompt);
+  const responseText = await callLiteLLM(
+    routeId,
+    prompt,
+    jsonSystemPrompt,
+    options,
+  );
   const cleanedText = stripMarkdownFences(responseText);
 
   try {
